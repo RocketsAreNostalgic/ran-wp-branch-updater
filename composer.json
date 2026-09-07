@@ -1,0 +1,56 @@
+{
+  "name": "ran/wp-branch-updater",
+  "description": "Explicit branch ZIP deployment for WordPress plugins and themes.",
+  "type": "library",
+  "license": "GPL-2.0-or-later",
+  "require": {
+    "php": "^8.2",
+    "ext-hash": "*",
+    "ext-json": "*",
+    "ext-zip": "*",
+    "ran/updater-support": "dev-main"
+  },
+  "autoload": {
+    "classmap": [
+      "src/"
+    ]
+  },
+  "autoload-dev": {
+    "classmap": [
+      "tests/Support/"
+    ]
+  },
+  "support": {
+    "issues": "https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues",
+    "security": "https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/security/advisories/new",
+    "source": "https://github.com/RocketsAreNostalgic/ran-wp-branch-updater"
+  },
+  "scripts": {
+    "test:contract": "@php tests/contract.php",
+    "test:runner": "@php tests/admitted-runner.php",
+    "test:hard-stop": "@php tests/hard-stop.php",
+    "lint": "find src tests -type f -name '*.php' -print0 | xargs -0 -n1 php -l",
+    "check": [
+      "@validate:strict",
+      "@test:contract",
+      "@test:runner",
+      "@test:hard-stop",
+      "@test:release-publisher",
+      "@lint"
+    ],
+    "validate:strict": "composer validate --strict --no-check-publish",
+    "test:release-publisher": "node --test tests/release-publisher.test.mjs"
+  },
+  "config": {
+    "platform": {
+      "php": "8.2.0"
+    },
+    "sort-packages": true
+  },
+  "repositories": [
+    {
+      "type": "vcs",
+      "url": "https://github.com/RocketsAreNostalgic/ran-updater-support"
+    }
+  ]
+}

@@ -1,0 +1,84 @@
+{
+    "_readme": [
+        "This file locks the dependencies of your project to a known state",
+        "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
+        "This file is @generated automatically"
+    ],
+    "content-hash": "ba0419948a91616e7a49018c2c86bc3f",
+    "packages": [
+        {
+            "name": "ran/updater-support",
+            "version": "dev-main",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/RocketsAreNostalgic/ran-updater-support.git",
+                "reference": "98d3677334c62e27e206f3b7cd2f2e715ea30f1c"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/RocketsAreNostalgic/ran-updater-support/zipball/98d3677334c62e27e206f3b7cd2f2e715ea30f1c",
+                "reference": "98d3677334c62e27e206f3b7cd2f2e715ea30f1c",
+                "shasum": ""
+            },
+            "require": {
+                "php": "^8.2"
+            },
+            "default-branch": true,
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "RAN\\UpdaterSupport\\V1\\": "src/"
+                }
+            },
+            "scripts": {
+                "check": [
+                    "@validate:strict",
+                    "@test:contract",
+                    "@test:release-publisher",
+                    "@lint:php"
+                ],
+                "validate:strict": [
+                    "composer validate --strict --no-check-publish"
+                ],
+                "test:contract": [
+                    "php tests/contract.php"
+                ],
+                "lint:php": [
+                    "find src tests -type f -name '*.php' -print0 | xargs -0 -n1 php -l"
+                ],
+                "test:release-publisher": [
+                    "node --test tests/release-publisher.test.mjs"
+                ]
+            },
+            "license": [
+                "GPL-2.0-or-later"
+            ],
+            "description": "Shared contracts and utilities for RAN updater packages.",
+            "support": {
+                "issues": "https://github.com/RocketsAreNostalgic/ran-updater-support/issues",
+                "security": "https://github.com/RocketsAreNostalgic/ran-updater-support/security/advisories/new",
+                "source": "https://github.com/RocketsAreNostalgic/ran-updater-support"
+            },
+            "time": "2026-09-07T13:51:34+00:00"
+        }
+    ],
+    "packages-dev": [],
+    "aliases": [],
+    "minimum-stability": "stable",
+    "stability-flags": {
+        "ran/updater-support": 20
+    },
+    "prefer-stable": false,
+    "prefer-lowest": false,
+    "platform": {
+        "php": "^8.2",
+        "ext-hash": "*",
+        "ext-json": "*",
+        "ext-zip": "*"
+    },
+    "platform-dev": {},
+    "platform-overrides": {
+        "php": "8.2.0"
+    },
+    "plugin-api-version": "2.9.0"
+}
