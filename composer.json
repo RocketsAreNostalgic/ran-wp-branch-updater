@@ -29,7 +29,7 @@
     "test:contract": "@php tests/contract.php",
     "test:runner": "@php tests/admitted-runner.php",
     "test:hard-stop": "@php tests/hard-stop.php",
-    "lint": "find src tests -type f -name '*.php' -print0 | xargs -0 -n1 php -l",
+    "lint": "find src tests scripts -type f -name '*.php' -print0 | xargs -0 -n1 php -l && php -l bootstrap.php",
     "check": [
       "@validate:strict",
       "@test:contract",

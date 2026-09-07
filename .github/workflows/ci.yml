@@ -25,3 +25,9 @@ jobs:
         with:
           node-version: '24.11.0'
       - run: composer check
+      - name: Prove an installed Composer consumer
+        run: |
+          consumer="$RUNNER_TEMP/branch-updater-consumer"
+          php scripts/prepare-consumer-fixture.php "$consumer" "$GITHUB_WORKSPACE"
+          composer --working-dir="$consumer" update --no-dev --no-interaction --prefer-dist --no-progress
+          BRANCH_UPDATER_CONSUMER_ROOT="$consumer" php tests/consumer-install.php

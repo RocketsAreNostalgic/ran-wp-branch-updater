@@ -27,10 +27,10 @@ has finished, for example `deployed`, `downgrade_blocked`, `provider_failed`,
 `upgrader_failed`, `interrupted`, or `restoration_uncertain`. Hosts should store
 and present their own structured attempt record around that outcome.
 
-Invalid declarations and an uncertain journal, archive, or lock operation
-throw. An exception does not prove that WordPress was unchanged. Do not convert
-such an exception into a retry; consult the host's durable attempt record and
-recovery policy first.
+Invalid declarations and durability failures from the journal or lock throw.
+Archive-integrity and cleanup failures are terminal outcomes, and a post-fence
+interruption returns `interrupted`. Do not retry an uncertain outcome
+automatically; consult the host's durable attempt record and recovery policy.
 
 Themes may be declared from a repository subdirectory:
 
