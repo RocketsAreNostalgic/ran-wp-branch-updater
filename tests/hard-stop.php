@@ -54,10 +54,11 @@ $zip->close();
 $journal = $root . '/journal/attempts.json';
 $php     = escapeshellarg( PHP_BINARY );
 $self    = escapeshellarg( __FILE__ );
-// proc_get_status exposes the signal directly on macOS, where exec's numeric
-// status is not consistently shell-normalised to 128 + signal.
+// Pass an argument vector so proc_open tracks the PHP child directly. A command
+// string launches a shell on Linux, which reports its own exit 137 instead of
+// exposing the killed child's signal and term signal.
 $child = proc_open(
-	$php . ' ' . $self . ' child ' . escapeshellarg( $journal ) . ' ' . escapeshellarg( $archive ) . ' ' . escapeshellarg( $root ),
+	array( PHP_BINARY, __FILE__, 'child', $journal, $archive, $root ),
 	array(
 		0 => array( 'pipe', 'r' ),
 		1 => array( 'pipe', 'w' ),
