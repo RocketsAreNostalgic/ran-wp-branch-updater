@@ -75,10 +75,15 @@ final class BranchDeploymentPackage {
 	}
 
 	private function pluginSlug( string $pluginFile ): string {
-		if ( '' === $pluginFile
-			|| str_contains( $pluginFile, '\\' )
-			|| str_starts_with( $pluginFile, '/' )
-			|| 1 !== substr_count( $pluginFile, '/' )
+		try {
+			if ( trim( $pluginFile ) !== $pluginFile ) {
+				throw new \InvalidArgumentException( 'The plugin file is invalid.' );
+			}
+			$pluginFile = InstalledPackageIdentifier::normalize( $pluginFile );
+		} catch ( \InvalidArgumentException ) {
+			throw new \InvalidArgumentException( 'The plugin file is invalid.' );
+		}
+		if ( 1 !== substr_count( $pluginFile, '/' )
 			|| preg_match( '/^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*\.php$/Di', $pluginFile ) !== 1 ) {
 			throw new \InvalidArgumentException( 'The plugin file is invalid.' );
 		}
