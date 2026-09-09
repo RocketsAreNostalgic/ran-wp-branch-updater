@@ -171,7 +171,7 @@ class CorePackageExecutor {
 			$artifact->assertUnchanged();
 			$slug         = PackageSubdirectory::normalizeSlug( $packageSlug );
 			$subdirectory = PackageSubdirectory::normalize( $subdirectory );
-			$identifier   = '' === $installedIdentifier ? '' : $this->normalizeInstalledIdentifier( $installedIdentifier );
+			$identifier   = '' === $installedIdentifier ? '' : InstalledPackageIdentifier::normalize( $installedIdentifier );
 		} catch ( Throwable ) {
 			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::INVALID_REQUEST );
 		}
@@ -182,20 +182,6 @@ class CorePackageExecutor {
 			'subdirectory' => $subdirectory,
 			'identifier'   => $identifier,
 		);
-	}
-
-	private function normalizeInstalledIdentifier( string $identifier ): string {
-		$identifier = trim( $identifier );
-		if ( '' === $identifier
-			|| str_starts_with( $identifier, '/' )
-			|| str_contains( $identifier, '\\' )
-			|| preg_match( '/[\x00-\x1F\x7F]/', $identifier ) === 1
-			|| preg_match( '#(^|/)\.\.?(/|$)#', $identifier ) === 1
-		) {
-			throw new InvalidArgumentException( 'The installed package identifier is invalid.' );
-		}
-
-		return $identifier;
 	}
 
 	private function updateOffer( string $type, PreparedPackageArtifact $artifact, string $slug, string $identifier ): object {

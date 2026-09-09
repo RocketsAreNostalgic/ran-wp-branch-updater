@@ -30,6 +30,7 @@
     "test:runner": "@php tests/admitted-runner.php",
     "test:hard-stop": "@php tests/hard-stop.php",
     "test:journal": "@php tests/journal-invariants.php",
+    "test:identifier": "@php tests/installed-package-identifier.php",
     "lint": "find src tests scripts -type f -name '*.php' -print0 | xargs -0 -n1 php -l && php -l bootstrap.php",
     "check": [
       "@validate:strict",
@@ -37,6 +38,7 @@
       "@test:runner",
       "@test:hard-stop",
       "@test:journal",
+      "@test:identifier",
       "@test:release-publisher",
       "@lint"
     ],
