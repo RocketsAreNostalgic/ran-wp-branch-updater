@@ -12,11 +12,23 @@ composer install --no-interaction --prefer-dist
 composer check
 ```
 
+For changes to runtime PHP or Composer metadata, also prove a separate installed
+Composer consumer before committing:
+
+```sh
+consumer="$(mktemp -d)"
+trap 'rm -rf "$consumer"' EXIT
+php scripts/prepare-consumer-fixture.php "$consumer" "$PWD"
+composer --working-dir="$consumer" update --no-dev --no-interaction --prefer-dist --no-progress
+BRANCH_UPDATER_CONSUMER_ROOT="$consumer" php tests/consumer-install.php
+```
+
 `composer check` validates Composer metadata, runs the package, admitted-runner,
-and hard-stop contracts, runs release-publisher tests, and lints PHP. The CI
-gate also proves a separate installed Composer consumer; see the installed
-consumer proof in [README.md](README.md). Add focused proof coverage when
-changing archive custody, a mutation fence, recovery, or WordPress execution.
+and hard-stop contracts, runs release-publisher tests, and lints PHP. The
+installed-consumer proof mirrors the separate CI gate and verifies the installed
+class map and bootstrap without relying on a package-private `vendor` directory.
+Add focused proof coverage when changing archive custody, a mutation fence,
+recovery, or WordPress execution.
 
 Production provider clients and host policies remain outside this package. Do
 not add fixture transports as runtime providers, and do not commit credentials,
