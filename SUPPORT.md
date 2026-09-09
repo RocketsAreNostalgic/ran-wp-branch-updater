@@ -7,8 +7,10 @@ There is no guaranteed response or resolution time.
 
 Include the package version or commit, PHP and WordPress versions, provider and
 operation, reproduction steps, and expected and actual behavior. A host-owned
-attempt reference is useful when available; remove private repository and site
-identities unless they are needed to reproduce the problem.
+attempt reference is useful when available. Never include private repository or
+site identities in a public issue; redact them and reduce the report to a
+non-sensitive reproducer. If that is not possible, do not publish the private
+material.
 
 Production hosts own authenticated provider access, delivery admission,
 deduplication, durable attempt storage, and recovery policy. Test fixture
