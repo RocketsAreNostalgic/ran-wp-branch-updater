@@ -67,3 +67,10 @@ The release gate also installs the package into a separate Composer consumer
 and runs `tests/consumer-install.php` with `BRANCH_UPDATER_CONSUMER_ROOT` set
 to that consumer root. This proves the installed class map and bootstrap do
 not depend on a package-private `vendor` directory.
+
+## Community
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing a change. Use
+[SUPPORT.md](SUPPORT.md) for non-sensitive support and
+[SECURITY.md](SECURITY.md) for confidential vulnerability reports. Participation
+is governed by [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
