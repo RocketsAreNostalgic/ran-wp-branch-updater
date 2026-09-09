@@ -2,14 +2,21 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { BETA, PublisherRefusal, candidateIdentity, manifestVersion, refuse, verifyReleaseDelta } from "./release-publisher-content.mjs";
+import { PublisherRefusal, candidateIdentity, manifestVersion, refuse, verifyReleaseDelta } from "./release-publisher-content.mjs";
+import {
+  decidePublication,
+  hydrateExactReleasePullTree as hydrateReleasePullTree,
+  labels,
+  PENDING_LABEL,
+  TAGGED_LABEL,
+  verifyPublishedState,
+} from "./release-publisher-decision.mjs";
 
-export { PublisherRefusal, candidateIdentity, verifyReleaseDelta };
+export { PublisherRefusal, candidateIdentity, decidePublication, verifyPublishedState, verifyReleaseDelta };
 const FULL_SHA = /^[a-f0-9]{40}$/;
 const REPOSITORY = "RocketsAreNostalgic/ran-wp-branch-updater";
-const RELEASE_BRANCH = "release-please--branches--main--components--ran/wp-branch-updater";
-const RELEASE_PATHS = [".release-please-manifest.json", "CHANGELOG.md"];
-const PENDING_LABEL = "autorelease: pending"; const TAGGED_LABEL = "autorelease: tagged"; const BOT_LOGIN = "github-actions[bot]"; const API_VERSION = "2022-11-28"; const IMMUTABLE_RELEASES_API_VERSION = "2026-03-10";
+const API_VERSION = "2022-11-28";
+const IMMUTABLE_RELEASES_API_VERSION = "2026-03-10";
 
 function git(root, args) { return execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim(); }
 function blob(root, sha, file) { const entry = git(root, ["ls-tree", sha, "--", file]); if (!/^100644 blob [a-f0-9]{40}\t/.test(entry)) refuse("release_content_drift", `${file} must be an ordinary non-executable Git blob`); return execFileSync("git", ["show", `${sha}:${file}`], { cwd: root, encoding: "utf8" }); }
@@ -28,42 +35,13 @@ function parentContents(root, sha) {
 }
 export function validateCandidate(root, sha) { return candidateIdentity(contents(root, sha), sha); }
 
-function labels(pull) { return Array.isArray(pull?.labels) ? pull.labels.map((label) => typeof label === "string" ? label : label?.name) : []; }
-function shaped(pull) { return pull?.head?.ref === RELEASE_BRANCH || labels(pull).includes(PENDING_LABEL) || labels(pull).includes(TAGGED_LABEL); }
-function exactPulls(pulls, candidateSha) { const releasePulls = pulls.filter(shaped); return { exact: releasePulls.filter((pull) => pull?.state === "closed" && typeof pull?.merged_at === "string" && pull?.merge_commit_sha === candidateSha), stale: releasePulls.filter((pull) => pull?.state === "closed" && typeof pull?.merged_at === "string" && pull?.merge_commit_sha !== candidateSha) }; }
-export async function hydrateExactReleasePullTree(repository, candidateSha, pulls, request = api) { const { exact, stale } = exactPulls(pulls, candidateSha); if (exact.length !== 1 || stale.length) return pulls; const pull = exact[0]; if (!FULL_SHA.test(pull?.head?.sha ?? "")) refuse("release_pr_invalid", "Release Please head identity is invalid"); const response = await request(`/repos/${repository}/git/commits/${pull.head.sha}`); const headCommit = response?.data ?? response; if (headCommit?.sha !== pull.head.sha || !FULL_SHA.test(headCommit?.tree?.sha ?? "")) refuse("release_pr_head_tree_invalid", "Release Please head tree readback is invalid"); return pulls.map((value) => value === pull ? { ...value, head_tree_sha: headCommit.tree.sha } : value); }
-export function decidePublication(input) {
-  const { event, candidateSha, mainSha, identity, pulls, commit, repository, repositoryId } = input;
-  if (identity?.candidateSha !== candidateSha) refuse("candidate_identity_drift", "checked-out candidate identity differs from CI");
-  if (event?.event !== "push" || event?.conclusion !== "success" || event?.head_branch !== "main" || event?.head_sha !== candidateSha || !Number.isInteger(repositoryId) || event?.head_repository?.id !== repositoryId || event?.head_repository?.full_name !== repository) refuse("quality_identity_invalid", "publisher requires the exact successful same-repository main CI candidate");
-  if (mainSha !== candidateSha) refuse("main_moved", "main no longer points at the successful candidate");
-  const { exact, stale } = exactPulls(pulls, candidateSha);
-  if (!exact.length && !stale.length) { if (commit?.parentVersion !== identity.version) refuse("unrecognized_release_commit", "manifest changed without an exact Release Please merge"); return { action: "none", reason: "ordinary_main" }; }
-  if (exact.length !== 1 || stale.length) refuse("release_pr_ambiguous", "candidate has no single exact Release Please merge");
-  const pull = exact[0];
-  if (pull?.state !== "closed" || typeof pull?.merged_at !== "string" || pull?.draft !== false || pull?.head?.ref !== RELEASE_BRANCH || pull?.head?.repo?.id !== repositoryId || pull?.head?.repo?.full_name !== repository || pull?.base?.ref !== "main" || !FULL_SHA.test(pull?.base?.sha ?? "") || pull?.base?.repo?.id !== repositoryId || pull?.base?.repo?.full_name !== repository || pull?.user?.login !== BOT_LOGIN || pull?.title !== `chore(main): release ${identity.version}` || !Number.isInteger(pull?.number) || pull.number < 1 || !FULL_SHA.test(pull?.head?.sha ?? "") || pull.head.sha === candidateSha) refuse("release_pr_invalid", "release PR identity is invalid");
-  if (commit?.sha !== candidateSha || commit.parents?.length !== 2 || commit.parents[0]?.sha !== pull.base.sha || commit.parents[1]?.sha !== pull.head.sha || commit.tree?.sha !== pull.head_tree_sha) refuse("release_pr_not_normal_merge", "candidate must be the normal two-parent merge of the exact Release Please head");
-  if (typeof commit.parentVersion !== "string" || (commit.parentVersion !== "0.0.0" && !BETA.test(commit.parentVersion))) refuse("release_parent_version_invalid", "release parent version is invalid");
-  if (!Array.isArray(commit.changedPaths) || JSON.stringify(commit.changedPaths) !== JSON.stringify(RELEASE_PATHS)) refuse("release_paths_invalid", "release changed paths are not exact");
-  if (!BETA.test(identity.version) || (commit.parentVersion === "0.0.0" && identity.version !== "0.1.0-beta.1")) refuse("release_version_invalid", "release must advance on the independent beta line, starting at beta.1");
-  if (commit.parentVersion === identity.version) refuse("release_version_unchanged", "release did not advance the manifest");
-  const pending = labels(pull).includes(PENDING_LABEL); const tagged = labels(pull).includes(TAGGED_LABEL);
-  if (input.release !== null && input.tagRef === null) refuse("release_without_tag", "release exists without its tag");
-  if (input.release !== null) { verifyPublishedState(input.tagRef, input.release, identity); if (!pending && !tagged) refuse("release_pr_label_conflict", "published candidate has no lifecycle label"); return { action: tagged ? "already_published" : "reconcile_labels", pullNumber: pull.number }; }
-  if (!pending || tagged) refuse("release_pr_label_conflict", "unpublished candidate must have only pending label");
-  if (input.tagRef !== null) refuse("partial_publication_state", "tag exists without release");
-  if (input.immutableReleasesEnabled === false) refuse("immutable_releases_disabled", "immutable-release acknowledgement is missing or mismatched");
-  return { action: "create_release", pullNumber: pull.number };
-}
-export function verifyPublishedState(tagRef, release, identity) {
-  if (tagRef?.object?.type !== "commit" || tagRef.object.sha !== identity.candidateSha || release?.tag_name !== identity.tag || release?.target_commitish !== identity.candidateSha || release?.name !== identity.tag || release?.body !== identity.notes || release?.draft !== false || release?.prerelease !== true || release?.immutable !== true || !Number.isInteger(release?.id) || release.id < 1) refuse("release_state_conflict", "tag or immutable release readback is not exact");
-  if (!Array.isArray(release.assets) || release.assets.length) refuse("release_asset_conflict", "release must have no assets");
-  return true;
-}
 async function api(path, options = {}) { if (!process.env.GITHUB_TOKEN) refuse("token_missing", "GITHUB_TOKEN is required"); const response = await fetch(`https://api.github.com${path}`, { method: options.method ?? "GET", headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${process.env.GITHUB_TOKEN}`, "User-Agent": "ran-wp-branch-updater-exact-publisher", "X-GitHub-Api-Version": options.apiVersion ?? API_VERSION }, body: options.body === undefined ? undefined : JSON.stringify(options.body), redirect: "error" }); if (options.allow404 && response.status === 404) return { data: null, headers: response.headers }; if (!response.ok) refuse("github_api_failed", `${options.method ?? "GET"} ${path} returned ${response.status}`); return { data: response.status === 204 ? null : await response.json(), headers: response.headers }; }
 async function associatedPulls(repository, sha) { const pulls = []; for (let page = 1; page <= 10; page += 1) { const response = await api(`/repos/${repository}/commits/${sha}/pulls?per_page=100&page=${page}`); if (!Array.isArray(response.data)) refuse("pull_readback_invalid", "commit pull request response is not a list"); pulls.push(...response.data); if (!/<[^>]+>;\s*rel="next"/.test(response.headers.get("link") ?? "")) return pulls; } refuse("pull_readback_unbounded", "commit pull request response exceeded ten pages"); }
 async function remoteState(repository, tag) { const encoded = encodeURIComponent(tag); const [tagRef, release] = await Promise.all([api(`/repos/${repository}/git/ref/tags/${encoded}`, { allow404: true }), api(`/repos/${repository}/releases/tags/${encoded}`, { allow404: true, apiVersion: IMMUTABLE_RELEASES_API_VERSION })]); return { tagRef: tagRef.data, release: release.data }; }
 async function reconcileLabels(repository, number, value) { if (!value.includes(TAGGED_LABEL)) await api(`/repos/${repository}/issues/${number}/labels`, { method: "POST", body: { labels: [TAGGED_LABEL] } }); if (value.includes(PENDING_LABEL)) await api(`/repos/${repository}/issues/${number}/labels/${encodeURIComponent(PENDING_LABEL)}`, { method: "DELETE", allow404: true }); }
+export async function hydrateExactReleasePullTree(repository, candidateSha, pulls, request = api) {
+  return hydrateReleasePullTree(repository, candidateSha, pulls, request);
+}
 export async function runPublisher(root = process.cwd()) {
   const eventPath = process.env.GITHUB_EVENT_PATH; const repository = process.env.GITHUB_REPOSITORY;
   if (repository !== REPOSITORY || !eventPath || !process.env.GITHUB_TOKEN) refuse("environment_invalid", "publisher environment is incomplete");
