@@ -11,12 +11,16 @@ import {
   TAGGED_LABEL,
   verifyPublishedState,
 } from "./release-publisher-decision.mjs";
+import {
+  api,
+  associatedPulls,
+  createImmutableRelease,
+  remoteState,
+} from "./release-publisher-github.mjs";
 
 export { PublisherRefusal, candidateIdentity, decidePublication, verifyPublishedState, verifyReleaseDelta };
 const FULL_SHA = /^[a-f0-9]{40}$/;
 const REPOSITORY = "RocketsAreNostalgic/ran-wp-branch-updater";
-const API_VERSION = "2022-11-28";
-const IMMUTABLE_RELEASES_API_VERSION = "2026-03-10";
 
 function git(root, args) { return execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim(); }
 function blob(root, sha, file) { const entry = git(root, ["ls-tree", sha, "--", file]); if (!/^100644 blob [a-f0-9]{40}\t/.test(entry)) refuse("release_content_drift", `${file} must be an ordinary non-executable Git blob`); return execFileSync("git", ["show", `${sha}:${file}`], { cwd: root, encoding: "utf8" }); }
@@ -35,9 +39,6 @@ function parentContents(root, sha) {
 }
 export function validateCandidate(root, sha) { return candidateIdentity(contents(root, sha), sha); }
 
-async function api(path, options = {}) { if (!process.env.GITHUB_TOKEN) refuse("token_missing", "GITHUB_TOKEN is required"); const response = await fetch(`https://api.github.com${path}`, { method: options.method ?? "GET", headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${process.env.GITHUB_TOKEN}`, "User-Agent": "ran-wp-branch-updater-exact-publisher", "X-GitHub-Api-Version": options.apiVersion ?? API_VERSION }, body: options.body === undefined ? undefined : JSON.stringify(options.body), redirect: "error" }); if (options.allow404 && response.status === 404) return { data: null, headers: response.headers }; if (!response.ok) refuse("github_api_failed", `${options.method ?? "GET"} ${path} returned ${response.status}`); return { data: response.status === 204 ? null : await response.json(), headers: response.headers }; }
-async function associatedPulls(repository, sha) { const pulls = []; for (let page = 1; page <= 10; page += 1) { const response = await api(`/repos/${repository}/commits/${sha}/pulls?per_page=100&page=${page}`); if (!Array.isArray(response.data)) refuse("pull_readback_invalid", "commit pull request response is not a list"); pulls.push(...response.data); if (!/<[^>]+>;\s*rel="next"/.test(response.headers.get("link") ?? "")) return pulls; } refuse("pull_readback_unbounded", "commit pull request response exceeded ten pages"); }
-async function remoteState(repository, tag) { const encoded = encodeURIComponent(tag); const [tagRef, release] = await Promise.all([api(`/repos/${repository}/git/ref/tags/${encoded}`, { allow404: true }), api(`/repos/${repository}/releases/tags/${encoded}`, { allow404: true, apiVersion: IMMUTABLE_RELEASES_API_VERSION })]); return { tagRef: tagRef.data, release: release.data }; }
 async function reconcileLabels(repository, number, value) { if (!value.includes(TAGGED_LABEL)) await api(`/repos/${repository}/issues/${number}/labels`, { method: "POST", body: { labels: [TAGGED_LABEL] } }); if (value.includes(PENDING_LABEL)) await api(`/repos/${repository}/issues/${number}/labels/${encodeURIComponent(PENDING_LABEL)}`, { method: "DELETE", allow404: true }); }
 export async function hydrateExactReleasePullTree(repository, candidateSha, pulls, request = api) {
   return hydrateReleasePullTree(repository, candidateSha, pulls, request);
@@ -67,7 +68,7 @@ export async function runPublisher(root = process.cwd()) {
   const [freshMain, freshPulls, freshState] = await Promise.all([api(`/repos/${repository}/git/ref/heads/main`), associatedPulls(repository, sha), remoteState(repository, identity.tag)]);
   input = { ...input, mainSha: freshMain.data?.object?.sha, pulls: await hydrateExactReleasePullTree(repository, sha, freshPulls), tagRef: freshState.tagRef, release: freshState.release, immutableReleasesEnabled: freshState.release === null ? process.env.RAN_RELEASE_PUBLISHER_IMMUTABLE_RELEASES_ACKNOWLEDGED_REPOSITORY_ID === String(payload.repository?.id) : undefined };
   result = decidePublication(input);
-  if (result.action === "create_release") await api(`/repos/${repository}/releases`, { method: "POST", apiVersion: IMMUTABLE_RELEASES_API_VERSION, body: { tag_name: identity.tag, target_commitish: sha, name: identity.tag, body: identity.notes, draft: false, prerelease: true, generate_release_notes: false } });
+  if (result.action === "create_release") await createImmutableRelease(repository, identity);
   const checked = await remoteState(repository, identity.tag); verifyPublishedState(checked.tagRef, checked.release, identity);
   const original = input.pulls.find((pull) => pull.number === result.pullNumber); await reconcileLabels(repository, result.pullNumber, labels(original));
   const finalPull = (await api(`/repos/${repository}/pulls/${result.pullNumber}`)).data;
