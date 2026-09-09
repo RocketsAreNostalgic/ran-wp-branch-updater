@@ -7,7 +7,7 @@ security fixes.
 Report suspected vulnerabilities through GitHub's private vulnerability
 reporting form:
 
-https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/security/advisories/new
+<https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/security/advisories/new>
 
 If that form is unavailable, open a public issue containing only a request for
 confidential contact: <https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/new>.
