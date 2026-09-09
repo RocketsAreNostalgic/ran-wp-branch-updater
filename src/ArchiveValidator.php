@@ -115,7 +115,12 @@ final class ArchiveValidator {
 		if ( null === $installed ) {
 			return;
 		}
-		if ( '' === $installed || str_starts_with( $installed, '/' ) || str_contains( $installed, '\\' ) || preg_match( '#(^|/)\.\.?(/|$)#', $installed ) === 1 ) {
+		try {
+			if ( trim( $installed ) !== $installed ) {
+				throw new \InvalidArgumentException( 'The installed package identifier is invalid.' );
+			}
+			InstalledPackageIdentifier::normalize( $installed );
+		} catch ( \InvalidArgumentException ) {
 			$this->fail( self::CODE_PACKAGE_IDENTITY, 'The installed package identity is unsafe.' );
 		}
 		if ( 'plugin' === $d->packageType && ! str_contains( $installed, '/' ) ) {

@@ -171,7 +171,7 @@ class CorePackageExecutor {
 			$artifact->assertUnchanged();
 			$slug         = PackageSubdirectory::normalizeSlug( $packageSlug );
 			$subdirectory = PackageSubdirectory::normalize( $subdirectory );
-			$identifier   = '' === $installedIdentifier ? '' : $this->normalizeInstalledIdentifier( $installedIdentifier );
+			$identifier   = '' === $installedIdentifier ? '' : InstalledPackageIdentifier::normalize( $installedIdentifier );
 		} catch ( Throwable ) {
 			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::INVALID_REQUEST );
 		}
@@ -182,20 +182,6 @@ class CorePackageExecutor {
 			'subdirectory' => $subdirectory,
 			'identifier'   => $identifier,
 		);
-	}
-
-	private function normalizeInstalledIdentifier( string $identifier ): string {
-		$identifier = trim( $identifier );
-		if ( '' === $identifier
-			|| str_starts_with( $identifier, '/' )
-			|| str_contains( $identifier, '\\' )
-			|| preg_match( '/[\x00-\x1F\x7F]/', $identifier ) === 1
-			|| preg_match( '#(^|/)\.\.?(/|$)#', $identifier ) === 1
-		) {
-			throw new InvalidArgumentException( 'The installed package identifier is invalid.' );
-		}
-
-		return $identifier;
 	}
 
 	private function updateOffer( string $type, PreparedPackageArtifact $artifact, string $slug, string $identifier ): object {
@@ -284,22 +270,22 @@ class CorePackageExecutor {
 				return $source;
 			}
 			if ( ! is_string( $source ) || ! is_string( $remoteSource ) ) {
-				return new WP_Error( 'ran_booster_invalid_package_source' );
+				return self::invalidPackageSource();
 			}
 			$sourceRoot = realpath( $source );
 			$remoteRoot = realpath( $remoteSource );
 			if ( false === $sourceRoot || false === $remoteRoot || ! is_dir( $sourceRoot ) || ! is_dir( $remoteRoot ) ) {
-				return new WP_Error( 'ran_booster_invalid_package_source' );
+				return self::invalidPackageSource();
 			}
 			if ( ! self::isCanonicalChild( $sourceRoot, $remoteRoot ) ) {
-				return new WP_Error( 'ran_booster_invalid_package_source' );
+				return self::invalidPackageSource();
 			}
 
 			$selectedSource = $sourceRoot;
 			if ( null !== $subdirectory ) {
 				$selectedSource = realpath( $sourceRoot . DIRECTORY_SEPARATOR . $subdirectory );
 				if ( false === $selectedSource || ! is_dir( $selectedSource ) || ! self::isCanonicalChild( $selectedSource, $sourceRoot ) ) {
-					return new WP_Error( 'ran_booster_invalid_package_source' );
+					return self::invalidPackageSource();
 				}
 			}
 
@@ -308,16 +294,20 @@ class CorePackageExecutor {
 				return trailingslashit( $selectedSource );
 			}
 			if ( file_exists( $destination ) || is_link( $destination ) ) {
-				return new WP_Error( 'ran_booster_invalid_package_source' );
+				return self::invalidPackageSource();
 			}
 
 			global $wp_filesystem;
 			if ( ! is_object( $wp_filesystem ) || ! $wp_filesystem->move( $selectedSource, $destination, false ) ) {
-				return new WP_Error( 'ran_booster_invalid_package_source' );
+				return self::invalidPackageSource();
 			}
 
 			return trailingslashit( $destination );
 		};
+	}
+
+	private static function invalidPackageSource(): WP_Error {
+		return new WP_Error( 'ran_branch_deployment_invalid_package_source' );
 	}
 
 	private function themeParentIsAvailable( PreparedPackageArtifact $artifact, string $slug, ?string $subdirectory ): bool {

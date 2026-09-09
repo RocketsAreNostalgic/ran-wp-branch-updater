@@ -32,6 +32,13 @@ Archive-integrity and cleanup failures are terminal outcomes, and a post-fence
 interruption returns `interrupted`. Do not retry an uncertain outcome
 automatically; consult the host's durable attempt record and recovery policy.
 
+`FileAttemptStore` provides process-crash recovery through locked atomic file
+replacement and readback. It does not claim persistence across sudden host or
+power loss on filesystems where file data or directory metadata has not reached
+stable storage; it does not issue explicit `fsync` calls. Hosts that require
+that stronger durability guarantee should supply an `AdmittedAttemptJournal`
+backed by storage with the required persistence semantics.
+
 Themes may be declared from a repository subdirectory:
 
 ```php
