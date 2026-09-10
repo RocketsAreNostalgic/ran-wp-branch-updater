@@ -6,7 +6,17 @@ declare(strict_types=1);
 
 require dirname( __DIR__ ) . '/vendor/autoload.php';
 
-use RAN\BranchDeployment\{AdmittedArchiveSource, AdmittedAttemptJournal, AdmittedBranchArtifact, AdmittedBranchDurabilityFailure, AdmittedBranchRunner, AdmittedPackageExecutor, AdmittedTargetFacts, BranchDeploymentJournalFailure, CorePackageExecutionResult, Deployment, MutationLock};
+use RAN\WPBranchUpdater\V1\Contract\AdmittedArchiveSource;
+use RAN\WPBranchUpdater\V1\Contract\AdmittedAttemptJournal;
+use RAN\WPBranchUpdater\V1\Contract\AdmittedBranchArtifact;
+use RAN\WPBranchUpdater\V1\Contract\AdmittedPackageExecutor;
+use RAN\WPBranchUpdater\V1\Contract\AdmittedTargetFacts;
+use RAN\WPBranchUpdater\V1\Contract\MutationLock;
+use RAN\WPBranchUpdater\V1\Persistence\BranchDeploymentJournalFailure;
+use RAN\WPBranchUpdater\V1\Runtime\AdmittedBranchDurabilityFailure;
+use RAN\WPBranchUpdater\V1\Runtime\AdmittedBranchRunner;
+use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
+use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionResult;
 
 final class RunnerFixtureJournal implements AdmittedAttemptJournal {
 	public int $finishCalls = 0;
@@ -42,29 +52,29 @@ final class RunnerFixtureArtifact implements AdmittedBranchArtifact {
 
 final class RunnerFixtureArchives implements AdmittedArchiveSource {
 	public function __construct( private RunnerFixtureArtifact $artifact ) {}
-	public function prepare( Deployment $deployment, ?array $baseline ): AdmittedBranchArtifact { return $this->artifact; }
+	public function prepare( BranchDeploymentDeclaration $deployment, ?array $baseline ): AdmittedBranchArtifact { return $this->artifact; }
 	public function verifyCurrentHead(): void {}
 }
 
 final class RunnerFixtureTarget implements AdmittedTargetFacts {
 	public function __construct( private ?\Throwable $firstFrozenFailure = null, private bool $installedActive = false ) {}
 	public function assertMutationAllowed(): void {}
-	public function frozenTarget( Deployment $deployment, bool $deferExisting ): ?array {
+	public function frozenTarget( BranchDeploymentDeclaration $deployment, bool $deferExisting ): ?array {
 		if ( $deferExisting && null !== $this->firstFrozenFailure ) {
 			throw $this->firstFrozenFailure;
 		}
 		return null;
 	}
 	public function maintenanceActive(): bool { return false; }
-	public function recheckManaged( Deployment $deployment ): void {}
-	public function installed( Deployment $deployment ): array { return array( 'identifier' => 'demo', 'version' => '1.2.3', 'active' => $this->installedActive ); }
-	public function baselineNow( Deployment $deployment, array $baseline ): ?array { return $baseline; }
-	public function adopt( Deployment $deployment ): bool { return true; }
+	public function recheckManaged( BranchDeploymentDeclaration $deployment ): void {}
+	public function installed( BranchDeploymentDeclaration $deployment ): array { return array( 'identifier' => 'demo', 'version' => '1.2.3', 'active' => $this->installedActive ); }
+	public function baselineNow( BranchDeploymentDeclaration $deployment, array $baseline ): ?array { return $baseline; }
+	public function adopt( BranchDeploymentDeclaration $deployment ): bool { return true; }
 }
 
 final class RunnerFixtureExecutor implements AdmittedPackageExecutor {
-	public function preflight( Deployment $deployment, AdmittedBranchArtifact $artifact ): void {}
-	public function execute( Deployment $deployment, ?array $baseline, AdmittedBranchArtifact $artifact ): CorePackageExecutionResult {
+	public function preflight( BranchDeploymentDeclaration $deployment, AdmittedBranchArtifact $artifact ): void {}
+	public function execute( BranchDeploymentDeclaration $deployment, ?array $baseline, AdmittedBranchArtifact $artifact ): CorePackageExecutionResult {
 		return CorePackageExecutionResult::succeeded();
 	}
 }
@@ -84,10 +94,10 @@ $assert = static function ( bool $actual, string $message ): void {
 		throw new \RuntimeException( 'FAIL: ' . $message );
 	}
 };
-$deployment = new Deployment( 'focused-runner', 'plugin', 'demo', 'acme/demo', 'fixture-1', 'main', 'abc123', 'update', 'demo', 'demo/demo.php' );
+$deployment = new BranchDeploymentDeclaration( 'focused-runner', 'plugin', 'demo', 'acme/demo', 'fixture-1', 'main', 'abc123', 'update', 'demo', 'demo/demo.php' );
 $runner = static fn( RunnerFixtureJournal $journal, RunnerFixtureArtifact $artifact, RunnerFixtureTarget $target, RunnerFixtureLock $lock ): AdmittedBranchRunner => new AdmittedBranchRunner( $journal, new RunnerFixtureArchives( $artifact ), $target, new RunnerFixtureExecutor(), $lock );
 $acceptedSlug = 'package.' . str_repeat( 'a', 183 );
-$accepted = new Deployment( 'accepted-dotted-slug', 'plugin', $acceptedSlug, 'acme/demo', 'fixture-1', 'main', 'abc123' );
+$accepted = new BranchDeploymentDeclaration( 'accepted-dotted-slug', 'plugin', $acceptedSlug, 'acme/demo', 'fixture-1', 'main', 'abc123' );
 $assert( $acceptedSlug === $accepted->slug, 'admitted Core dotted package slugs remain accepted through 191 characters' );
 
 $journal = new RunnerFixtureJournal( new BranchDeploymentJournalFailure( 'record unavailable' ) );
@@ -129,7 +139,7 @@ $assert( 1 === $journal->finishCalls, 'cleanup failure records its terminal outc
 
 $journal = new RunnerFixtureJournal();
 $artifact = new RunnerFixtureArtifact();
-$install = new Deployment( 'focused-install', 'plugin', 'demo', 'acme/demo', 'fixture-1', 'main', 'abc123', 'install', 'demo', 'demo/demo.php' );
+$install = new BranchDeploymentDeclaration( 'focused-install', 'plugin', 'demo', 'acme/demo', 'fixture-1', 'main', 'abc123', 'install', 'demo', 'demo/demo.php' );
 $outcome = $runner( $journal, $artifact, new RunnerFixtureTarget( null, true ), new RunnerFixtureLock() )->run( $install );
 $assert( 'activation_state_changed' === $outcome, 'an install unexpectedly activated by WordPress cannot succeed' );
 

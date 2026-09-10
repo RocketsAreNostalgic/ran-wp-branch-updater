@@ -1,14 +1,17 @@
 # Agent guidance
 
-This is the independent `ran/wp-branch-updater` Composer library. Keep committed
-files suitable for public distribution and preserve the `RAN\BranchDeployment`
-public namespace. Providers own network credentials and source-specific access;
-WordPress Core owns installation.
+This is the independent `ran/wp-branch-updater` Composer library. Keep committed files suitable for public distribution and preserve the `RAN\WPBranchUpdater\V1` production namespace and PSR-4 path alignment.
 
-- Run `composer check` and the installed consumer proof before committing runtime
-  or Composer changes. Preserve mutation-fence, custody and durability failures.
+Read [ARCHITECTURE.md](ARCHITECTURE.md) before changing production structure. Preserve the updater-family vocabulary by responsibility: Declaration, Provider, Adapter, Artifact, Runner, Coordinator, Journal, Store, State, Archive, Contract, Runtime, and WordPress. Do not create cosmetic symmetry with the release updater where runtime responsibilities differ.
+
+- `BranchUpdater` declares targets; `BranchDeployment` is the target handle; `BranchDeploymentDeclaration` is immutable execution data; `deploy()` remains the public mutation verb.
+- `AdmittedBranchRunner` owns the security-sensitive synchronous sequence. Do not reorder baseline acquisition, source/artifact rechecks, the mutation fence, WordPress Core execution, postcondition verification, cleanup, or terminal journaling.
+- Providers own source-specific access; hosts own credentials, admission/deduplication, scheduling/webhooks, and recovery policy; WordPress Core owns installation.
+- Keep archive custody/validation under `Archive`, stable interfaces under `Contract`, durable local state under `Persistence`, lifecycle orchestration under `Runtime`, and WordPress-specific adapters under `WordPress`.
+- Move a rule into `ran/updater-support` only when it is semantically identical across updater packages, non-trivial, stable, drift-sensitive, and domain-neutral.
+- Run `composer check` and the installed no-dev consumer proof before committing runtime or Composer changes. Preserve mutation-fence, custody, durability, terminal outcome, and diagnostic behavior.
 - Keep fake transports and executors in development-only test support.
 - Before changing release automation or preparing a release, read `RELEASING.md`.
 - Every PR needs independent review against its exact base and head SHAs.
 - Merging requires explicit owner authorization of the exact PR and merge method.
-- Keep credentials, local logs, vendor files and internal planning out of commits.
+- Keep credentials, local logs, vendor files, temporary transformation artifacts, and internal planning out of commits.

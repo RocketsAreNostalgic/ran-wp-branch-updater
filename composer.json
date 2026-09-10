@@ -11,9 +11,9 @@
     "ran/updater-support": "dev-main"
   },
   "autoload": {
-    "classmap": [
-      "src/"
-    ]
+    "psr-4": {
+      "RAN\\WPBranchUpdater\\V1\\": "src/"
+    }
   },
   "autoload-dev": {
     "classmap": [
@@ -27,6 +27,8 @@
   },
   "scripts": {
     "test:contract": "@php tests/contract.php",
+    "test:architecture": "@php tests/architecture-normalisation-baseline.php",
+    "test:archive": "@php tests/archive-normalisation-baseline.php",
     "test:runner": "@php tests/admitted-runner.php",
     "test:hard-stop": "@php tests/hard-stop.php",
     "test:journal": "@php tests/journal-invariants.php",
@@ -36,6 +38,8 @@
     "check": [
       "@validate:strict",
       "@test:contract",
+      "@test:architecture",
+      "@test:archive",
       "@test:runner",
       "@test:hard-stop",
       "@test:journal",

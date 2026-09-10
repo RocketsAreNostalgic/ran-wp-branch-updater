@@ -1,33 +1,36 @@
 <?php
+
 declare(strict_types=1);
-// phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound -- The journal's typed failure is inseparable from this adapter.
+
 // phpcs:disable WordPress.WP.AlternativeFunctions -- Atomic local journal custody requires direct filesystem calls.
 // phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Internal exceptions are not rendered.
-namespace RAN\BranchDeployment;
+namespace RAN\WPBranchUpdater\V1\Persistence;
 
+use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 use RuntimeException;
 use Throwable;
-
-/** A persistence failure means the durable execution state is unknown. */
-final class BranchDeploymentJournalFailure extends RuntimeException {}
 
 /** Strict flock-serialised file journal; an unprovable write leaves execution state uncertain. */
 final class FileAttemptStore {
 	public function __construct( private readonly string $path ) {}
-	public function begin( Deployment $d ): array {
+
+	public function begin( BranchDeploymentDeclaration $d ): array {
 		return $this->mutate(
 			function ( array $records ) use ( $d ): array {
 				if ( isset( $records[ $d->attemptId ] ) ) {
-					throw new RuntimeException( 'Attempt already exists.' ); }
+					throw new RuntimeException( 'Attempt already exists.' );
+				}
 				foreach ( $records as $record ) {
 					if ( in_array( $record['state'], array( 'running', 'needs_attention' ), true ) && $record['package_type'] === $d->packageType && $record['slug'] === $d->slug ) {
-						throw new RuntimeException( 'Target already has an unresolved execution.' ); }
+						throw new RuntimeException( 'Target already has an unresolved execution.' );
+					}
 				}
 				$records[ $d->attemptId ] = $this->record( $d );
 				return $records;
 			}
 		)[ $d->attemptId ];
 	}
+
 	public function resolved( string $id, string $ref ): void {
 		if ( '' === $ref || trim( $ref ) !== $ref || strlen( $ref ) > 191 || preg_match( '/[[:cntrl:]]/', $ref ) === 1 ) {
 			throw new RuntimeException( 'Resolved revision is invalid.' );
@@ -36,23 +39,27 @@ final class FileAttemptStore {
 			$id,
 			function ( array $record ) use ( $ref ): array {
 				if ( null !== $record['resolved_ref'] ) {
-					throw new RuntimeException( 'Revision is already recorded.' ); }
+					throw new RuntimeException( 'Revision is already recorded.' );
+				}
 				$record['resolved_ref'] = $ref;
 				return $record;
 			}
 		);
 	}
+
 	public function fence( string $id ): void {
 		$this->runningTransition(
 			$id,
 			static function ( array $record ): array {
 				if ( null === $record['resolved_ref'] || null !== $record['mutation_started_at'] ) {
-					throw new RuntimeException( 'Attempt cannot enter the mutation fence.' ); }
+					throw new RuntimeException( 'Attempt cannot enter the mutation fence.' );
+				}
 				$record['mutation_started_at'] = gmdate( 'c' );
 				return $record;
 			}
 		);
 	}
+
 	public function finish( string $id, string $state, string $outcome ): void {
 		if ( ! in_array( $state, array( 'succeeded', 'failed', 'needs_attention' ), true ) || '' === $outcome ) {
 			throw new RuntimeException( 'Attempt finish state is invalid.' );
@@ -70,6 +77,7 @@ final class FileAttemptStore {
 			}
 		);
 	}
+
 	/** Stopped work before the fence failed safely; fenced work remains conservative. */
 	public function recoverStopped( string $id ): void {
 		$this->runningTransition(
@@ -83,6 +91,7 @@ final class FileAttemptStore {
 			}
 		);
 	}
+
 	public function get( string $id ): array {
 		return $this->locked(
 			LOCK_SH,
@@ -95,6 +104,7 @@ final class FileAttemptStore {
 			}
 		);
 	}
+
 	private function runningTransition( string $id, callable $change ): void {
 		$this->mutate(
 			function ( array $records ) use ( $id, $change ): array {
@@ -106,7 +116,8 @@ final class FileAttemptStore {
 			}
 		);
 	}
-	private function record( Deployment $d ): array {
+
+	private function record( BranchDeploymentDeclaration $d ): array {
 		return array(
 			'id'                  => $d->attemptId,
 			'state'               => 'running',
@@ -121,6 +132,7 @@ final class FileAttemptStore {
 			'finished_at'         => null,
 		);
 	}
+
 	/** @return array<string,array<string,string|null>> */
 	private function read(): array {
 		if ( ! file_exists( $this->path ) && ! is_link( $this->path ) ) {
@@ -144,6 +156,7 @@ final class FileAttemptStore {
 		}
 		return $records;
 	}
+
 	private function validRecord( string $id, array $r ): bool {
 		$keys = array( 'id', 'state', 'package_type', 'slug', 'repository', 'branch', 'expected_head', 'resolved_ref', 'mutation_started_at', 'outcome', 'finished_at' );
 		sort( $keys );
@@ -182,6 +195,7 @@ final class FileAttemptStore {
 		// readable so it continues to block automatic target reuse after upgrade.
 		return true;
 	}
+
 	private function mutate( callable $change ): array {
 		return $this->locked(
 			LOCK_EX,
@@ -196,6 +210,7 @@ final class FileAttemptStore {
 			}
 		);
 	}
+
 	private function write( array $records ): void {
 		try {
 			$json = json_encode( $records, JSON_THROW_ON_ERROR );
@@ -211,6 +226,7 @@ final class FileAttemptStore {
 			$this->fail( 'Journal replacement is unsafe.' );
 		}
 	}
+
 	private function locked( int $mode, callable $operation ): mixed {
 		$this->ensureParent();
 		$handle = fopen( $this->path . '.lock', 'c+' );
@@ -225,6 +241,7 @@ final class FileAttemptStore {
 			}
 		}
 	}
+
 	private function ensureParent(): void {
 		$parent = dirname( $this->path );
 		if ( ! is_dir( $parent ) && ! mkdir( $parent, 0700, true ) ) {
@@ -234,6 +251,7 @@ final class FileAttemptStore {
 			$this->fail( 'Journal directory is unsafe.' );
 		}
 	}
+
 	/** @return never */
 	private function fail( string $message ): never {
 		throw new BranchDeploymentJournalFailure( $message );

@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 require dirname( __DIR__ ) . '/vendor/autoload.php';
 
-use RAN\BranchDeployment\BranchDeploymentJournalFailure;
-use RAN\BranchDeployment\Deployment;
-use RAN\BranchDeployment\FileAttemptStore;
+use RAN\WPBranchUpdater\V1\Persistence\BranchDeploymentJournalFailure;
+use RAN\WPBranchUpdater\V1\Persistence\FileAttemptStore;
+use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 
 $root = __DIR__ . '/build/journal-invariants-' . bin2hex( random_bytes( 4 ) );
 if ( ! mkdir( $root, 0700, true ) ) {
@@ -105,7 +105,7 @@ if ( 'needs_attention' !== $store->get( 'attempt' )['state'] ) {
 }
 
 $transitionStore = new FileAttemptStore( $root . '/transition.json' );
-$transition      = new Deployment(
+$transition      = new BranchDeploymentDeclaration(
 	'transition',
 	'plugin',
 	'demo',
