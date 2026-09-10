@@ -11,9 +11,9 @@
     "ran/updater-support": "dev-main"
   },
   "autoload": {
-    "classmap": [
-      "src/"
-    ]
+    "psr-4": {
+      "RAN\\WPBranchUpdater\\V1\\": "src/"
+    }
   },
   "autoload-dev": {
     "classmap": [
