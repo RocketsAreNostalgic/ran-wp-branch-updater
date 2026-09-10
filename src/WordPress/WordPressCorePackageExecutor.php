@@ -19,7 +19,7 @@ use WP_Error;
  * Provider work, persistence, locking, cleanup and postcondition policy belong
  * to the deployment runner. This class owns only the scoped WordPress call.
  */
-class CorePackageExecutor {
+class WordPressCorePackageExecutor {
 	/** @var Closure(string, string, string, object|null): mixed|null */
 	private ?Closure $coreOperation;
 	private string $offerNamespace;

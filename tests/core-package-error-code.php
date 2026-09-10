@@ -13,9 +13,9 @@ if ( ! class_exists( 'WP_Error' ) ) {
 
 require dirname( __DIR__ ) . '/vendor/autoload.php';
 
-use RAN\WPBranchUpdater\V1\WordPress\CorePackageExecutor;
+use RAN\WPBranchUpdater\V1\WordPress\WordPressCorePackageExecutor;
 
-$method = new ReflectionMethod( CorePackageExecutor::class, 'invalidPackageSource' );
+$method = new ReflectionMethod( WordPressCorePackageExecutor::class, 'invalidPackageSource' );
 $error  = $method->invoke( null );
 if ( ! $error instanceof WP_Error || 'ran_branch_deployment_invalid_package_source' !== $error->get_error_code() ) {
 	throw new RuntimeException( 'Package source failures use the wrong error code.' );

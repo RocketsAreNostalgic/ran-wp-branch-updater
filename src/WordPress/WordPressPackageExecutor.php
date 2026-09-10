@@ -13,7 +13,7 @@ use RuntimeException;
 
 /** Thin real-WordPress executor: WP owns installation; this package supplies one local ZIP. */
 final class WordPressPackageExecutor implements PackageExecutor {
-	public function __construct( private readonly CorePackageExecutor $core = new CorePackageExecutor() ) {}
+	public function __construct( private readonly WordPressCorePackageExecutor $core = new WordPressCorePackageExecutor() ) {}
 	public function execute( BranchDeploymentDeclaration $d, PreparedArchive $archive ): void {
 		$result = $this->executeCore( $d, $archive );
 		if ( ! $result->isSuccessful() ) {
