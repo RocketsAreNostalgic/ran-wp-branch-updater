@@ -5,7 +5,7 @@ passes that exact local archive to WordPress Core for installation or update.
 It has no polling loop, native update registration, webhook route, scheduler,
 or provider credential store.
 
-The public namespace remains `RAN\BranchDeployment`. A host creates a
+The public namespace is `RAN\WPBranchUpdater\V1`. A host creates a
 `BranchDeploymentPackage`, declares one plugin or theme target, and calls
 `deploy()`. A normal failure returns a terminal outcome; a journal or lock
 durability failure throws because mutation state is then uncertain.
@@ -30,7 +30,7 @@ before requiring `bootstrap.php`; the package does not load a private autoloader
 Then configure it after WordPress has loaded:
 
 ```php
-use RAN\BranchDeployment\FileAttemptStore;
+use RAN\WPBranchUpdater\V1\FileAttemptStore;
 
 require '/path/to/consumer/vendor/autoload.php';
 $configure = require '/path/to/consumer/vendor/ran/wp-branch-updater/bootstrap.php';

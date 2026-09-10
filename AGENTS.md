@@ -1,7 +1,7 @@
 # Agent guidance
 
 This is the independent `ran/wp-branch-updater` Composer library. Keep committed
-files suitable for public distribution and preserve the `RAN\BranchDeployment`
+files suitable for public distribution and preserve the `RAN\WPBranchUpdater\V1`
 public namespace. Providers own network credentials and source-specific access;
 WordPress Core owns installation.
 

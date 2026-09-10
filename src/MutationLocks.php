@@ -3,7 +3,7 @@ declare(strict_types=1);
 // phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound -- Typed failures and lock adapters are one package boundary.
 // phpcs:disable WordPress.WP.AlternativeFunctions -- flock relies on direct local file descriptors.
 // phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Internal exceptions are not rendered.
-namespace RAN\BranchDeployment;
+namespace RAN\WPBranchUpdater\V1;
 
 use RuntimeException;
 use Throwable;

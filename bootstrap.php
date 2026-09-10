@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use RAN\BranchDeployment\{BranchDeploymentOperation, BranchDeploymentPackage, BranchProvider, FileAttemptStore, MutationLock, PackageExecutor, WordPressPackageExecutor, WordPressUpdaterLock};
+use RAN\WPBranchUpdater\V1\{BranchDeploymentOperation, BranchDeploymentPackage, BranchProvider, FileAttemptStore, MutationLock, PackageExecutor, WordPressPackageExecutor, WordPressUpdaterLock};
 
 return static function (
 	BranchProvider $provider,

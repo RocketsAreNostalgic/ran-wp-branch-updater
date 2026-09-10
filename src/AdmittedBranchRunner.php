@@ -3,7 +3,7 @@
 // phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound -- The runner's closed shared contracts are co-located.
 declare(strict_types=1);
 
-namespace RAN\BranchDeployment;
+namespace RAN\WPBranchUpdater\V1;
 
 use RuntimeException;
 use Throwable;

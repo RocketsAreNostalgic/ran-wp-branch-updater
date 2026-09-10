@@ -2,7 +2,7 @@
 // phpcs:disable WordPress.NamingConventions.PrefixAllGlobals,WordPress.WP.AlternativeFunctions,WordPress.Security.EscapeOutput,Generic.CodeAnalysis.EmptyStatement -- Standalone CLI fixture creates and mutates its isolated temporary corpus.
 declare(strict_types=1);
 require dirname( __DIR__ ) . '/vendor/autoload.php';
-use RAN\BranchDeployment\{Deployment, FileAttemptStore, GitHubFixtureProvider, BitbucketFixtureProvider, RecordingExecutor, PreparedArchive, FileMutationLock};
+use RAN\WPBranchUpdater\V1\{Deployment, FileAttemptStore, GitHubFixtureProvider, BitbucketFixtureProvider, RecordingExecutor, PreparedArchive, FileMutationLock};
 
 $buildRoot = __DIR__ . '/build/harness';
 if ( ! is_dir( $buildRoot ) && ! mkdir( $buildRoot, 0700, true ) ) {

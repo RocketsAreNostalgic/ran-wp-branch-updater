@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 require dirname( __DIR__ ) . '/vendor/autoload.php';
 
-use RAN\BranchDeployment\ArchiveValidator;
-use RAN\BranchDeployment\Deployment;
+use RAN\WPBranchUpdater\V1\ArchiveValidator;
+use RAN\WPBranchUpdater\V1\Deployment;
 
 $assert = static function ( bool $actual, string $message ): void {
 	if ( ! $actual ) {

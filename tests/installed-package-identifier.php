@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 require dirname( __DIR__ ) . '/vendor/autoload.php';
 
-use RAN\BranchDeployment\InstalledPackageIdentifier;
+use RAN\WPBranchUpdater\V1\InstalledPackageIdentifier;
 
 if ( 'demo/demo.php' !== InstalledPackageIdentifier::normalize( ' demo/demo.php ' ) ) {
 	throw new RuntimeException( 'Installed identifier normalization changed.' );

@@ -9,7 +9,7 @@ declare(strict_types=1);
 // phpcs:disable WordPress.Security.EscapeOutput.OutputNotEscaped -- This is CLI-only evidence output.
 require dirname( __DIR__ ) . '/vendor/autoload.php';
 
-use RAN\BranchDeployment\{BranchDeploymentOperation, Deployment, FileAttemptStore, FileMutationLock, GitHubFixtureProvider, PackageExecutor, PreparedArchive};
+use RAN\WPBranchUpdater\V1\{BranchDeploymentOperation, Deployment, FileAttemptStore, FileMutationLock, GitHubFixtureProvider, PackageExecutor, PreparedArchive};
 
 final class RAN_BranchDeploymentHardStopExecutor implements PackageExecutor {
 	public function preflight( Deployment $deployment, PreparedArchive $archive ): array {

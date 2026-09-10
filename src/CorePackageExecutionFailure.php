@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace RAN\BranchDeployment;
+namespace RAN\WPBranchUpdater\V1;
 
 /**
  * Safe, closed reasons why WordPress did not complete one package operation.

@@ -6,7 +6,7 @@ declare(strict_types=1);
 
 require dirname( __DIR__ ) . '/vendor/autoload.php';
 
-use RAN\BranchDeployment\{
+use RAN\WPBranchUpdater\V1\{
 	AdmittedArchiveSource,
 	AdmittedAttemptJournal,
 	AdmittedBranchArtifact,

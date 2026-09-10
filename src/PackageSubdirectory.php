@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace RAN\BranchDeployment;
+namespace RAN\WPBranchUpdater\V1;
 
 /**
  * Normalize and validate a repository-relative package directory.

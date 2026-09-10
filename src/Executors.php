@@ -1,7 +1,7 @@
 <?php
 // phpcs:disable WordPress.Security.EscapeOutput -- The executor returns internal failures to its caller.
 declare(strict_types=1);
-namespace RAN\BranchDeployment;
+namespace RAN\WPBranchUpdater\V1;
 
 use RuntimeException;
 

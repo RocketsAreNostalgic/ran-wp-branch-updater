@@ -3,7 +3,7 @@ declare(strict_types=1);
 // phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound -- The journal's typed failure is inseparable from this adapter.
 // phpcs:disable WordPress.WP.AlternativeFunctions -- Atomic local journal custody requires direct filesystem calls.
 // phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Internal exceptions are not rendered.
-namespace RAN\BranchDeployment;
+namespace RAN\WPBranchUpdater\V1;
 
 use RuntimeException;
 use Throwable;
