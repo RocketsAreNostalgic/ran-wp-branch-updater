@@ -6,7 +6,17 @@ declare(strict_types=1);
 
 require dirname( __DIR__ ) . '/vendor/autoload.php';
 
-use RAN\WPBranchUpdater\V1\{AdmittedArchiveSource, AdmittedAttemptJournal, AdmittedBranchArtifact, AdmittedBranchDurabilityFailure, AdmittedBranchRunner, AdmittedPackageExecutor, AdmittedTargetFacts, BranchDeploymentJournalFailure, CorePackageExecutionResult, Deployment, MutationLock};
+use RAN\WPBranchUpdater\V1\Contract\AdmittedArchiveSource;
+use RAN\WPBranchUpdater\V1\Contract\AdmittedAttemptJournal;
+use RAN\WPBranchUpdater\V1\Contract\AdmittedBranchArtifact;
+use RAN\WPBranchUpdater\V1\Contract\AdmittedPackageExecutor;
+use RAN\WPBranchUpdater\V1\Contract\AdmittedTargetFacts;
+use RAN\WPBranchUpdater\V1\Contract\MutationLock;
+use RAN\WPBranchUpdater\V1\Persistence\BranchDeploymentJournalFailure;
+use RAN\WPBranchUpdater\V1\Runtime\AdmittedBranchDurabilityFailure;
+use RAN\WPBranchUpdater\V1\Runtime\AdmittedBranchRunner;
+use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionResult;
+use RAN\WPBranchUpdater\V1\Runtime\Deployment;
 
 final class RunnerFixtureJournal implements AdmittedAttemptJournal {
 	public int $finishCalls = 0;

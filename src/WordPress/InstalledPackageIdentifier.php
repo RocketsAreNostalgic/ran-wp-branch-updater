@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace RAN\WPBranchUpdater\V1;
+namespace RAN\WPBranchUpdater\V1\WordPress;
 
 use InvalidArgumentException;
 
@@ -18,7 +18,6 @@ final class InstalledPackageIdentifier {
 		) {
 			throw new InvalidArgumentException( 'The installed package identifier is invalid.' );
 		}
-
 		return $identifier;
 	}
 }

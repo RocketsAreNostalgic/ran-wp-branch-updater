@@ -2,9 +2,11 @@
 // phpcs:disable WordPress.WP.AlternativeFunctions,WordPress.Security.EscapeOutput -- ZIP stream validation needs direct bounded reads and throws bounded internal failures.
 declare(strict_types=1);
 
-namespace RAN\WPBranchUpdater\V1;
+namespace RAN\WPBranchUpdater\V1\Archive;
 
 use RAN\UpdaterSupport\V1\ArchiveSafety;
+use RAN\WPBranchUpdater\V1\Runtime\Deployment;
+use RAN\WPBranchUpdater\V1\WordPress\InstalledPackageIdentifier;
 use RuntimeException;
 use ZipArchive;
 

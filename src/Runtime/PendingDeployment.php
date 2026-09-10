@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace RAN\WPBranchUpdater\V1;
+namespace RAN\WPBranchUpdater\V1\Runtime;
 
 /** One immutable source declaration; deploy() is the only mutation entry point. */
 final readonly class PendingDeployment {

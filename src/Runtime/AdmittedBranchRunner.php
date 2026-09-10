@@ -1,10 +1,15 @@
 <?php
 
-// phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound -- The runner's closed shared contracts are co-located.
 declare(strict_types=1);
 
-namespace RAN\WPBranchUpdater\V1;
+namespace RAN\WPBranchUpdater\V1\Runtime;
 
+use RAN\WPBranchUpdater\V1\Contract\AdmittedArchiveSource;
+use RAN\WPBranchUpdater\V1\Contract\AdmittedAttemptJournal;
+use RAN\WPBranchUpdater\V1\Contract\AdmittedPackageExecutor;
+use RAN\WPBranchUpdater\V1\Contract\AdmittedTargetFacts;
+use RAN\WPBranchUpdater\V1\Contract\MutationLock;
+use RAN\WPBranchUpdater\V1\Persistence\BranchDeploymentJournalFailure;
 use RuntimeException;
 use Throwable;
 
@@ -140,55 +145,5 @@ final class AdmittedBranchRunner {
 			|| $failure instanceof BranchDeploymentJournalFailure
 			|| $failure instanceof BranchDeploymentLockReleaseFailure
 			|| $failure instanceof BranchDeploymentLockStorageFailure;
-	}
-}
-
-interface AdmittedAttemptJournal {
-	public function recordResolvedRef( string $ref ): void;
-	public function markMutationStarted(): void;
-	public function finish( string $code ): void;
-}
-
-interface AdmittedArchiveSource {
-	/** @param array{identifier:string,version:string,active:bool}|null $baseline */
-	public function prepare( Deployment $deployment, ?array $baseline ): AdmittedBranchArtifact;
-	public function verifyCurrentHead(): void;
-}
-
-interface AdmittedBranchArtifact {
-	public function resolvedRef(): string;
-	public function expectedVersion(): string;
-	public function assertUnchanged(): void;
-	public function cleanup(): void;
-}
-
-interface AdmittedTargetFacts {
-	public function assertMutationAllowed(): void;
-	/** @return array{identifier:string,version:string,active:bool}|null */
-	public function frozenTarget( Deployment $deployment, bool $deferExisting ): ?array;
-	public function maintenanceActive(): bool;
-	public function recheckManaged( Deployment $deployment ): void;
-	/** @return array{identifier:string,version:string,active:bool} */
-	public function installed( Deployment $deployment ): array;
-	/** @param array{identifier:string,version:string,active:bool} $baseline @return array{identifier:string,version:string,active:bool}|null */
-	public function baselineNow( Deployment $deployment, array $baseline ): ?array;
-	public function adopt( Deployment $deployment ): bool;
-}
-
-interface AdmittedPackageExecutor {
-	public function preflight( Deployment $deployment, AdmittedBranchArtifact $artifact ): void;
-	/** @param array{identifier:string,version:string,active:bool}|null $baseline */
-	public function execute( Deployment $deployment, ?array $baseline, AdmittedBranchArtifact $artifact ): CorePackageExecutionResult;
-}
-
-final class AdmittedBranchStageFailure extends RuntimeException {
-	public function __construct( public readonly string $outcomeCode ) {
-		parent::__construct( $outcomeCode );
-	}
-}
-
-final class AdmittedBranchDurabilityFailure extends RuntimeException {
-	public function __construct( string $message = 'Branch deployment durability is uncertain.', ?Throwable $previous = null ) {
-		parent::__construct( $message, 0, $previous );
 	}
 }

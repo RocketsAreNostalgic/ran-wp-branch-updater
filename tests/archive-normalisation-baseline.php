@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 require dirname( __DIR__ ) . '/vendor/autoload.php';
 
-use RAN\WPBranchUpdater\V1\ArchiveValidator;
-use RAN\WPBranchUpdater\V1\Deployment;
+use RAN\WPBranchUpdater\V1\Archive\ArchiveValidator;
+use RAN\WPBranchUpdater\V1\Runtime\Deployment;
 
 $assert = static function ( bool $actual, string $message ): void {
 	if ( ! $actual ) {
@@ -62,33 +62,20 @@ $reject = static function ( int $code, string $path, Deployment $deployment, ?st
 	}
 };
 
-$valid = $zip( array(
-	'repository/demo/demo.php' => $plugin(),
-) );
+$valid = $zip( array( 'repository/demo/demo.php' => $plugin() ) );
 $inspection = $validate( $valid, $deployment( 'valid' ) );
 $assert( '1.2.3' === $inspection['expected_version'], 'valid plugin version remains discoverable' );
 
-$unsafe = $zip( array(
-	'repository/demo/demo.php' => $plugin(),
-	'repository/../escape.php' => '<?php',
-) );
+$unsafe = $zip( array( 'repository/demo/demo.php' => $plugin(), 'repository/../escape.php' => '<?php' ) );
 $reject( ArchiveValidator::CODE_PATH_UNSAFE, $unsafe, $deployment( 'unsafe-path' ) );
 
-$fileParent = $zip( array(
-	'repository/demo'          => 'not a directory',
-	'repository/demo/demo.php' => $plugin(),
-) );
+$fileParent = $zip( array( 'repository/demo' => 'not a directory', 'repository/demo/demo.php' => $plugin() ) );
 $reject( ArchiveValidator::CODE_FILE_PARENT_COLLISION, $fileParent, $deployment( 'file-parent' ) );
 
-$multipleRoots = $zip( array(
-	'repository/demo/demo.php' => $plugin(),
-	'other/readme.txt'         => 'second root',
-) );
+$multipleRoots = $zip( array( 'repository/demo/demo.php' => $plugin(), 'other/readme.txt' => 'second root' ) );
 $reject( ArchiveValidator::CODE_MULTIPLE_ROOTS, $multipleRoots, $deployment( 'multiple-roots' ) );
 
-$missingSubdirectory = $zip( array(
-	'repository/demo/demo.php' => $plugin(),
-) );
+$missingSubdirectory = $zip( array( 'repository/demo/demo.php' => $plugin() ) );
 $reject( ArchiveValidator::CODE_SUBDIRECTORY_MISSING, $missingSubdirectory, $deployment( 'missing-subdirectory', 'install', 'plugin' ) );
 
 $multiplePlugins = $zip( array(
@@ -97,45 +84,23 @@ $multiplePlugins = $zip( array(
 ) );
 $reject( ArchiveValidator::CODE_MULTIPLE_PLUGINS, $multiplePlugins, $deployment( 'multiple-plugins' ) );
 
-$missingVersion = $zip( array(
-	'repository/demo/demo.php' => $plugin( 'Plugin Name: Demo' ),
-) );
+$missingVersion = $zip( array( 'repository/demo/demo.php' => $plugin( 'Plugin Name: Demo' ) ) );
 $reject( ArchiveValidator::CODE_VERSION_MISSING, $missingVersion, $deployment( 'missing-version' ) );
 
-$invalidVersion = $zip( array(
-	'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3 beta!" ),
-) );
+$invalidVersion = $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3 beta!" ) ) );
 $reject( ArchiveValidator::CODE_VERSION_INVALID, $invalidVersion, $deployment( 'invalid-version' ) );
 
-$newerPhp = $zip( array(
-	'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires PHP: 999.0" ),
-) );
+$newerPhp = $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires PHP: 999.0" ) ) );
 $reject( ArchiveValidator::CODE_REQUIRES_NEWER_PHP, $newerPhp, $deployment( 'newer-php' ) );
 
-$newerWordPress = $zip( array(
-	'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires at least: 999.0" ),
-) );
+$newerWordPress = $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires at least: 999.0" ) ) );
 $reject( ArchiveValidator::CODE_REQUIRES_NEWER_WP, $newerWordPress, $deployment( 'newer-wordpress' ), null, '6.5' );
 
-$wrongIdentity = $zip( array(
-	'repository/demo/demo.php' => $plugin(),
-) );
-$reject(
-	ArchiveValidator::CODE_PACKAGE_IDENTITY,
-	$wrongIdentity,
-	$deployment( 'wrong-identity', 'update', 'demo', 'other/other.php' ),
-	'other/other.php'
-);
+$wrongIdentity = $zip( array( 'repository/demo/demo.php' => $plugin() ) );
+$reject( ArchiveValidator::CODE_PACKAGE_IDENTITY, $wrongIdentity, $deployment( 'wrong-identity', 'update', 'demo', 'other/other.php' ), 'other/other.php' );
 
-$missingMain = $zip( array(
-	'repository/demo/demo.php' => $plugin(),
-) );
-$reject(
-	ArchiveValidator::CODE_PLUGIN_MISSING,
-	$missingMain,
-	$deployment( 'missing-main', 'update', 'demo', 'demo/missing.php' ),
-	'demo/missing.php'
-);
+$missingMain = $zip( array( 'repository/demo/demo.php' => $plugin() ) );
+$reject( ArchiveValidator::CODE_PLUGIN_MISSING, $missingMain, $deployment( 'missing-main', 'update', 'demo', 'demo/missing.php' ), 'demo/missing.php' );
 
 foreach ( glob( $root . '/*.zip' ) ?: array() as $path ) {
 	unlink( $path );

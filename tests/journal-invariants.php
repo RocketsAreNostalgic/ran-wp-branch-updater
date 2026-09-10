@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 require dirname( __DIR__ ) . '/vendor/autoload.php';
 
-use RAN\WPBranchUpdater\V1\BranchDeploymentJournalFailure;
-use RAN\WPBranchUpdater\V1\Deployment;
-use RAN\WPBranchUpdater\V1\FileAttemptStore;
+use RAN\WPBranchUpdater\V1\Persistence\BranchDeploymentJournalFailure;
+use RAN\WPBranchUpdater\V1\Persistence\FileAttemptStore;
+use RAN\WPBranchUpdater\V1\Runtime\Deployment;
 
 $root = __DIR__ . '/build/journal-invariants-' . bin2hex( random_bytes( 4 ) );
 if ( ! mkdir( $root, 0700, true ) ) {

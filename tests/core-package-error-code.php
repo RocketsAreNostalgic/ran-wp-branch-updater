@@ -13,7 +13,7 @@ if ( ! class_exists( 'WP_Error' ) ) {
 
 require dirname( __DIR__ ) . '/vendor/autoload.php';
 
-use RAN\WPBranchUpdater\V1\CorePackageExecutor;
+use RAN\WPBranchUpdater\V1\WordPress\CorePackageExecutor;
 
 $method = new ReflectionMethod( CorePackageExecutor::class, 'invalidPackageSource' );
 $error  = $method->invoke( null );

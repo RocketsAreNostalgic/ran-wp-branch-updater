@@ -2,11 +2,9 @@
 
 declare(strict_types=1);
 
-namespace RAN\WPBranchUpdater\V1;
+namespace RAN\WPBranchUpdater\V1\Runtime;
 
-/**
- * Safe, closed reasons why WordPress did not complete one package operation.
- */
+/** Safe, closed reasons why WordPress did not complete one package operation. */
 enum CorePackageExecutionFailure: string {
 	case INVALID_REQUEST     = 'invalid_request';
 	case RUNTIME_UNSUPPORTED = 'runtime_unsupported';

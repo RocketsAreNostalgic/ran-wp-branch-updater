@@ -2,7 +2,15 @@
 
 declare(strict_types=1);
 
-namespace RAN\WPBranchUpdater\V1;
+namespace RAN\WPBranchUpdater\V1\Runtime;
+
+use RAN\WPBranchUpdater\V1\Archive\PackageSubdirectory;
+use RAN\WPBranchUpdater\V1\Contract\AdmittedArchiveSource;
+use RAN\WPBranchUpdater\V1\Contract\AdmittedAttemptJournal;
+use RAN\WPBranchUpdater\V1\Contract\AdmittedPackageExecutor;
+use RAN\WPBranchUpdater\V1\Contract\AdmittedTargetFacts;
+use RAN\WPBranchUpdater\V1\Contract\MutationLock;
+use RAN\WPBranchUpdater\V1\WordPress\InstalledPackageIdentifier;
 
 /** Public declaration-to-terminal-operation entry point. */
 final class BranchDeploymentPackage {
@@ -42,7 +50,6 @@ final class BranchDeploymentPackage {
 			throw new \InvalidArgumentException( 'The plugin file and package slug disagree.' );
 		}
 		$slug = $packageSlug ?? $this->pluginSlug( (string) $pluginFile );
-
 		return $this->pending( 'plugin', $repository, $repositoryId, $branch, $slug, $subdirectory, false === $this->admitted ? $pluginFile : ( $pluginFile ?? $this->admitted->installedIdentifier ) );
 	}
 
@@ -70,7 +77,6 @@ final class BranchDeploymentPackage {
 		if ( $bound && (array) $deployment !== (array) $this->admitted ) {
 			throw new \InvalidArgumentException( 'The admitted deployment declaration does not match.' );
 		}
-
 		return new PendingDeployment( $this->runner, $deployment, $this->admitted );
 	}
 
@@ -83,8 +89,7 @@ final class BranchDeploymentPackage {
 		} catch ( \InvalidArgumentException ) {
 			throw new \InvalidArgumentException( 'The plugin file is invalid.' );
 		}
-		if ( 1 !== substr_count( $pluginFile, '/' )
-			|| preg_match( '/^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*\.php$/Di', $pluginFile ) !== 1 ) {
+		if ( 1 !== substr_count( $pluginFile, '/' ) || preg_match( '/^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*\.php$/Di', $pluginFile ) !== 1 ) {
 			throw new \InvalidArgumentException( 'The plugin file is invalid.' );
 		}
 		$slug = dirname( $pluginFile );

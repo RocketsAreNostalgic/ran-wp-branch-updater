@@ -9,12 +9,19 @@ declare(strict_types=1);
 // phpcs:disable WordPress.Security.EscapeOutput.OutputNotEscaped -- This is CLI-only evidence output.
 require dirname( __DIR__ ) . '/vendor/autoload.php';
 
-use RAN\WPBranchUpdater\V1\{BranchDeploymentOperation, Deployment, FileAttemptStore, FileMutationLock, GitHubFixtureProvider, PackageExecutor, PreparedArchive};
+use RAN\WPBranchUpdater\V1\Archive\PreparedArchive;
+use RAN\WPBranchUpdater\V1\Contract\PackageExecutor;
+use RAN\WPBranchUpdater\V1\GitHubFixtureProvider;
+use RAN\WPBranchUpdater\V1\Persistence\FileAttemptStore;
+use RAN\WPBranchUpdater\V1\Persistence\FileMutationLock;
+use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentOperation;
+use RAN\WPBranchUpdater\V1\Runtime\Deployment;
 
 final class RAN_BranchDeploymentHardStopExecutor implements PackageExecutor {
 	public function preflight( Deployment $deployment, PreparedArchive $archive ): array {
 		$archive->assertUnchanged();
-		return array(); }
+		return array();
+	}
 	public function execute( Deployment $deployment, PreparedArchive $archive ): void {
 		$archive->assertUnchanged();
 		if ( ! function_exists( 'posix_kill' ) ) {
@@ -54,9 +61,6 @@ $zip->close();
 $journal = $root . '/journal/attempts.json';
 $php     = escapeshellarg( PHP_BINARY );
 $self    = escapeshellarg( __FILE__ );
-// Pass an argument vector so proc_open tracks the PHP child directly. A command
-// string launches a shell on Linux, which reports its own exit 137 instead of
-// exposing the killed child's signal and term signal.
 $child = proc_open(
 	array( PHP_BINARY, __FILE__, 'child', $journal, $archive, $root ),
 	array(

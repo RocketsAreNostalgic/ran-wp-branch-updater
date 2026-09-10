@@ -6,18 +6,16 @@ declare(strict_types=1);
 
 require dirname( __DIR__ ) . '/vendor/autoload.php';
 
-use RAN\WPBranchUpdater\V1\{
-	AdmittedArchiveSource,
-	AdmittedAttemptJournal,
-	AdmittedBranchArtifact,
-	AdmittedBranchRunner,
-	AdmittedPackageExecutor,
-	AdmittedTargetFacts,
-	CorePackageExecutionFailure,
-	CorePackageExecutionResult,
-	Deployment,
-	MutationLock
-};
+use RAN\WPBranchUpdater\V1\Contract\AdmittedArchiveSource;
+use RAN\WPBranchUpdater\V1\Contract\AdmittedAttemptJournal;
+use RAN\WPBranchUpdater\V1\Contract\AdmittedBranchArtifact;
+use RAN\WPBranchUpdater\V1\Contract\AdmittedPackageExecutor;
+use RAN\WPBranchUpdater\V1\Contract\AdmittedTargetFacts;
+use RAN\WPBranchUpdater\V1\Contract\MutationLock;
+use RAN\WPBranchUpdater\V1\Runtime\AdmittedBranchRunner;
+use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionFailure;
+use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionResult;
+use RAN\WPBranchUpdater\V1\Runtime\Deployment;
 
 final class ArchitectureBaselineTrace {
 	/** @var list<string> */
@@ -249,11 +247,7 @@ $scenario = static function ( array $options ) use ( $assert ): string {
 		$options['initialPolicyFailure'] ?? null,
 		$options['lockedPolicyFailure'] ?? null
 	);
-	$artifact = new ArchitectureBaselineArtifact(
-		$trace,
-		$options['version'] ?? '1.2.3',
-		$options['integrityFailure'] ?? null
-	);
+	$artifact = new ArchitectureBaselineArtifact( $trace, $options['version'] ?? '1.2.3', $options['integrityFailure'] ?? null );
 	$executor = new ArchitectureBaselineExecutor(
 		$trace,
 		$options['result'] ?? CorePackageExecutionResult::succeeded(),
