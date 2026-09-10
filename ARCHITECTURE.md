@@ -111,3 +111,5 @@ Move a rule into `ran/updater-support` only when all of these are true:
 5. extracting it does not couple branch-specific or release-specific policy.
 
 Small conveniences should remain local. Shared support exists to centralize stable security/correctness policy, not to maximize line-count deduplication.
+
+The completed bounded review and candidate-by-candidate decisions are recorded in [SHARED-SUPPORT.md](SHARED-SUPPORT.md).

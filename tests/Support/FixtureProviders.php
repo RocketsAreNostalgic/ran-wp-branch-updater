@@ -1,6 +1,7 @@
 <?php
 // phpcs:disable Generic.Files.OneObjectStructurePerFile,WordPress.Security.EscapeOutput -- Local fake provider variants share one non-production transport contract.
 declare(strict_types=1);
+
 namespace RAN\WPBranchUpdater\V1;
 
 use RAN\WPBranchUpdater\V1\Archive\ArchiveOffer;
