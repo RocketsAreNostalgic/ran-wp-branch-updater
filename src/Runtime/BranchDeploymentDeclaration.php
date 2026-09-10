@@ -7,7 +7,7 @@ namespace RAN\WPBranchUpdater\V1\Runtime;
 use RuntimeException;
 
 /** Declaration is deliberately source-specific: a branch revision is not a release. */
-final readonly class Deployment {
+final readonly class BranchDeploymentDeclaration {
 	public function __construct(
 		public string $attemptId,
 		public string $packageType,

@@ -14,15 +14,15 @@ use RAN\WPBranchUpdater\V1\Contract\PackageExecutor;
 use RAN\WPBranchUpdater\V1\GitHubFixtureProvider;
 use RAN\WPBranchUpdater\V1\Persistence\FileAttemptStore;
 use RAN\WPBranchUpdater\V1\Persistence\FileMutationLock;
-use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentOperation;
-use RAN\WPBranchUpdater\V1\Runtime\Deployment;
+use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
+use RAN\WPBranchUpdater\V1\Runtime\StandaloneBranchRunner;
 
 final class RAN_BranchDeploymentHardStopExecutor implements PackageExecutor {
-	public function preflight( Deployment $deployment, PreparedArchive $archive ): array {
+	public function preflight( BranchDeploymentDeclaration $deployment, PreparedArchive $archive ): array {
 		$archive->assertUnchanged();
 		return array();
 	}
-	public function execute( Deployment $deployment, PreparedArchive $archive ): void {
+	public function execute( BranchDeploymentDeclaration $deployment, PreparedArchive $archive ): void {
 		$archive->assertUnchanged();
 		if ( ! function_exists( 'posix_kill' ) ) {
 			throw new RuntimeException( 'The hard-stop proof requires posix_kill.' );
@@ -34,8 +34,8 @@ final class RAN_BranchDeploymentHardStopExecutor implements PackageExecutor {
 $mode = $argv[1] ?? 'parent';
 if ( 'child' === $mode ) {
 	[$journal, $archive, $root] = array_slice( $argv, 2, 3 );
-	$deployment                 = new Deployment( 'hard-stop', 'plugin', 'hard-stop-target', 'fixture/one', 'fixture-id', 'main', 'head', 'install' );
-	( new BranchDeploymentOperation( new GitHubFixtureProvider( $archive, 'head' ), new FileAttemptStore( $journal ), new RAN_BranchDeploymentHardStopExecutor(), $root . '/archives', new FileMutationLock( $root . '/mutation.lock' ) ) )->execute( $deployment );
+	$deployment                 = new BranchDeploymentDeclaration( 'hard-stop', 'plugin', 'hard-stop-target', 'fixture/one', 'fixture-id', 'main', 'head', 'install' );
+	( new StandaloneBranchRunner( new GitHubFixtureProvider( $archive, 'head' ), new FileAttemptStore( $journal ), new RAN_BranchDeploymentHardStopExecutor(), $root . '/archives', new FileMutationLock( $root . '/mutation.lock' ) ) )->execute( $deployment );
 	exit( 99 );
 }
 if ( 'recover' === $mode ) {
@@ -102,7 +102,7 @@ if ( 0 !== $recoverStatus ) {
 }
 $store = new FileAttemptStore( $journal );
 try {
-	$store->begin( new Deployment( 'retry', 'plugin', 'hard-stop-target', 'fixture/two', 'other-id', 'other', 'head', 'install' ) );
+	$store->begin( new BranchDeploymentDeclaration( 'retry', 'plugin', 'hard-stop-target', 'fixture/two', 'other-id', 'other', 'head', 'install' ) );
 	throw new RuntimeException( 'Retry was admitted.' );
 } catch ( RuntimeException $expected ) {
 	if ( 'Target already has an unresolved execution.' !== $expected->getMessage() ) {

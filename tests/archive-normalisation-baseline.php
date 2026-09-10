@@ -5,7 +5,7 @@ declare(strict_types=1);
 require dirname( __DIR__ ) . '/vendor/autoload.php';
 
 use RAN\WPBranchUpdater\V1\Archive\ArchiveValidator;
-use RAN\WPBranchUpdater\V1\Runtime\Deployment;
+use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 
 $assert = static function ( bool $actual, string $message ): void {
 	if ( ! $actual ) {
@@ -37,7 +37,7 @@ $deployment = static fn(
 	string $operation = 'install',
 	?string $subdirectory = 'demo',
 	?string $installedIdentifier = null
-): Deployment => new Deployment(
+): BranchDeploymentDeclaration => new BranchDeploymentDeclaration(
 	$id,
 	'plugin',
 	'demo',
@@ -50,10 +50,10 @@ $deployment = static fn(
 	$installedIdentifier
 );
 $validator = new ArchiveValidator();
-$validate = static function ( string $path, Deployment $deployment, ?string $installed = null, string $wordpressVersion = '6.5' ) use ( $validator ): array {
+$validate = static function ( string $path, BranchDeploymentDeclaration $deployment, ?string $installed = null, string $wordpressVersion = '6.5' ) use ( $validator ): array {
 	return $validator->validate( $path, $deployment, $installed, 10485760, 20971520, $wordpressVersion );
 };
-$reject = static function ( int $code, string $path, Deployment $deployment, ?string $installed = null, string $wordpressVersion = '6.5' ) use ( $validate, $assert ): void {
+$reject = static function ( int $code, string $path, BranchDeploymentDeclaration $deployment, ?string $installed = null, string $wordpressVersion = '6.5' ) use ( $validate, $assert ): void {
 	try {
 		$validate( $path, $deployment, $installed, $wordpressVersion );
 		$assert( false, 'archive validation unexpectedly succeeded for code ' . $code );

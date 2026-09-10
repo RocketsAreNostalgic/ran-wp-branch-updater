@@ -18,7 +18,7 @@ final class ProviderArchiveSource implements AdmittedArchiveSource {
 
 	public function __construct( private readonly BranchProvider $provider, private readonly string $directory ) {}
 
-	public function prepare( Deployment $deployment, ?array $baseline ): AdmittedBranchArtifact {
+	public function prepare( BranchDeploymentDeclaration $deployment, ?array $baseline ): AdmittedBranchArtifact {
 		try {
 			$offer = $this->provider->prepare( $deployment );
 			if ( ! hash_equals( $deployment->repositoryId, $offer->repositoryId ) ) {

@@ -6,21 +6,21 @@ namespace RAN\WPBranchUpdater\V1\WordPress;
 
 use RAN\WPBranchUpdater\V1\Archive\PreparedArchive;
 use RAN\WPBranchUpdater\V1\Contract\PackageExecutor;
+use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionFailure;
 use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionResult;
-use RAN\WPBranchUpdater\V1\Runtime\Deployment;
 use RuntimeException;
 
 /** Thin real-WordPress executor: WP owns installation; this package supplies one local ZIP. */
 final class WordPressPackageExecutor implements PackageExecutor {
 	public function __construct( private readonly CorePackageExecutor $core = new CorePackageExecutor() ) {}
-	public function execute( Deployment $d, PreparedArchive $archive ): void {
+	public function execute( BranchDeploymentDeclaration $d, PreparedArchive $archive ): void {
 		$result = $this->executeCore( $d, $archive );
 		if ( ! $result->isSuccessful() ) {
 			throw new RuntimeException( 'WordPress execution failed: ' . ( $result->getFailure()?->value ?? 'unknown' ) );
 		}
 	}
-	public function executeCore( Deployment $d, PreparedArchive $archive ): CorePackageExecutionResult {
+	public function executeCore( BranchDeploymentDeclaration $d, PreparedArchive $archive ): CorePackageExecutionResult {
 		if ( ! defined( 'ABSPATH' ) ) {
 			throw new RuntimeException( 'WordPress upgrader is unavailable.' );
 		}
@@ -31,7 +31,7 @@ final class WordPressPackageExecutor implements PackageExecutor {
 			array( 'update', 'theme' ) => $this->core->updateTheme( $archive, $d->slug, $d->subdirectory, $d->installedIdentifier ?? $d->slug ),
 		};
 	}
-	public function preflight( Deployment $d, PreparedArchive $archive ): array {
+	public function preflight( BranchDeploymentDeclaration $d, PreparedArchive $archive ): array {
 		if ( is_multisite() ) {
 			throw new RuntimeException( 'Branch deployment supports single-site WordPress only.' );
 		}
@@ -50,7 +50,7 @@ final class WordPressPackageExecutor implements PackageExecutor {
 		$archive->assertUnchanged();
 		return $before;
 	}
-	public function installedFacts( Deployment $d ): array {
+	public function installedFacts( BranchDeploymentDeclaration $d ): array {
 		$identifier = $d->installedIdentifier ?? ( 'plugin' === $d->packageType ? $d->slug . '/' . $d->slug . '.php' : $d->slug );
 		$state      = $this->installedState( $d->packageType, $identifier );
 		if ( null === $state['version'] ) {

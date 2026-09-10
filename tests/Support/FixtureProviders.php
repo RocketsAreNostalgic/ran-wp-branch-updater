@@ -5,7 +5,7 @@ namespace RAN\WPBranchUpdater\V1;
 
 use RAN\WPBranchUpdater\V1\Archive\ArchiveOffer;
 use RAN\WPBranchUpdater\V1\Contract\BranchProvider;
-use RAN\WPBranchUpdater\V1\Runtime\Deployment;
+use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 use RuntimeException;
 
 /** Test-only local transport. It proves the contract shape, never claims to be a provider client. */
@@ -15,7 +15,7 @@ abstract class FixtureProvider implements BranchProvider {
 	public function moveHead( string $head ): void {
 		$this->head = $head;
 	}
-	public function prepare( Deployment $d ): ArchiveOffer {
+	public function prepare( BranchDeploymentDeclaration $d ): ArchiveOffer {
 		if ( null !== $d->expectedHead && $d->expectedHead !== $this->head ) {
 			throw new RuntimeException( $this->name() . ': expected head is stale.' );
 		}

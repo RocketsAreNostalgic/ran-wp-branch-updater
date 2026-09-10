@@ -6,7 +6,7 @@ namespace RAN\WPBranchUpdater\V1;
 
 use RAN\WPBranchUpdater\V1\Archive\PreparedArchive;
 use RAN\WPBranchUpdater\V1\Contract\PackageExecutor;
-use RAN\WPBranchUpdater\V1\Runtime\Deployment;
+use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 use RuntimeException;
 
 /** Test-only executor that records the immutable archive presented for mutation. */
@@ -15,12 +15,12 @@ final class RecordingExecutor implements PackageExecutor {
 
 	public function __construct( private readonly bool $fail = false ) {}
 
-	public function preflight( Deployment $deployment, PreparedArchive $archive ): array {
+	public function preflight( BranchDeploymentDeclaration $deployment, PreparedArchive $archive ): array {
 		$archive->assertUnchanged();
 		return array();
 	}
 
-	public function execute( Deployment $deployment, PreparedArchive $archive ): void {
+	public function execute( BranchDeploymentDeclaration $deployment, PreparedArchive $archive ): void {
 		$this->calls[] = array(
 			'id'      => $deployment->attemptId,
 			'path'    => $archive->path(),

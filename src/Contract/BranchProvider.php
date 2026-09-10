@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace RAN\WPBranchUpdater\V1\Contract;
 
 use RAN\WPBranchUpdater\V1\Archive\ArchiveOffer;
-use RAN\WPBranchUpdater\V1\Runtime\Deployment;
+use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 
 interface BranchProvider {
 	/** Must resolve $deployment->expectedHead and reject it when $branch has advanced. */
-	public function prepare( Deployment $deployment ): ArchiveOffer;
+	public function prepare( BranchDeploymentDeclaration $deployment ): ArchiveOffer;
 }

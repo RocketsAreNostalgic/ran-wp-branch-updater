@@ -17,7 +17,7 @@ final class StandaloneTargetFacts implements AdmittedTargetFacts {
 
 	public function assertMutationAllowed(): void {}
 
-	public function frozenTarget( Deployment $deployment, bool $deferExisting ): ?array {
+	public function frozenTarget( BranchDeploymentDeclaration $deployment, bool $deferExisting ): ?array {
 		if ( 'update' === $deployment->operation && $this->executor instanceof WordPressPackageExecutor ) {
 			return $this->executor->installedFacts( $deployment );
 		}
@@ -28,28 +28,28 @@ final class StandaloneTargetFacts implements AdmittedTargetFacts {
 		return defined( 'ABSPATH' ) && ( file_exists( ABSPATH . '.maintenance' ) || is_link( ABSPATH . '.maintenance' ) );
 	}
 
-	public function recheckManaged( Deployment $deployment ): void {}
+	public function recheckManaged( BranchDeploymentDeclaration $deployment ): void {}
 
-	public function installed( Deployment $deployment ): array {
+	public function installed( BranchDeploymentDeclaration $deployment ): array {
 		if ( null === $this->installed ) {
 			throw new AdmittedBranchDurabilityFailure( 'Standalone executor cannot prove installed package state.' );
 		}
 		return $this->installed;
 	}
 
-	public function baselineNow( Deployment $deployment, array $baseline ): ?array {
+	public function baselineNow( BranchDeploymentDeclaration $deployment, array $baseline ): ?array {
 		if ( $this->executor instanceof WordPressPackageExecutor ) {
 			return $this->executor->installedFacts( $deployment );
 		}
 		return $this->installed;
 	}
 
-	public function adopt( Deployment $deployment ): bool {
+	public function adopt( BranchDeploymentDeclaration $deployment ): bool {
 		return null !== $this->installed;
 	}
 
 	/** @param array{identifier:string,version:string,active:bool}|null $observed */
-	public function recordInstalled( Deployment $deployment, PreparedArchiveArtifact $artifact, ?array $observed ): void {
+	public function recordInstalled( BranchDeploymentDeclaration $deployment, PreparedArchiveArtifact $artifact, ?array $observed ): void {
 		$this->installed = $observed ?? array(
 			'identifier' => $deployment->installedIdentifier ?? $deployment->slug,
 			'version'    => $artifact->expectedVersion(),

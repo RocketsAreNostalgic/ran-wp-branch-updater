@@ -14,14 +14,14 @@ use RuntimeException;
 final readonly class StandalonePackageExecutor implements AdmittedPackageExecutor {
 	public function __construct( private PackageExecutor $executor, private StandaloneTargetFacts $target ) {}
 
-	public function preflight( Deployment $deployment, AdmittedBranchArtifact $artifact ): void {
+	public function preflight( BranchDeploymentDeclaration $deployment, AdmittedBranchArtifact $artifact ): void {
 		if ( ! $artifact instanceof PreparedArchiveArtifact ) {
 			throw new RuntimeException( 'The standalone executor requires the admitted archive artifact.' );
 		}
 		$this->executor->preflight( $deployment, $artifact->archive() );
 	}
 
-	public function execute( Deployment $deployment, ?array $baseline, AdmittedBranchArtifact $artifact ): CorePackageExecutionResult {
+	public function execute( BranchDeploymentDeclaration $deployment, ?array $baseline, AdmittedBranchArtifact $artifact ): CorePackageExecutionResult {
 		if ( ! $artifact instanceof PreparedArchiveArtifact ) {
 			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::INVALID_REQUEST );
 		}

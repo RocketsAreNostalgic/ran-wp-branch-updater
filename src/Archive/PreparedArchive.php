@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace RAN\WPBranchUpdater\V1\Archive;
 
 use RAN\WPBranchUpdater\V1\Contract\PreparedPackageArtifact;
-use RAN\WPBranchUpdater\V1\Runtime\Deployment;
+use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 use RuntimeException;
 
 /** Exact-byte custody from provider download through the WordPress boundary. */
@@ -18,7 +18,7 @@ final class PreparedArchive implements PreparedPackageArtifact {
 		private string $digest,
 		public readonly string $version
 	) {}
-	public static function downloadAndValidate( ArchiveOffer $offer, Deployment $d, string $directory ): self {
+	public static function downloadAndValidate( ArchiveOffer $offer, BranchDeploymentDeclaration $d, string $directory ): self {
 		if ( ( file_exists( $directory ) || is_link( $directory ) ) && ( is_link( $directory ) || ! is_dir( $directory ) ) ) {
 			throw new RuntimeException( 'Archive directory is unsafe.' );
 		}

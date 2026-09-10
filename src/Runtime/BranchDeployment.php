@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace RAN\WPBranchUpdater\V1\Runtime;
 
 /** One immutable source declaration; deploy() is the only mutation entry point. */
-final readonly class PendingDeployment {
+final readonly class BranchDeployment {
 	public function __construct(
-		private BranchDeploymentOperation|AdmittedBranchRunner $runner,
-		private Deployment $declaration,
-		private Deployment|false $admitted
+		private StandaloneBranchRunner|AdmittedBranchRunner $runner,
+		private BranchDeploymentDeclaration $declaration,
+		private BranchDeploymentDeclaration|false $admitted
 	) {}
 
 	/** The durable standalone journal key, stable before and after deploy(). */
@@ -19,7 +19,7 @@ final readonly class PendingDeployment {
 
 	/** Returns the runner's closed terminal outcome; ambiguous durability failures propagate. */
 	public function deploy( ?string $expectedCommit = null, ?string $operation = null ): string {
-		$deployment = new Deployment(
+		$deployment = new BranchDeploymentDeclaration(
 			$this->declaration->attemptId,
 			$this->declaration->packageType,
 			$this->declaration->slug,
@@ -34,7 +34,7 @@ final readonly class PendingDeployment {
 		if ( false !== $this->admitted && (array) $deployment !== (array) $this->admitted ) {
 			throw new \InvalidArgumentException( 'The admitted deployment terminal declaration does not match.' );
 		}
-		return $this->runner instanceof BranchDeploymentOperation
+		return $this->runner instanceof StandaloneBranchRunner
 			? $this->runner->execute( $deployment )
 			: $this->runner->run( $deployment );
 	}

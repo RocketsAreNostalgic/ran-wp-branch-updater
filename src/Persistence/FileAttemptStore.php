@@ -6,7 +6,7 @@ declare(strict_types=1);
 // phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Internal exceptions are not rendered.
 namespace RAN\WPBranchUpdater\V1\Persistence;
 
-use RAN\WPBranchUpdater\V1\Runtime\Deployment;
+use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 use RuntimeException;
 use Throwable;
 
@@ -14,7 +14,7 @@ use Throwable;
 final class FileAttemptStore {
 	public function __construct( private readonly string $path ) {}
 
-	public function begin( Deployment $d ): array {
+	public function begin( BranchDeploymentDeclaration $d ): array {
 		return $this->mutate(
 			function ( array $records ) use ( $d ): array {
 				if ( isset( $records[ $d->attemptId ] ) ) {
@@ -117,7 +117,7 @@ final class FileAttemptStore {
 		);
 	}
 
-	private function record( Deployment $d ): array {
+	private function record( BranchDeploymentDeclaration $d ): array {
 		return array(
 			'id'                  => $d->attemptId,
 			'state'               => 'running',

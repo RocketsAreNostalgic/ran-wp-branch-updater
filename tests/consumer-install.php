@@ -15,7 +15,7 @@ if ( ! is_file( $autoload ) || ! is_file( $bootstrap ) ) {
 
 require $autoload;
 
-if ( ! class_exists( RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentPackage::class ) ) {
+if ( ! class_exists( RAN\WPBranchUpdater\V1\Runtime\BranchUpdater::class ) ) {
 	throw new RuntimeException( 'Composer did not load the branch updater source.' );
 }
 if ( ! class_exists( RAN\UpdaterSupport\V1\ArchiveSafety::class ) ) {
@@ -29,7 +29,7 @@ if (
 	throw new RuntimeException( 'Consumer installation loaded test-only fixture classes.' );
 }
 
-foreach ( array( RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentPackage::class, RAN\UpdaterSupport\V1\ArchiveSafety::class ) as $class ) {
+foreach ( array( RAN\WPBranchUpdater\V1\Runtime\BranchUpdater::class, RAN\UpdaterSupport\V1\ArchiveSafety::class ) as $class ) {
 	$file = ( new ReflectionClass( $class ) )->getFileName();
 	if ( ! is_string( $file ) || ! str_starts_with( $file, $consumer . '/vendor/' ) || is_link( $file ) ) {
 		throw new RuntimeException( 'Composer did not load an installed regular package file.' );
@@ -45,7 +45,7 @@ if ( ! $configure instanceof Closure ) {
 }
 
 $provider = new class implements RAN\WPBranchUpdater\V1\Contract\BranchProvider {
-	public function prepare( RAN\WPBranchUpdater\V1\Runtime\Deployment $deployment ): RAN\WPBranchUpdater\V1\Archive\ArchiveOffer {
+	public function prepare( RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration $deployment ): RAN\WPBranchUpdater\V1\Archive\ArchiveOffer {
 		throw new RuntimeException( 'The consumer smoke must not prepare an archive.' );
 	}
 };
@@ -55,12 +55,12 @@ if ( ! mkdir( $private, 0700 ) ) {
 }
 $state = $private . '/attempts.json';
 $branches = $configure( $provider, new RAN\WPBranchUpdater\V1\Persistence\FileAttemptStore( $state ), $consumer . '/private/archives' );
-if ( ! $branches instanceof RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentPackage ) {
+if ( ! $branches instanceof RAN\WPBranchUpdater\V1\Runtime\BranchUpdater ) {
 	throw new RuntimeException( 'Installed bootstrap did not configure the branch package.' );
 }
 $packageFacts = new ReflectionObject( $branches );
 $runner = $packageFacts->getProperty( 'runner' )->getValue( $branches );
-if ( ! $runner instanceof RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentOperation ) {
+if ( ! $runner instanceof RAN\WPBranchUpdater\V1\Runtime\StandaloneBranchRunner ) {
 	throw new RuntimeException( 'Installed bootstrap did not configure the standalone runner.' );
 }
 $runnerFacts = new ReflectionObject( $runner );

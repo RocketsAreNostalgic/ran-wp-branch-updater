@@ -11,7 +11,7 @@ use RAN\WPBranchUpdater\V1\Persistence\FileAttemptJournal;
 use RAN\WPBranchUpdater\V1\Persistence\FileAttemptStore;
 
 /** Standalone consumer wiring around the shared admitted runner. */
-final class BranchDeploymentOperation {
+final class StandaloneBranchRunner {
 	public function __construct(
 		private readonly BranchProvider $provider,
 		private readonly FileAttemptStore $attempts,
@@ -21,7 +21,7 @@ final class BranchDeploymentOperation {
 	) {}
 
 	/** Returns the closed terminal outcome; normal failures remain terminal outcomes. */
-	public function execute( Deployment $deployment ): string {
+	public function execute( BranchDeploymentDeclaration $deployment ): string {
 		$this->attempts->begin( $deployment );
 		$target = new StandaloneTargetFacts( $this->executor );
 		$runner = new AdmittedBranchRunner(

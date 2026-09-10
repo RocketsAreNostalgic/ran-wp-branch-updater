@@ -13,9 +13,9 @@ use RAN\WPBranchUpdater\V1\Contract\AdmittedPackageExecutor;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedTargetFacts;
 use RAN\WPBranchUpdater\V1\Contract\MutationLock;
 use RAN\WPBranchUpdater\V1\Runtime\AdmittedBranchRunner;
+use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionFailure;
 use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionResult;
-use RAN\WPBranchUpdater\V1\Runtime\Deployment;
 
 final class ArchitectureBaselineTrace {
 	/** @var list<string> */
@@ -69,7 +69,7 @@ final class ArchitectureBaselineArchives implements AdmittedArchiveSource {
 		private ArchitectureBaselineArtifact $artifact,
 		private ?\Throwable $headFailure = null
 	) {}
-	public function prepare( Deployment $deployment, ?array $baseline ): AdmittedBranchArtifact {
+	public function prepare( BranchDeploymentDeclaration $deployment, ?array $baseline ): AdmittedBranchArtifact {
 		$this->trace->add( 'archives.prepare' );
 		return $this->artifact;
 	}
@@ -104,7 +104,7 @@ final class ArchitectureBaselineTarget implements AdmittedTargetFacts {
 			throw $failure;
 		}
 	}
-	public function frozenTarget( Deployment $deployment, bool $deferExisting ): ?array {
+	public function frozenTarget( BranchDeploymentDeclaration $deployment, bool $deferExisting ): ?array {
 		$this->trace->add( $deferExisting ? 'target.baseline.initial' : 'target.baseline.locked' );
 		return $deferExisting ? $this->initialBaseline : $this->lockedBaseline;
 	}
@@ -115,18 +115,18 @@ final class ArchitectureBaselineTarget implements AdmittedTargetFacts {
 		$this->trace->add( $label );
 		return $state;
 	}
-	public function recheckManaged( Deployment $deployment ): void {
+	public function recheckManaged( BranchDeploymentDeclaration $deployment ): void {
 		$this->trace->add( 'target.recheck_managed' );
 	}
-	public function installed( Deployment $deployment ): array {
+	public function installed( BranchDeploymentDeclaration $deployment ): array {
 		$this->trace->add( 'target.installed' );
 		return $this->installedFacts;
 	}
-	public function baselineNow( Deployment $deployment, array $baseline ): ?array {
+	public function baselineNow( BranchDeploymentDeclaration $deployment, array $baseline ): ?array {
 		$this->trace->add( 'target.baseline.restored' );
 		return $this->restoredFacts;
 	}
-	public function adopt( Deployment $deployment ): bool {
+	public function adopt( BranchDeploymentDeclaration $deployment ): bool {
 		$this->trace->add( 'target.adopt' );
 		return $this->adopted;
 	}
@@ -140,7 +140,7 @@ final class ArchitectureBaselineExecutor implements AdmittedPackageExecutor {
 		private ?\Throwable $firstPreflightFailure = null,
 		private ?\Throwable $secondPreflightFailure = null
 	) {}
-	public function preflight( Deployment $deployment, AdmittedBranchArtifact $artifact ): void {
+	public function preflight( BranchDeploymentDeclaration $deployment, AdmittedBranchArtifact $artifact ): void {
 		++$this->preflightCalls;
 		$initial = 1 === $this->preflightCalls;
 		$this->trace->add( $initial ? 'executor.preflight.initial' : 'executor.preflight.locked' );
@@ -149,7 +149,7 @@ final class ArchitectureBaselineExecutor implements AdmittedPackageExecutor {
 			throw $failure;
 		}
 	}
-	public function execute( Deployment $deployment, ?array $baseline, AdmittedBranchArtifact $artifact ): CorePackageExecutionResult {
+	public function execute( BranchDeploymentDeclaration $deployment, ?array $baseline, AdmittedBranchArtifact $artifact ): CorePackageExecutionResult {
 		$this->trace->add( 'executor.execute' );
 		return $this->result;
 	}
@@ -172,7 +172,7 @@ $assert = static function ( bool $actual, string $message ): void {
 		throw new \RuntimeException( 'FAIL: ' . $message );
 	}
 };
-$deployment = static fn( string $id = 'architecture-baseline', string $operation = 'update' ): Deployment => new Deployment(
+$deployment = static fn( string $id = 'architecture-baseline', string $operation = 'update' ): BranchDeploymentDeclaration => new BranchDeploymentDeclaration(
 	$id,
 	'plugin',
 	'demo',
@@ -261,7 +261,7 @@ $scenario = static function ( array $options ) use ( $assert ): string {
 		$executor,
 		new ArchitectureBaselineLock( $trace )
 	);
-	$outcome = $runner->run( new Deployment( 'scenario-' . bin2hex( random_bytes( 4 ) ), 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', 'abc123', $options['operation'] ?? 'update', 'demo', 'demo/demo.php' ) );
+	$outcome = $runner->run( new BranchDeploymentDeclaration( 'scenario-' . bin2hex( random_bytes( 4 ) ), 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', 'abc123', $options['operation'] ?? 'update', 'demo', 'demo/demo.php' ) );
 	$assert( 'journal.finish:' . $outcome === end( $trace->events ), 'terminal outcome is journaled last for ' . $outcome );
 	return $outcome;
 };
@@ -285,7 +285,7 @@ $assert( 'upgrader_failed' === $scenario( array( 'result' => CorePackageExecutio
 $assert( 'restoration_uncertain' === $scenario( array( 'result' => CorePackageExecutionResult::failed( CorePackageExecutionFailure::WORDPRESS_FAILED ), 'restoredFacts' => null ) ), 'unproved restoration remains restoration_uncertain' );
 
 try {
-	new Deployment( '', 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', 'abc123' );
+	new BranchDeploymentDeclaration( '', 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', 'abc123' );
 	$assert( false, 'invalid declaration must remain rejected' );
 } catch ( \RuntimeException $expected ) {
 	$assert( 'Invalid branch deployment declaration.' === $expected->getMessage(), 'declaration validation failure remains stable' );

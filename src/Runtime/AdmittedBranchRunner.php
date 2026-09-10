@@ -25,7 +25,7 @@ final class AdmittedBranchRunner {
 	) {}
 
 	/** Returns the closed outcome only after the attempt journal has finished. */
-	public function run( Deployment $deployment ): string {
+	public function run( BranchDeploymentDeclaration $deployment ): string {
 		if ( $this->consumed ) {
 			throw new RuntimeException( 'An admitted deployment runner is already consumed.' );
 		}

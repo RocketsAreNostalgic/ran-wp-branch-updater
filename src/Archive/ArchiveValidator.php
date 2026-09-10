@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace RAN\WPBranchUpdater\V1\Archive;
 
 use RAN\UpdaterSupport\V1\ArchiveSafety;
-use RAN\WPBranchUpdater\V1\Runtime\Deployment;
+use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 use RAN\WPBranchUpdater\V1\WordPress\InstalledPackageIdentifier;
 use RuntimeException;
 use ZipArchive;
@@ -43,7 +43,7 @@ final class ArchiveValidator {
 	private const MAX_ENTRIES                   = 10000;
 
 	/** @return array{expanded:int,expected_version:string} */
-	public function validate( string $path, Deployment $d, ?string $installed, int $compressedLimit, int $expandedLimit, string $wordpressVersion ): array {
+	public function validate( string $path, BranchDeploymentDeclaration $d, ?string $installed, int $compressedLimit, int $expandedLimit, string $wordpressVersion ): array {
 		if ( ! class_exists( ZipArchive::class ) ) {
 			$this->fail( self::CODE_ZIP_UNAVAILABLE, 'The ZIP extension is unavailable.' );
 		}
@@ -98,7 +98,7 @@ final class ArchiveValidator {
 		}
 	}
 
-	private function assertInstalledIdentity( Deployment $d, ?string $installed ): void {
+	private function assertInstalledIdentity( BranchDeploymentDeclaration $d, ?string $installed ): void {
 		if ( null === $installed ) {
 			return;
 		}
@@ -110,7 +110,7 @@ final class ArchiveValidator {
 		}
 	}
 
-	private function assertInstalledIdentityAdmission( Deployment $d, ?string $installed ): void {
+	private function assertInstalledIdentityAdmission( BranchDeploymentDeclaration $d, ?string $installed ): void {
 		if ( null === $installed && 'update' === $d->operation ) {
 			$this->fail( self::CODE_PACKAGE_IDENTITY, 'An update requires the installed package identity.' );
 		}
@@ -210,7 +210,7 @@ final class ArchiveValidator {
 		return $current + $entry;
 	}
 	/** @param array<string,array{index:int,directory:bool}> $entries */
-	private function assertPackageIdentity( ZipArchive $zip, Deployment $d, array $entries, string $root, ?string $installed, string $wordpressVersion ): string {
+	private function assertPackageIdentity( ZipArchive $zip, BranchDeploymentDeclaration $d, array $entries, string $root, ?string $installed, string $wordpressVersion ): string {
 		$this->assertInstalledIdentity( $d, $installed );
 		$prefix = $this->validateEntryName( $root . ( null !== $d->subdirectory && '' !== $d->subdirectory ? '/' . $d->subdirectory : '' ) );
 		$files  = array_filter( $entries, static fn( array $entry, string $name ): bool => ! $entry['directory'] && str_starts_with( $name, $prefix . '/' ), ARRAY_FILTER_USE_BOTH );

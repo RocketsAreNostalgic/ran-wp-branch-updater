@@ -9,7 +9,7 @@ use RAN\WPBranchUpdater\V1\GitHubFixtureProvider;
 use RAN\WPBranchUpdater\V1\Persistence\FileAttemptStore;
 use RAN\WPBranchUpdater\V1\Persistence\FileMutationLock;
 use RAN\WPBranchUpdater\V1\RecordingExecutor;
-use RAN\WPBranchUpdater\V1\Runtime\Deployment;
+use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 
 $buildRoot = __DIR__ . '/build/harness';
 if ( ! is_dir( $buildRoot ) && ! mkdir( $buildRoot, 0700, true ) ) {
@@ -28,7 +28,7 @@ $assert = static function ( bool $value, string $message ): void {
 		throw new \RuntimeException( 'FAIL: ' . $message );
 	}
 };
-$deploy    = static fn( string $id, string $head ): Deployment => new Deployment( $id, 'plugin', 'demo', 'acme/demo', 'fixture-1', 'main', $head, 'update', 'demo', 'demo/demo.php' );
+$deploy    = static fn( string $id, string $head ): BranchDeploymentDeclaration => new BranchDeploymentDeclaration( $id, 'plugin', 'demo', 'acme/demo', 'fixture-1', 'main', $head, 'update', 'demo', 'demo/demo.php' );
 $store     = new FileAttemptStore( $root . '/attempts.json' );
 $executor  = new RecordingExecutor();
 $lock      = new FileMutationLock( $root . '/mutation.lock' );
