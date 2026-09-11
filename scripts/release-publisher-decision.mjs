@@ -114,7 +114,7 @@ function validateReleaseVersion(commit, identity) {
     refuse("release_paths_invalid", "release changed paths are not exact");
   }
   if (!BETA.test(identity.version) || (commit.parentVersion === "0.0.0" && identity.version !== "0.1.0-beta.1")) {
-    refuse("release_version_invalid", "release must advance on the independent beta line, starting at beta.1");
+    refuse("release_version_invalid", "release must use a canonical beta version; the initial release must be 0.1.0-beta.1");
   }
   if (commit.parentVersion === identity.version) {
     refuse("release_version_unchanged", "release did not advance the manifest");

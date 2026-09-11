@@ -89,14 +89,15 @@ test("candidate binds manifest, Composer identity and release notes", () => {
   assert.equal(identity.tag, `v${VERSION}`);
 });
 
-test("candidate accepts dated linked headings only on the independent beta line", () => {
-  const next = "0.1.0-beta.2";
-  const linked = {
-    ...contents(next),
-    changelog: `# Changelog\n\n## [${next}](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v${VERSION}...v${next}) (2026-09-02)\n\n### Bug Fixes\n\n* second release\n`,
-  };
-  assert.equal(candidateIdentity(linked, SHA).version, next);
-  for (const version of ["0.2.0-beta.1", "1.0.0-beta.1"]) {
+test("candidate accepts dated headings across canonical beta versions", () => {
+  for (const next of ["0.1.0-beta.2", "0.2.0-beta.1", "1.0.0-beta.1"]) {
+    const linked = {
+      ...contents(next),
+      changelog: `# Changelog\n\n## [${next}](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v${VERSION}...v${next}) (2026-09-02)\n\n### Bug Fixes\n\n* next release\n`,
+    };
+    assert.equal(candidateIdentity(linked, SHA).version, next);
+  }
+  for (const version of ["01.0.0-beta.1", "1.0.0-beta.01", "1.0.0"]) {
     refusal("release_manifest_invalid", () => candidateIdentity(contents(version), SHA));
   }
 });
@@ -145,7 +146,7 @@ test("only exact green CI normal merge and changed paths can publish", () => {
     })
   );
   refusal("main_moved", () => decidePublication({ ...input, mainSha: undefined }));
-  for (const parentVersion of ["0.2.0-beta.1", "1.0.0-beta.1"]) {
+  for (const parentVersion of ["1.0.0", "1.0.0-beta.01"]) {
     refusal("release_parent_version_invalid", () =>
       decidePublication({ ...input, commit: { ...input.commit, parentVersion } })
     );

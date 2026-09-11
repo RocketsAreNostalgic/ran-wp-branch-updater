@@ -1,8 +1,11 @@
 # Releases
 
 This package follows the RAN release-updater's exact-commit publishing process.
-Its independent prerelease line starts at `v0.1.0-beta.1`. Composer derives
-versions from Git tags; the manifest's `0.0.0` value means unreleased.
+Its prerelease sequence starts at `v0.1.0-beta.1`. Composer derives versions
+from Git tags; the manifest's `0.0.0` value means unreleased. Release Please
+owns later semantic version selection, including major, minor, or patch changes
+when Conventional Commit semantics require them; the publisher admits only
+canonical `MAJOR.MINOR.PATCH-beta.N` prerelease versions.
 
 ## Repository setup
 
@@ -26,9 +29,10 @@ The variable acknowledges that setting; it does not enable it.
 2. Release Please opens a version PR. Approve its Actions workflow run if GitHub
    requires approval for the bot-created PR; `CI` also supports manual dispatch
    against the exact PR branch. Review the version and complete changelog diff.
-   The first release must advance `0.0.0` to `0.1.0-beta.1`; later releases remain
-   on the `0.1.0-beta.*` line. Changing that line requires a reviewed configuration
-   and publisher policy change.
+   The first release must advance `0.0.0` to `0.1.0-beta.1`; later releases use
+   Release Please's semantic prerelease version derived from the reviewed commit
+   history. The publisher accepts only canonical `MAJOR.MINOR.PATCH-beta.N`
+   versions and independently verifies that each release advances its parent.
 3. Run independent review against the exact PR base and head, resolve findings,
    and present the checks and normal-merge method to the owner. Merge only after
    explicit authorization. Only the manifest version and prepended changelog
