@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.0.0-beta.1](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v0.1.0-beta.1...v1.0.0-beta.1) (2026-09-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* normalise branch updater public vocabulary
+* adopt WPBranchUpdater V1 namespace
+
+### Code Refactoring
+
+* adopt WPBranchUpdater V1 namespace ([02ee944](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/commit/02ee94485fdaaf0cd107dbaec31d6af9a302367a))
+* normalise branch updater public vocabulary ([2bd27da](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/commit/2bd27daa5de5a0c247159bfd8ab444b484f2db75))
+
 ## 0.1.0-beta.1 (2026-09-09)
 
 ### Features
