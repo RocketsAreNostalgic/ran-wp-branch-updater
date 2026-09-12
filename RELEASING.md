@@ -46,6 +46,18 @@ The variable acknowledges that setting; it does not enable it.
    before changing the PR's lifecycle label. A retry after label interruption
    reconciles the existing release instead of publishing a second one.
 
+If a reviewed Release Please merge remains pending because an earlier publisher
+bug prevented publication, the same release workflow may recover that exact
+historical merge after a later successful `main` CI run. Recovery is deliberately
+bounded: there must be exactly one merged pending Release Please candidate, it
+must remain an ancestor of current `main`, its original normal-merge geometry and
+release metadata must still validate, an exact successful same-repository `main`
+CI run must exist for that historical merge, and remote tag/release state must be
+non-conflicting. The immutable publisher still creates the release at the
+historical Release Please merge SHA and verifies exact readback before reconciling
+the lifecycle label. Recovery is not authority to publish an arbitrary old
+commit or to synthesize/move a tag manually.
+
 Do not create manual release tags, move existing tags, bypass failed checks, or
 edit generated version/changelog content outside a reviewed release correction.
 Release Please prepares PRs; this repository's separate publisher owns releases.
@@ -65,5 +77,5 @@ There is no claimed `0.1.0` release and no local path repository requirement.
 
 The initial bootstrap boundary is the fresh repository's seed commit. The
 following `feat` commit supplies the first release's source and changelog scope.
-See the [Release Please manifest reference](https://github.com/googleapis/release-please/blob/main/docs/manifest-releaser.md)
+See the [Release Please manifest reference](https://github.com/googleapis/release-please/main/docs/manifest-releaser.md)
 and [GitHub immutable releases documentation](https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/establish-provenance-and-integrity/prevent-release-changes).
