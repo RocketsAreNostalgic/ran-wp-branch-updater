@@ -167,11 +167,13 @@ $stale = $bootstrap( new BitbucketFixtureProvider( $zip, 'new' ), $store, $root 
 $assert( $stale->deploy( expectedCommit: 'old' ) === 'provider_failed', 'stale head is a closed pre-fence outcome' );
 $assert( $store->get( $stale->attemptId() )['state'] === 'failed', 'stale head rejects pre-fence' );
 
-$wrongRepository = $bootstrap( new GitHubFixtureProvider( $zip, 'abc123', 'wrong-id' ), $store, $root . '/archives', new RecordingExecutor(), $lock )->plugin( repository: 'acme/demo', repositoryId: 'fixture-1', branch: 'main', pluginFile: 'demo/demo.php', subdirectory: 'demo' )->deploy( expectedCommit: 'abc123' );
-$assert( $wrongRepository === 'provider_failed', 'provider identity is a closed pre-fence outcome' );
+$wrongRepository = $bootstrap( new GitHubFixtureProvider( $zip, 'abc123', 'wrong-id' ), $store, $root . '/archives', new RecordingExecutor(), $lock )->plugin( repository: 'acme/demo', repositoryId: 'fixture-1', branch: 'main', pluginFile: 'demo/demo.php', subdirectory: 'demo' );
+$assert( $wrongRepository->deploy( expectedCommit: 'abc123' ) === 'provider_failed', 'provider identity is a closed pre-fence outcome' );
+$assert( $store->get( $wrongRepository->attemptId() )['state'] === 'failed', 'provider repository identity rejects pre-fence' );
 
 $failing = $bootstrap( new GitHubFixtureProvider( $zip, 'abc123' ), $store, $root . '/archives', new RecordingExecutor( true ), $lock )->plugin( repository: 'acme/demo', repositoryId: 'fixture-1', branch: 'main', pluginFile: 'demo/demo.php', subdirectory: 'demo' );
 $assert( $failing->deploy( expectedCommit: 'abc123' ) === 'restoration_uncertain', 'post-fence failure is a closed outcome' );
+$assert( $store->get( $failing->attemptId() )['state'] === 'needs_attention', 'post-fence failure is durable attention' );
 $assert( ! glob( $root . '/archives/*' ), 'failure cleans exact archive' );
 
 $recoveryStore = new FileAttemptStore( $root . '/recovery-attempts.json' );
