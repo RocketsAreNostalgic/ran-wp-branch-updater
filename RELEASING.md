@@ -77,5 +77,5 @@ There is no claimed `0.1.0` release and no local path repository requirement.
 
 The initial bootstrap boundary is the fresh repository's seed commit. The
 following `feat` commit supplies the first release's source and changelog scope.
-See the [Release Please manifest reference](https://github.com/googleapis/release-please/main/docs/manifest-releaser.md)
+See the [Release Please manifest reference](https://github.com/googleapis/release-please/blob/main/docs/manifest-releaser.md)
 and [GitHub immutable releases documentation](https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/establish-provenance-and-integrity/prevent-release-changes).
