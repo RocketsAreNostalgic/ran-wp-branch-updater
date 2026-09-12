@@ -49,14 +49,15 @@ The variable acknowledges that setting; it does not enable it.
 If a reviewed Release Please merge remains pending because an earlier publisher
 bug prevented publication, the same release workflow may recover that exact
 historical merge after a later successful `main` CI run. Recovery is deliberately
-bounded: there must be exactly one merged pending Release Please candidate, it
-must remain an ancestor of current `main`, its original normal-merge geometry and
-release metadata must still validate, an exact successful same-repository `main`
-CI run must exist for that historical merge, and remote tag/release state must be
-non-conflicting. The immutable publisher still creates the release at the
-historical Release Please merge SHA and verifies exact readback before reconciling
-the lifecycle label. Recovery is not authority to publish an arbitrary old
-commit or to synthesize/move a tag manually.
+bounded: there must be exactly one merged pending Release Please candidate, no
+later merged Release Please candidate may succeed it, it must remain an ancestor
+of current `main`, its original normal-merge geometry and release metadata must
+still validate, an exact successful same-repository `main` CI run must exist for
+that historical merge, and remote tag/release state must be non-conflicting. The
+immutable publisher still creates the release at the historical Release Please
+merge SHA and verifies exact readback before reconciling the lifecycle label.
+Recovery is not authority to publish an arbitrary old commit or to synthesize or
+move a tag manually.
 
 Do not create manual release tags, move existing tags, bypass failed checks, or
 edit generated version/changelog content outside a reviewed release correction.
