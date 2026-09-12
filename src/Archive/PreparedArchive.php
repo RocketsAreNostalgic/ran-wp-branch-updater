@@ -10,7 +10,12 @@ use RuntimeException;
 
 /** Exact-byte custody from provider download through the WordPress boundary. */
 final class PreparedArchive implements PreparedPackageArtifact {
+	public const DEFAULT_MAXIMUM_ARTIFACT_BYTES = 52428800;
+
+	private const EXPANDED_RATIO = 4;
+
 	private bool $cleaned = false;
+
 	private function __construct(
 		private string $path,
 		public readonly string $resolvedRef,
@@ -18,7 +23,14 @@ final class PreparedArchive implements PreparedPackageArtifact {
 		private string $digest,
 		public readonly string $version
 	) {}
-	public static function downloadAndValidate( ArchiveOffer $offer, BranchDeploymentDeclaration $d, string $directory ): self {
+
+	public static function downloadAndValidate(
+		ArchiveOffer $offer,
+		BranchDeploymentDeclaration $d,
+		string $directory,
+		int $maximumArtifactBytes = self::DEFAULT_MAXIMUM_ARTIFACT_BYTES
+	): self {
+		$maximumExpandedBytes = self::maximumExpandedBytes( $maximumArtifactBytes );
 		if ( ( file_exists( $directory ) || is_link( $directory ) ) && ( is_link( $directory ) || ! is_dir( $directory ) ) ) {
 			throw new RuntimeException( 'Archive directory is unsafe.' );
 		}
@@ -41,7 +53,12 @@ final class PreparedArchive implements PreparedPackageArtifact {
 			}
 			$offer->acquire( $path );
 			$identity = self::identity( $path );
-			if ( null === $identity || $identity['dev'] !== $created['dev'] || $identity['ino'] !== $created['ino'] || $identity['size'] < 1 || $identity['size'] > 52428800 ) {
+			if ( null === $identity
+				|| $identity['dev'] !== $created['dev']
+				|| $identity['ino'] !== $created['ino']
+				|| $identity['size'] < 1
+				|| $identity['size'] > $maximumArtifactBytes
+			) {
 				throw new RuntimeException( 'Archive file identity or size is invalid.' );
 			}
 			$digest = hash_file( 'sha256', $path );
@@ -52,8 +69,8 @@ final class PreparedArchive implements PreparedPackageArtifact {
 				$path,
 				$d,
 				'update' === $d->operation ? $d->installedIdentifier : null,
-				52428800,
-				209715200,
+				$maximumArtifactBytes,
+				$maximumExpandedBytes,
 				function_exists( 'get_bloginfo' ) ? (string) get_bloginfo( 'version' ) : ''
 			);
 			return new self( $path, $offer->resolvedRef, $identity, $digest, $inspection['expected_version'] );
@@ -71,21 +88,26 @@ final class PreparedArchive implements PreparedPackageArtifact {
 			throw $e;
 		}
 	}
+
 	public function path(): string {
 		$this->assertUnchanged();
 		return $this->path;
 	}
+
 	public function getPath(): string {
 		return $this->path();
 	}
+
 	public function getExpectedVersion(): string {
 		return $this->version;
 	}
+
 	public function assertUnchanged(): void {
 		if ( $this->cleaned || self::identity( $this->path ) !== $this->identity || ! hash_equals( $this->digest, (string) hash_file( 'sha256', $this->path ) ) ) {
 			throw new RuntimeException( 'Prepared archive changed before use.' );
 		}
 	}
+
 	public function cleanup(): void {
 		if ( $this->cleaned ) {
 			return;
@@ -96,6 +118,15 @@ final class PreparedArchive implements PreparedPackageArtifact {
 		}
 		$this->cleaned = true;
 	}
+
+	private static function maximumExpandedBytes( int $maximumArtifactBytes ): int {
+		if ( $maximumArtifactBytes < 1 || $maximumArtifactBytes > intdiv( PHP_INT_MAX, self::EXPANDED_RATIO ) ) {
+			throw new RuntimeException( 'Archive size limit is invalid.' );
+		}
+
+		return $maximumArtifactBytes * self::EXPANDED_RATIO;
+	}
+
 	private static function identity( string $path ): ?array {
 		clearstatcache( true, $path );
 		$s = @lstat( $path );
