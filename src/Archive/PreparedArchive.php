@@ -12,8 +12,7 @@ use RuntimeException;
 final class PreparedArchive implements PreparedPackageArtifact {
 	public const DEFAULT_MAXIMUM_ARTIFACT_BYTES = 52428800;
 
-	private const MAXIMUM_ARTIFACT_BYTES = 1073741824;
-	private const EXPANDED_RATIO          = 4;
+	private const EXPANDED_RATIO = 4;
 
 	private bool $cleaned = false;
 
@@ -121,22 +120,17 @@ final class PreparedArchive implements PreparedPackageArtifact {
 		$this->cleaned = true;
 	}
 
-	private static function maximumArtifactBytes( mixed $value ): int {
-		if (
-			( ! is_int( $value ) && ( ! is_string( $value ) || preg_match( '/^[1-9][0-9]*$/D', $value ) !== 1 ) )
-			|| ( is_string( $value ) && ( (int) $value < 1 || (string) (int) $value !== $value ) )
-			|| (int) $value < 1
-			|| (int) $value > self::MAXIMUM_ARTIFACT_BYTES
-		) {
-			throw new RuntimeException( 'Maximum artifact bytes must be a canonical positive integer not exceeding 1 GiB.' );
+	private static function maximumArtifactBytes( mixed $maximumArtifactBytes ): int {
+		if ( ! is_int( $maximumArtifactBytes ) || $maximumArtifactBytes < 1 ) {
+			throw new RuntimeException( 'Maximum artifact bytes is invalid.' );
 		}
 
-		return (int) $value;
+		return $maximumArtifactBytes;
 	}
 
 	private static function maximumExpandedBytes( int $maximumArtifactBytes ): int {
 		if ( $maximumArtifactBytes > intdiv( PHP_INT_MAX, self::EXPANDED_RATIO ) ) {
-			throw new RuntimeException( 'Archive expanded-size limit cannot be represented safely on this platform.' );
+			throw new RuntimeException( 'Maximum artifact bytes is invalid for expanded archive validation.' );
 		}
 
 		return $maximumArtifactBytes * self::EXPANDED_RATIO;
