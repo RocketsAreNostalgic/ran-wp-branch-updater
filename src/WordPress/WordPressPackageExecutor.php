@@ -17,7 +17,7 @@ final class WordPressPackageExecutor implements PackageExecutor {
 	public function execute( BranchDeploymentDeclaration $d, PreparedArchive $archive ): void {
 		$result = $this->executeCore( $d, $archive );
 		if ( ! $result->isSuccessful() ) {
-			throw new RuntimeException( 'WordPress execution failed: ' . ( $result->getFailure()?->value ?? 'unknown' ) );
+			throw new RuntimeException( 'WordPress execution failed: ' . $result->getFailure()->value );
 		}
 	}
 	public function executeCore( BranchDeploymentDeclaration $d, PreparedArchive $archive ): CorePackageExecutionResult {
@@ -29,6 +29,7 @@ final class WordPressPackageExecutor implements PackageExecutor {
 			array( 'install', 'theme' ) => $this->core->installTheme( $archive, $d->slug, $d->subdirectory ),
 			array( 'update', 'plugin' ) => $this->core->updatePlugin( $archive, $d->slug, $d->subdirectory, $d->installedIdentifier ?? $d->slug . '/' . $d->slug . '.php' ),
 			array( 'update', 'theme' ) => $this->core->updateTheme( $archive, $d->slug, $d->subdirectory, $d->installedIdentifier ?? $d->slug ),
+			default => throw new RuntimeException( 'Unsupported package operation.' ),
 		};
 	}
 	public function preflight( BranchDeploymentDeclaration $d, PreparedArchive $archive ): array {

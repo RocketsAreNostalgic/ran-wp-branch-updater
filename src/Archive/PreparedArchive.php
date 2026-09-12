@@ -39,6 +39,7 @@ final class PreparedArchive implements PreparedPackageArtifact {
 			throw new RuntimeException( 'Cannot create private archive directory.' );
 		}
 		chmod( $directory, 0700 );
+		// @phpstan-ignore booleanOr.leftAlwaysFalse (retain symlink recheck at the custody boundary)
 		if ( is_link( $directory ) || ( fileperms( $directory ) & 0777 ) !== 0700 ) {
 			throw new RuntimeException( 'Archive directory is not private.' );
 		}
