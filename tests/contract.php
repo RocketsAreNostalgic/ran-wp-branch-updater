@@ -6,11 +6,14 @@ require dirname( __DIR__ ) . '/vendor/autoload.php';
 use RAN\WPBranchUpdater\V1\Archive\ArchiveOffer;
 use RAN\WPBranchUpdater\V1\Archive\PreparedArchive;
 use RAN\WPBranchUpdater\V1\BitbucketFixtureProvider;
+use RAN\WPBranchUpdater\V1\Contract\BranchProvider;
 use RAN\WPBranchUpdater\V1\GitHubFixtureProvider;
 use RAN\WPBranchUpdater\V1\Persistence\FileAttemptStore;
 use RAN\WPBranchUpdater\V1\Persistence\FileMutationLock;
 use RAN\WPBranchUpdater\V1\RecordingExecutor;
+use RAN\WPBranchUpdater\V1\Runtime\AdmittedBranchStageFailure;
 use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
+use RAN\WPBranchUpdater\V1\Runtime\ProviderArchiveSource;
 
 $buildRoot = __DIR__ . '/build/harness';
 if ( ! is_dir( $buildRoot ) && ! mkdir( $buildRoot, 0700, true ) ) {
@@ -59,43 +62,87 @@ try {
 }
 unlink( $tamperedPath );
 
-$limitAcquisitions = 0;
-$limitOffer = static function () use ( $zip, &$limitAcquisitions ): ArchiveOffer {
-	return new ArchiveOffer(
-		'fixture',
-		'fixture-1',
-		'abc123',
-		static function ( string $destination ) use ( $zip, &$limitAcquisitions ): void {
-			++$limitAcquisitions;
-			if ( ! copy( $zip, $destination ) ) {
-				throw new \RuntimeException( 'Cannot copy artifact-limit fixture.' );
-			}
-		},
-		static function (): void {}
-	);
+$providerFactory = static function ( string $archive ): BranchProvider {
+	return new class( $archive ) implements BranchProvider {
+		public int $acquisitions = 0;
+		/** @var list<int> */
+		public array $limits = array();
+
+		public function __construct( private readonly string $archive ) {}
+
+		public function prepare( BranchDeploymentDeclaration $deployment ): ArchiveOffer {
+			return new ArchiveOffer(
+				'limit-fixture',
+				$deployment->repositoryId,
+				$deployment->expectedHead ?? 'abc123',
+				function ( string $destination, int $maximumArtifactBytes ): void {
+					++$this->acquisitions;
+					$this->limits[] = $maximumArtifactBytes;
+					$size           = filesize( $this->archive );
+					if ( false === $size || $size < 1 || $size > $maximumArtifactBytes ) {
+						throw new \RuntimeException( 'Provider acquisition limit reached.' );
+					}
+					if ( ! copy( $this->archive, $destination ) ) {
+						throw new \RuntimeException( 'Cannot copy artifact-limit fixture.' );
+					}
+				},
+				static function (): void {}
+			);
+		}
+	};
 };
-$configuredArtifact = PreparedArchive::downloadAndValidate(
-	$limitOffer(),
-	$deploy( 'configured-limit', 'abc123' ),
-	$root . '/archives',
-	536870912
-);
-$configuredArtifact->cleanup();
-$assert( 1 === $limitAcquisitions, 'configured 512 MiB artifact limit acquires once' );
-foreach ( array( 0, '536870912', intdiv( PHP_INT_MAX, 4 ) + 1 ) as $invalidLimit ) {
-	try {
-		PreparedArchive::downloadAndValidate(
-			$limitOffer(),
-			$deploy( 'invalid-limit', 'abc123' ),
-			$root . '/archives',
-			$invalidLimit
-		);
-		$assert( false, 'invalid artifact limit must fail' );
-	} catch ( \RuntimeException $expected ) {
-		$assert( str_contains( $expected->getMessage(), 'Maximum artifact bytes' ), 'invalid artifact limit uses the closed configuration failure' );
-	}
+
+$fixtureBytes = filesize( $zip );
+$assert( is_int( $fixtureBytes ) && $fixtureBytes > 1, 'artifact-limit fixture has measurable bytes' );
+$boundedProvider = $providerFactory( $zip );
+$boundedSource   = new ProviderArchiveSource( $boundedProvider, $root . '/archives', $fixtureBytes );
+$boundedArtifact = $boundedSource->prepare( $deploy( 'configured-limit', 'abc123' ), null );
+$assert( 1 === $boundedProvider->acquisitions, 'configured source acquires once' );
+$assert( array( $fixtureBytes ) === $boundedProvider->limits, 'configured source forwards the exact provider acquisition ceiling' );
+$boundedArtifact->cleanup();
+
+$smallProvider = $providerFactory( $zip );
+$smallLimit    = $fixtureBytes - 1;
+try {
+	( new ProviderArchiveSource( $smallProvider, $root . '/archives', $smallLimit ) )->prepare( $deploy( 'small-limit', 'abc123' ), null );
+	$assert( false, 'provider acquisition must reject an artifact beyond the configured ceiling' );
+} catch ( AdmittedBranchStageFailure $expected ) {
+	$assert( 'archive_integrity_failed' === $expected->outcomeCode, 'provider acquisition limit maps to archive integrity failure' );
 }
-$assert( 1 === $limitAcquisitions, 'invalid artifact limits fail before acquisition' );
+$assert( 1 === $smallProvider->acquisitions, 'bounded provider is invoked once for an over-limit artifact' );
+$assert( array( $smallLimit ) === $smallProvider->limits, 'over-limit provider sees the configured ceiling before writing' );
+$assert( ! glob( $root . '/archives/*' ), 'over-limit provider acquisition leaves no archive behind' );
+
+foreach ( array( 0, '536870912', intdiv( PHP_INT_MAX, 4 ) + 1 ) as $invalidLimit ) {
+	$invalidProvider = $providerFactory( $zip );
+	try {
+		( new ProviderArchiveSource( $invalidProvider, $root . '/archives', $invalidLimit ) )->prepare( $deploy( 'invalid-limit', 'abc123' ), null );
+		$assert( false, 'invalid artifact limit must fail' );
+	} catch ( AdmittedBranchStageFailure $expected ) {
+		$assert( 'archive_integrity_failed' === $expected->outcomeCode, 'invalid artifact limit uses the closed source failure' );
+	}
+	$assert( 0 === $invalidProvider->acquisitions, 'invalid artifact limit fails before provider acquisition' );
+}
+
+$expandedZip     = $root . '/expanded-fixture.zip';
+$expandedContent = "<?php\n/*\nPlugin Name: Demo\nVersion: 1.2.3\n*/\n" . str_repeat( 'A', 1048576 );
+$z               = new ZipArchive();
+$z->open( $expandedZip, ZipArchive::CREATE );
+$z->addFromString( 'repository/demo/demo.php', $expandedContent );
+$z->close();
+$expandedLimit = filesize( $expandedZip );
+$assert( is_int( $expandedLimit ) && $expandedLimit > 0, 'expanded-limit fixture has measurable compressed bytes' );
+$assert( strlen( $expandedContent ) > $expandedLimit * 4, 'expanded-limit fixture crosses the configured 4x boundary' );
+$expandedProvider = $providerFactory( $expandedZip );
+try {
+	( new ProviderArchiveSource( $expandedProvider, $root . '/archives', $expandedLimit ) )->prepare( $deploy( 'expanded-limit', 'abc123' ), null );
+	$assert( false, 'configured 4x expanded archive ceiling must reject the fixture' );
+} catch ( AdmittedBranchStageFailure $expected ) {
+	$assert( 'archive_integrity_failed' === $expected->outcomeCode, 'expanded archive limit maps to archive integrity failure' );
+}
+$assert( 1 === $expandedProvider->acquisitions, 'expanded-limit fixture is acquired once before ZIP inspection' );
+$assert( array( $expandedLimit ) === $expandedProvider->limits, 'expanded-limit path retains the configured compressed ceiling' );
+$assert( ! glob( $root . '/archives/*' ), 'expanded-limit rejection cleans the acquired archive' );
 
 $stale = $bootstrap( new BitbucketFixtureProvider( $zip, 'new' ), $store, $root . '/archives', new RecordingExecutor(), $lock )->plugin( repository: 'acme/demo', repositoryId: 'fixture-1', branch: 'main', pluginFile: 'demo/demo.php', subdirectory: 'demo' );
 $assert( $stale->deploy( expectedCommit: 'old' ) === 'provider_failed', 'stale head is a closed pre-fence outcome' );
@@ -120,4 +167,4 @@ $recoveryStore->fence( 'stopped-after-fence' );
 $recoveryStore->recoverStopped( 'stopped-after-fence' );
 $assert( $recoveryStore->get( 'stopped-after-fence' )['state'] === 'needs_attention', 'fenced recovery does not retry' );
 
-echo "PASS branch package harness: github + bitbucket fixture contracts, ZIP custody, artifact limits, stale rejection, cleanup, durable recovery\n";
+echo "PASS branch package harness: github + bitbucket fixture contracts, ZIP custody, bounded artifact limits, stale rejection, cleanup, durable recovery\n";
