@@ -3,6 +3,7 @@
 declare(strict_types=1);
 require dirname( __DIR__ ) . '/vendor/autoload.php';
 
+use RAN\WPBranchUpdater\V1\Archive\ArchiveOffer;
 use RAN\WPBranchUpdater\V1\Archive\PreparedArchive;
 use RAN\WPBranchUpdater\V1\BitbucketFixtureProvider;
 use RAN\WPBranchUpdater\V1\GitHubFixtureProvider;
@@ -58,6 +59,52 @@ try {
 }
 unlink( $tamperedPath );
 
+$limitAcquisitions = 0;
+$limitOffer = static function () use ( $zip, &$limitAcquisitions ): ArchiveOffer {
+	return new ArchiveOffer(
+		'fixture',
+		'fixture-1',
+		'abc123',
+		static function ( string $destination ) use ( $zip, &$limitAcquisitions ): void {
+			++$limitAcquisitions;
+			if ( ! copy( $zip, $destination ) ) {
+				throw new \RuntimeException( 'Cannot copy artifact-limit fixture.' );
+			}
+		},
+		static function (): void {}
+	);
+};
+$configuredArtifact = PreparedArchive::downloadAndValidate(
+	$limitOffer(),
+	$deploy( 'configured-limit', 'abc123' ),
+	$root . '/archives',
+	'536870912'
+);
+$configuredArtifact->cleanup();
+$assert( 1 === $limitAcquisitions, 'canonical configured artifact limit acquires once' );
+$maximumArtifact = PreparedArchive::downloadAndValidate(
+	$limitOffer(),
+	$deploy( 'maximum-limit', 'abc123' ),
+	$root . '/archives',
+	1073741824
+);
+$maximumArtifact->cleanup();
+$assert( 2 === $limitAcquisitions, 'release-compatible 1 GiB package ceiling is accepted' );
+foreach ( array( 0, '0', '01', 1073741825 ) as $invalidLimit ) {
+	try {
+		PreparedArchive::downloadAndValidate(
+			$limitOffer(),
+			$deploy( 'invalid-limit', 'abc123' ),
+			$root . '/archives',
+			$invalidLimit
+		);
+		$assert( false, 'invalid artifact limit must fail' );
+	} catch ( \RuntimeException $expected ) {
+		$assert( str_contains( $expected->getMessage(), 'Maximum artifact bytes' ), 'invalid artifact limit uses the closed configuration failure' );
+	}
+}
+$assert( 2 === $limitAcquisitions, 'invalid artifact limits fail before acquisition' );
+
 $stale = $bootstrap( new BitbucketFixtureProvider( $zip, 'new' ), $store, $root . '/archives', new RecordingExecutor(), $lock )->plugin( repository: 'acme/demo', repositoryId: 'fixture-1', branch: 'main', pluginFile: 'demo/demo.php', subdirectory: 'demo' );
 $assert( $stale->deploy( expectedCommit: 'old' ) === 'provider_failed', 'stale head is a closed pre-fence outcome' );
 $assert( $store->get( $stale->attemptId() )['state'] === 'failed', 'stale head rejects pre-fence' );
@@ -81,4 +128,4 @@ $recoveryStore->fence( 'stopped-after-fence' );
 $recoveryStore->recoverStopped( 'stopped-after-fence' );
 $assert( $recoveryStore->get( 'stopped-after-fence' )['state'] === 'needs_attention', 'fenced recovery does not retry' );
 
-echo "PASS branch package harness: github + bitbucket fixture contracts, ZIP custody, stale rejection, cleanup, durable recovery\n";
+echo "PASS branch package harness: github + bitbucket fixture contracts, ZIP custody, artifact limits, stale rejection, cleanup, durable recovery\n";
