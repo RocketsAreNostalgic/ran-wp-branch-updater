@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<ruleset name="RAN WP Branch Updater Coding Standards">
+	<description>Shared RAN WordPress-library coding and PHP compatibility baseline for the branch updater.</description>
+
+	<config name="testVersion" value="8.2-"/>
+
+	<file>.</file>
+	<exclude-pattern>/vendor/</exclude-pattern>
+	<exclude-pattern>/node_modules/</exclude-pattern>
+
+	<arg name="basepath" value="."/>
+	<arg name="colors"/>
+	<arg name="extensions" value="php"/>
+	<arg name="parallel" value="4"/>
+	<arg value="sp"/>
+
+	<rule ref="RANWordPressLibrary"/>
+
+	<rule ref="WordPress-Extra">
+		<exclude name="WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid"/>
+		<exclude name="WordPress.NamingConventions.ValidVariableName"/>
+	</rule>
+
+	<rule ref="WordPress.NamingConventions.PrefixAllGlobals">
+		<exclude-pattern>/tests/</exclude-pattern>
+		<exclude-pattern>/scripts/</exclude-pattern>
+		<properties>
+			<property name="prefixes" type="array">
+				<element value="ran_wp_branch_updater"/>
+				<element value="RAN\WPBranchUpdater\V1\"/>
+			</property>
+		</properties>
+	</rule>
+</ruleset>
