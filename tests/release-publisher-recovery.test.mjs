@@ -111,6 +111,17 @@ function mockedTransport(value, options = {}) {
       if (options.noPending) return response([]);
       if (options.ambiguous) return response([canonicalPull(), releasePull(value, { number: 26 })]);
       if (options.nonAncestor) return response([releasePull(value, { merge_commit_sha: "f".repeat(40) })]);
+      if (options.taggedSuccessor) {
+        return response([
+          canonicalPull(),
+          releasePull(value, {
+            number: 26,
+            merge_commit_sha: value.current,
+            labels: [{ name: "autorelease: tagged" }],
+            title: "chore(main): release 2.0.0-beta.1",
+          }),
+        ]);
+      }
       return response([canonicalPull()]);
     }
     if (parsed.pathname.endsWith("/actions/workflows/ci.yml/runs")) {
@@ -219,6 +230,18 @@ test("recovery retries a dual lifecycle-label state without republishing", async
     mocked.calls.filter((call) => call.method === "POST" && call.path.endsWith("/releases")).length,
     releasesBefore,
   );
+});
+
+test("recovery refuses a later merged Release Please successor", async (context) => {
+  const value = fixture();
+  const mocked = mockedTransport(value, { taggedSuccessor: true });
+  context.after(environment(value, mocked.fetch));
+
+  await assert.rejects(
+    runRecovery(value.root),
+    (error) => error.code === "recovery_release_successor_conflict",
+  );
+  assert.equal(writes(mocked.calls).length, 0);
 });
 
 test("recovery no-ops when there is no pending merged release", async (context) => {
