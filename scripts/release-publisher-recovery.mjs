@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { manifestVersion, refuse, verifyReleaseDelta } from "./release-publisher-content.mjs";
+import { refuse, verifyReleaseDelta } from "./release-publisher-content.mjs";
 import {
   decidePublication,
   hydrateExactReleasePullTree,
@@ -75,8 +75,7 @@ async function pendingReleasePulls(repository) {
         const value = labels(pull);
         return pull?.state === "closed"
           && typeof pull?.merged_at === "string"
-          && value.includes(PENDING_LABEL)
-          && !value.includes(TAGGED_LABEL);
+          && value.includes(PENDING_LABEL);
       });
     }
   }
@@ -201,9 +200,6 @@ export async function runRecovery(root = process.cwd()) {
   let state = await remoteState(repository, identity.tag);
   let input = historicalInput(root, payload, repositoryId, candidateSha, hydrated, state);
   let result = decidePublication(input);
-  if (result.action === "already_published") {
-    return result;
-  }
   if (process.env.RAN_RELEASE_PUBLISHER_MUTATE !== "1") {
     refuse("mutation_disabled", "publisher mutation requires RAN_RELEASE_PUBLISHER_MUTATE=1");
   }
