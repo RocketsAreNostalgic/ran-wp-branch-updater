@@ -47,7 +47,7 @@ Archive-integrity and cleanup failures are closed outcomes when their state is k
 
 ## Standalone composition
 
-The package bootstrap composes a `BranchUpdater` using a host-supplied provider, attempt store, private archive directory, package executor, and mutation lock. Defaults use the WordPress package executor and WordPress updater lock.
+The package bootstrap composes a `BranchUpdater` using a host-supplied provider, attempt store, private archive directory, package executor, mutation lock, and optional `maximumArtifactBytes`. The artifact limit defaults to 52,428,800 bytes (50 MiB). Defaults use the WordPress package executor and WordPress updater lock.
 
 ```php
 use RAN\WPBranchUpdater\V1\Persistence\FileAttemptStore;
@@ -58,6 +58,7 @@ $branches = $configure(
     provider: $provider,
     attempts: new FileAttemptStore('/srv/private/branch-attempts.json'),
     archiveDirectory: '/srv/private/branch-archives',
+    maximumArtifactBytes: 134217728,
 );
 ```
 
