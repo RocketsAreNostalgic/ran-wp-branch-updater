@@ -78,19 +78,11 @@ $configuredArtifact = PreparedArchive::downloadAndValidate(
 	$limitOffer(),
 	$deploy( 'configured-limit', 'abc123' ),
 	$root . '/archives',
-	'536870912'
+	536870912
 );
 $configuredArtifact->cleanup();
-$assert( 1 === $limitAcquisitions, 'canonical configured artifact limit acquires once' );
-$maximumArtifact = PreparedArchive::downloadAndValidate(
-	$limitOffer(),
-	$deploy( 'maximum-limit', 'abc123' ),
-	$root . '/archives',
-	1073741824
-);
-$maximumArtifact->cleanup();
-$assert( 2 === $limitAcquisitions, 'release-compatible 1 GiB package ceiling is accepted' );
-foreach ( array( 0, '0', '01', 1073741825 ) as $invalidLimit ) {
+$assert( 1 === $limitAcquisitions, 'configured 512 MiB artifact limit acquires once' );
+foreach ( array( 0, '536870912', intdiv( PHP_INT_MAX, 4 ) + 1 ) as $invalidLimit ) {
 	try {
 		PreparedArchive::downloadAndValidate(
 			$limitOffer(),
@@ -103,7 +95,7 @@ foreach ( array( 0, '0', '01', 1073741825 ) as $invalidLimit ) {
 		$assert( str_contains( $expected->getMessage(), 'Maximum artifact bytes' ), 'invalid artifact limit uses the closed configuration failure' );
 	}
 }
-$assert( 2 === $limitAcquisitions, 'invalid artifact limits fail before acquisition' );
+$assert( 1 === $limitAcquisitions, 'invalid artifact limits fail before acquisition' );
 
 $stale = $bootstrap( new BitbucketFixtureProvider( $zip, 'new' ), $store, $root . '/archives', new RecordingExecutor(), $lock )->plugin( repository: 'acme/demo', repositoryId: 'fixture-1', branch: 'main', pluginFile: 'demo/demo.php', subdirectory: 'demo' );
 $assert( $stale->deploy( expectedCommit: 'old' ) === 'provider_failed', 'stale head is a closed pre-fence outcome' );
