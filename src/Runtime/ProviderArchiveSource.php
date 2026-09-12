@@ -16,7 +16,11 @@ final class ProviderArchiveSource implements AdmittedArchiveSource {
 	private ?ArchiveOffer $offer       = null;
 	private bool $constrainCurrentHead = false;
 
-	public function __construct( private readonly BranchProvider $provider, private readonly string $directory ) {}
+	public function __construct(
+		private readonly BranchProvider $provider,
+		private readonly string $directory,
+		private readonly int $maximumArtifactBytes = PreparedArchive::DEFAULT_MAXIMUM_ARTIFACT_BYTES
+	) {}
 
 	public function prepare( BranchDeploymentDeclaration $deployment, ?array $baseline ): AdmittedBranchArtifact {
 		try {
@@ -35,7 +39,14 @@ final class ProviderArchiveSource implements AdmittedArchiveSource {
 			throw new AdmittedBranchStageFailure( 'provider_failed' );
 		}
 		try {
-			return new PreparedArchiveArtifact( PreparedArchive::downloadAndValidate( $offer, $deployment, $this->directory ) );
+			return new PreparedArchiveArtifact(
+				PreparedArchive::downloadAndValidate(
+					$offer,
+					$deployment,
+					$this->directory,
+					$this->maximumArtifactBytes
+				)
+			);
 		} catch ( RuntimeException $failure ) {
 			throw new AdmittedBranchStageFailure( 'archive_integrity_failed' );
 		}
