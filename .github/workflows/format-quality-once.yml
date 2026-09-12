@@ -1,0 +1,41 @@
+name: Format production PHPCS once
+
+on:
+  push:
+    branches:
+      - chore/adopt-ran-quality-standards
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: true
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+        with:
+          php-version: '8.2'
+          coverage: none
+          extensions: zip
+          tools: composer:v2
+      - run: composer install --no-interaction --prefer-dist --no-progress --no-scripts
+      - name: Format shipped PHP surface only
+        run: |
+          set -euo pipefail
+          vendor/bin/phpcbf --standard=.phpcs.xml src bootstrap.php || status=$?
+          test "${status:-0}" -le 1
+          vendor/bin/phpcs --standard=.phpcs.xml -s src bootstrap.php
+      - name: Commit formatting and remove one-shot workflow
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src bootstrap.php
+          git rm .github/workflows/format-quality-once.yml
+          git commit -m "style: align production PHP with shared standards"
+          git push origin HEAD:chore/adopt-ran-quality-standards
