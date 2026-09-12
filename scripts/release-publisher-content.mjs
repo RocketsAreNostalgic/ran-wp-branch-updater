@@ -1,4 +1,4 @@
-export const BETA = /^0\.1\.0-beta\.(0|[1-9][0-9]*)$/;
+export const BETA = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-beta\.(0|[1-9][0-9]*)$/;
 export const UNRELEASED = "0.0.0";
 
 export class PublisherRefusal extends Error {
@@ -49,8 +49,8 @@ export function verifyReleaseDelta(parent, candidate) {
   if (before === UNRELEASED && after !== "0.1.0-beta.1") refuse("release_version_not_advanced", "first release must be 0.1.0-beta.1");
   if (before !== UNRELEASED && !BETA.test(before)) refuse("release_content_drift", "parent release state is invalid");
 	if (before !== UNRELEASED) {
-		const beforeParts = before.match(BETA).slice(1).map(Number);
-		const afterParts = after.match(BETA).slice(1).map(Number);
+		const beforeParts = before.match(BETA).slice(1).map(BigInt);
+		const afterParts = after.match(BETA).slice(1).map(BigInt);
 		const changed = afterParts.findIndex((part, index) => part !== beforeParts[index]);
 		if (changed < 0 || afterParts[changed] < beforeParts[changed]) refuse("release_version_not_advanced", "release version must advance");
 	}
