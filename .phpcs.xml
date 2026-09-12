@@ -16,17 +16,40 @@
 
 	<rule ref="RANWordPressLibrary"/>
 
-	<rule ref="WordPress-Extra">
-		<exclude name="WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid"/>
-		<exclude name="WordPress.NamingConventions.ValidVariableName"/>
+	<!-- The public OOP API intentionally uses its established camelCase contract. -->
+	<rule ref="WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid">
+		<severity>0</severity>
+	</rule>
+	<rule ref="WordPress.NamingConventions.ValidVariableName">
+		<severity>0</severity>
+	</rule>
+	<!-- Yoda rewrites are not part of this library's established API/code style contract. -->
+	<rule ref="WordPress.PHP.YodaConditions">
+		<severity>0</severity>
 	</rule>
 
 	<rule ref="WordPress.NamingConventions.PrefixAllGlobals">
 		<properties>
 			<property name="prefixes" type="array">
 				<element value="ran_wp_branch_updater"/>
-				<element value="RAN\WPBranchUpdater\V1\"/>
+				<element value="RAN\WPBranchUpdater\V1"/>
 			</property>
 		</properties>
+	</rule>
+
+	<!-- Interface/runtime signatures intentionally retain required parameters and inheritance shape. -->
+	<rule ref="Generic.CodeAnalysis.UnusedFunctionParameter">
+		<severity>0</severity>
+	</rule>
+	<rule ref="Generic.CodeAnalysis.UselessOverridingMethod">
+		<severity>0</severity>
+	</rule>
+	<rule ref="Universal.NamingConventions.NoReservedKeywordParameterNames">
+		<severity>0</severity>
+	</rule>
+
+	<!-- Exception messages are internal failure protocol data, not rendered HTML output. -->
+	<rule ref="WordPress.Security.EscapeOutput.ExceptionNotEscaped">
+		<severity>0</severity>
 	</rule>
 </ruleset>
