@@ -203,6 +203,24 @@ test("recovery publishes one exact historical Release Please merge and reconcile
   assert.equal(mocked.calls.filter((call) => call.method === "POST" && call.path.endsWith("/releases")).length, 1);
 });
 
+test("recovery retries a dual lifecycle-label state without republishing", async (context) => {
+  const value = fixture();
+  const mocked = mockedTransport(value);
+  context.after(environment(value, mocked.fetch));
+
+  await runRecovery(value.root);
+  const releasesBefore = mocked.calls.filter((call) => call.method === "POST" && call.path.endsWith("/releases")).length;
+  mocked.state.labels = ["autorelease: pending", "autorelease: tagged"];
+
+  const result = await runRecovery(value.root);
+  assert.equal(result.action, "already_published");
+  assert.deepEqual(mocked.state.labels, ["autorelease: tagged"]);
+  assert.equal(
+    mocked.calls.filter((call) => call.method === "POST" && call.path.endsWith("/releases")).length,
+    releasesBefore,
+  );
+});
+
 test("recovery no-ops when there is no pending merged release", async (context) => {
   const value = fixture();
   const mocked = mockedTransport(value, { noPending: true });
