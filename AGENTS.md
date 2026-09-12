@@ -2,6 +2,14 @@
 
 This is the independent `ran/wp-branch-updater` Composer library. Keep committed files suitable for public distribution and preserve the `RAN\WPBranchUpdater\V1` production namespace and PSR-4 path alignment.
 
+## RAN quality profile
+
+This repository uses the RAN `php-library` quality profile. PHP coding and compatibility ancestry comes from `ran/coding-standards` through `RANWordPressLibrary`; the tracked Composer lock binds the reviewed candidate revision until the shared package receives its first versioned release.
+
+Keep the package's actual contract local: PHP `^8.2`, the `RAN\WPBranchUpdater\V1` namespace, source paths, updater-specific tests, and justified runtime/security exceptions. Do not add a WordPress-version floor unless this package explicitly claims one, and do not copy shared rules back into local configuration.
+
+`composer check` is the ordinary deterministic PHP quality contract. It must retain strict Composer validation, shared PHPCS/PHPCompatibility checks, PHPStan, the existing architecture/archive/runner/journal/error-code/release-publisher tests, and the PHP syntax sweep. PHPCS governs the shipped `src/` plus `bootstrap.php` surface; test fixtures and maintenance scripts remain covered by syntax lint and their executable behavioral/contract tests rather than being reformatted as part of standards adoption. PHPStan starts at level 5 so adoption adds semantic analysis without redefining the package's existing public array contracts; raising the level and adding array-shape/generic contracts is a separate reviewed API-quality change. The installed no-dev consumer proof remains a separate required CI lane.
+
 Read [ARCHITECTURE.md](ARCHITECTURE.md) before changing production structure. Preserve the updater-family vocabulary by responsibility: Declaration, Provider, Adapter, Artifact, Runner, Coordinator, Journal, Store, State, Archive, Contract, Runtime, and WordPress. Do not create cosmetic symmetry with the release updater where runtime responsibilities differ.
 
 - `BranchUpdater` declares targets; `BranchDeployment` is the target handle; `BranchDeploymentDeclaration` is immutable execution data; `deploy()` remains the public mutation verb.
