@@ -196,7 +196,7 @@ export async function runRecovery(root = process.cwd()) {
   if (!associated.some((pull) => pull?.number === listedPull.number)) {
     refuse("recovery_release_association_invalid", "pending release PR is not associated with its merge commit");
   }
-  const hydrated = await hydrateExactReleasePullTree(repository, candidateSha, associated);
+  const hydrated = await hydrateExactReleasePullTree(repository, candidateSha, associated, api);
   const identity = validateCandidate(root, candidateSha);
   let state = await remoteState(repository, identity.tag);
   let input = historicalInput(root, payload, repositoryId, candidateSha, hydrated, state);
@@ -220,7 +220,7 @@ export async function runRecovery(root = process.cwd()) {
   if (!await historicalMainCiSucceeded(repository, repositoryId, candidateSha)) {
     refuse("recovery_historical_ci_missing", "historical CI proof disappeared before mutation");
   }
-  const freshHydrated = await hydrateExactReleasePullTree(repository, candidateSha, freshAssociated);
+  const freshHydrated = await hydrateExactReleasePullTree(repository, candidateSha, freshAssociated, api);
   input = historicalInput(root, payload, repositoryId, candidateSha, freshHydrated, freshState);
   result = decidePublication(input);
 
@@ -235,7 +235,7 @@ export async function runRecovery(root = process.cwd()) {
   await reconcileLabels(repository, result.pullNumber, labels(original));
 
   const finalPull = (await api(`/repos/${repository}/pulls/${result.pullNumber}`)).data;
-  const finalWithTree = (await hydrateExactReleasePullTree(repository, candidateSha, [finalPull]))[0];
+  const finalWithTree = (await hydrateExactReleasePullTree(repository, candidateSha, [finalPull], api))[0];
   decidePublication({
     ...input,
     pulls: [finalWithTree],
