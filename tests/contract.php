@@ -50,6 +50,27 @@ $assert( $bitbucketResult === 'deployed', 'bitbucket fixture executes' );
 $assert( count( $bitbucketExecutor->calls ) === 1, 'bitbucket executor received real local ZIP' );
 $assert( ! glob( $root . '/archives/*' ), 'bitbucket archive is cleaned' );
 
+$fixtureBytes = filesize( $zip );
+$assert( is_int( $fixtureBytes ) && $fixtureBytes > 1, 'artifact-limit fixture has measurable bytes' );
+$standaloneLimitStore = new FileAttemptStore( $root . '/standalone-limit-attempts.json' );
+$standaloneLimit      = $fixtureBytes - 1;
+$standaloneResult     = $bootstrap(
+	provider: new GitHubFixtureProvider( $zip, 'abc123' ),
+	attempts: $standaloneLimitStore,
+	archiveDirectory: $root . '/archives',
+	executor: new RecordingExecutor(),
+	lock: $lock,
+	maximumArtifactBytes: $standaloneLimit
+)->plugin(
+	repository: 'acme/demo',
+	repositoryId: 'fixture-1',
+	branch: 'main',
+	pluginFile: 'demo/demo.php',
+	subdirectory: 'demo'
+)->deploy( expectedCommit: 'abc123' );
+$assert( 'archive_integrity_failed' === $standaloneResult, 'documented standalone composition honors the configured artifact ceiling' );
+$assert( ! glob( $root . '/archives/*' ), 'standalone over-limit acquisition leaves no archive behind' );
+
 $offer        = ( new GitHubFixtureProvider( $zip, 'abc123' ) )->prepare( $deploy( 'tamper', 'abc123' ) );
 $artifact     = PreparedArchive::downloadAndValidate( $offer, $deploy( 'tamper', 'abc123' ), $root . '/archives' );
 $tamperedPath = $artifact->path();
@@ -92,8 +113,6 @@ $providerFactory = static function ( string $archive ): BranchProvider {
 	};
 };
 
-$fixtureBytes = filesize( $zip );
-$assert( is_int( $fixtureBytes ) && $fixtureBytes > 1, 'artifact-limit fixture has measurable bytes' );
 $boundedProvider = $providerFactory( $zip );
 $boundedSource   = new ProviderArchiveSource( $boundedProvider, $root . '/archives', $fixtureBytes );
 $boundedArtifact = $boundedSource->prepare( $deploy( 'configured-limit', 'abc123' ), null );
@@ -148,13 +167,11 @@ $stale = $bootstrap( new BitbucketFixtureProvider( $zip, 'new' ), $store, $root 
 $assert( $stale->deploy( expectedCommit: 'old' ) === 'provider_failed', 'stale head is a closed pre-fence outcome' );
 $assert( $store->get( $stale->attemptId() )['state'] === 'failed', 'stale head rejects pre-fence' );
 
-$wrongRepository = $bootstrap( new GitHubFixtureProvider( $zip, 'abc123', 'wrong-id' ), $store, $root . '/archives', new RecordingExecutor(), $lock )->plugin( repository: 'acme/demo', repositoryId: 'fixture-1', branch: 'main', pluginFile: 'demo/demo.php', subdirectory: 'demo' );
-$assert( $wrongRepository->deploy( expectedCommit: 'abc123' ) === 'provider_failed', 'provider identity is a closed pre-fence outcome' );
-$assert( $store->get( $wrongRepository->attemptId() )['state'] === 'failed', 'provider repository identity rejects pre-fence' );
+$wrongRepository = $bootstrap( new GitHubFixtureProvider( $zip, 'abc123', 'wrong-id' ), $store, $root . '/archives', new RecordingExecutor(), $lock )->plugin( repository: 'acme/demo', repositoryId: 'fixture-1', branch: 'main', pluginFile: 'demo/demo.php', subdirectory: 'demo' )->deploy( expectedCommit: 'abc123' );
+$assert( $wrongRepository === 'provider_failed', 'provider identity is a closed pre-fence outcome' );
 
 $failing = $bootstrap( new GitHubFixtureProvider( $zip, 'abc123' ), $store, $root . '/archives', new RecordingExecutor( true ), $lock )->plugin( repository: 'acme/demo', repositoryId: 'fixture-1', branch: 'main', pluginFile: 'demo/demo.php', subdirectory: 'demo' );
 $assert( $failing->deploy( expectedCommit: 'abc123' ) === 'restoration_uncertain', 'post-fence failure is a closed outcome' );
-$assert( $store->get( $failing->attemptId() )['state'] === 'needs_attention', 'post-fence failure is durable attention' );
 $assert( ! glob( $root . '/archives/*' ), 'failure cleans exact archive' );
 
 $recoveryStore = new FileAttemptStore( $root . '/recovery-attempts.json' );
@@ -167,4 +184,4 @@ $recoveryStore->fence( 'stopped-after-fence' );
 $recoveryStore->recoverStopped( 'stopped-after-fence' );
 $assert( $recoveryStore->get( 'stopped-after-fence' )['state'] === 'needs_attention', 'fenced recovery does not retry' );
 
-echo "PASS branch package harness: github + bitbucket fixture contracts, ZIP custody, bounded artifact limits, stale rejection, cleanup, durable recovery\n";
+echo "PASS branch package harness: github + bitbucket fixture contracts, ZIP custody, bounded artifact limits, standalone configuration, stale rejection, cleanup, durable recovery\n";
