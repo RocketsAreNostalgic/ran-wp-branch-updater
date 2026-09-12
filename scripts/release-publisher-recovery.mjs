@@ -61,7 +61,7 @@ function currentQualityEvent(payload, checkoutSha, mainSha) {
   return { event, repositoryId };
 }
 
-async function pendingReleasePulls(repository) {
+async function mergedReleasePulls(repository) {
   const pulls = [];
   const head = encodeURIComponent(`RocketsAreNostalgic:${RELEASE_BRANCH}`);
   for (let page = 1; page <= 10; page += 1) {
@@ -71,15 +71,31 @@ async function pendingReleasePulls(repository) {
     }
     pulls.push(...response.data);
     if (!/<[^>]+>;\s*rel="next"/.test(response.headers.get("link") ?? "")) {
-      return pulls.filter((pull) => {
-        const value = labels(pull);
-        return pull?.state === "closed"
-          && typeof pull?.merged_at === "string"
-          && value.includes(PENDING_LABEL);
-      });
+      return pulls.filter((pull) =>
+        pull?.state === "closed"
+        && typeof pull?.merged_at === "string"
+      );
     }
   }
   refuse("recovery_pull_readback_unbounded", "release pull request response exceeded ten pages");
+}
+
+function refuseConflictingSuccessor(root, releasePulls, candidatePull, candidateSha) {
+  for (const pull of releasePulls) {
+    if (pull?.number === candidatePull.number) {
+      continue;
+    }
+    const otherSha = pull?.merge_commit_sha;
+    if (!FULL_SHA.test(otherSha ?? "")) {
+      refuse("recovery_release_history_invalid", "another merged Release Please candidate has an invalid merge SHA");
+    }
+    if (isAncestor(root, candidateSha, otherSha)) {
+      refuse("recovery_release_successor_conflict", "a later merged Release Please candidate already succeeds the pending release");
+    }
+    if (!isAncestor(root, otherSha, candidateSha)) {
+      refuse("recovery_release_history_conflict", "merged Release Please history is not linearly ordered with the pending release");
+    }
+  }
 }
 
 async function historicalMainCiSucceeded(repository, repositoryId, candidateSha) {
@@ -168,7 +184,8 @@ export async function runRecovery(root = process.cwd()) {
   const mainSha = currentMain.data?.object?.sha;
   const { repositoryId } = currentQualityEvent(payload, checkoutSha, mainSha);
 
-  const pending = await pendingReleasePulls(repository);
+  const releasePulls = await mergedReleasePulls(repository);
+  const pending = releasePulls.filter((pull) => labels(pull).includes(PENDING_LABEL));
   if (pending.length === 0) {
     return { action: "none", reason: "no_pending_release" };
   }
@@ -187,6 +204,7 @@ export async function runRecovery(root = process.cwd()) {
   if (!isAncestor(root, candidateSha, checkoutSha)) {
     refuse("recovery_release_not_ancestor", "pending release merge is not an ancestor of current main");
   }
+  refuseConflictingSuccessor(root, releasePulls, listedPull, candidateSha);
   if (!await historicalMainCiSucceeded(repository, repositoryId, candidateSha)) {
     refuse("recovery_historical_ci_missing", "pending release merge has no exact successful same-repository main CI run");
   }
