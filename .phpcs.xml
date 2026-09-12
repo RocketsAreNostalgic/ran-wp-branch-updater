@@ -4,9 +4,9 @@
 
 	<config name="testVersion" value="8.2-"/>
 
-	<file>.</file>
-	<exclude-pattern>/vendor/</exclude-pattern>
-	<exclude-pattern>/node_modules/</exclude-pattern>
+	<!-- PHPCS governs the shipped library surface; syntax and contract tests cover fixtures/scripts separately. -->
+	<file>src</file>
+	<file>bootstrap.php</file>
 
 	<arg name="basepath" value="."/>
 	<arg name="colors"/>
@@ -22,8 +22,6 @@
 	</rule>
 
 	<rule ref="WordPress.NamingConventions.PrefixAllGlobals">
-		<exclude-pattern>/tests/</exclude-pattern>
-		<exclude-pattern>/scripts/</exclude-pattern>
 		<properties>
 			<property name="prefixes" type="array">
 				<element value="ran_wp_branch_updater"/>
