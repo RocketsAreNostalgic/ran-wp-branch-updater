@@ -52,7 +52,7 @@ final class PreparedArchive implements PreparedPackageArtifact {
 			if ( null === $created ) {
 				throw new RuntimeException( 'Private archive identity is invalid.' );
 			}
-			$offer->acquire( $path );
+			$offer->acquire( $path, $maximumArtifactBytes );
 			$identity = self::identity( $path );
 			if ( null === $identity
 				|| $identity['dev'] !== $created['dev']
