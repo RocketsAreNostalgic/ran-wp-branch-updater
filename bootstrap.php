@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use RAN\WPBranchUpdater\V1\Archive\PreparedArchive;
 use RAN\WPBranchUpdater\V1\Contract\BranchProvider;
 use RAN\WPBranchUpdater\V1\Contract\MutationLock;
 use RAN\WPBranchUpdater\V1\Contract\PackageExecutor;
@@ -16,7 +17,8 @@ return static function (
 	FileAttemptStore $attempts,
 	string $archiveDirectory,
 	?PackageExecutor $executor = null,
-	?MutationLock $lock = null
+	?MutationLock $lock = null,
+	mixed $maximumArtifactBytes = PreparedArchive::DEFAULT_MAXIMUM_ARTIFACT_BYTES
 ): BranchUpdater {
 	return BranchUpdater::forStandalone(
 		new StandaloneBranchRunner(
@@ -24,7 +26,8 @@ return static function (
 			$attempts,
 			$executor ?? new WordPressPackageExecutor(),
 			$archiveDirectory,
-			$lock ?? new WordPressUpdaterLock()
+			$lock ?? new WordPressUpdaterLock(),
+			$maximumArtifactBytes
 		)
 	);
 };

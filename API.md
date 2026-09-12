@@ -21,7 +21,7 @@ $outcome = $plugin->deploy(expectedCommit: $commit);
 
 `Runtime\BranchDeploymentDeclaration` contains immutable requested/admitted facts: attempt ID, package type and slug, repository identity, branch, expected head, operation, optional package subdirectory, and installed identifier.
 
-`Contract\BranchProvider` owns source-specific access. It resolves the requested branch and returns an `Archive\ArchiveOffer`. Providers must reject a stale expected head and support a fresh head verification immediately before mutation.
+`Contract\BranchProvider` owns source-specific access. It resolves the requested branch and returns an `Archive\ArchiveOffer`. Providers must reject a stale expected head and support a fresh head verification immediately before mutation. The `ArchiveOffer` acquisition callback receives the validated `maximumArtifactBytes` ceiling and must stop transport before writing more than that number of bytes. `PreparedArchive` rechecks the acquired file size afterward as defense in depth.
 
 `Archive\PreparedArchive` owns the exact local ZIP from acquisition until cleanup. Validation covers path safety, entry metadata/type, collision rules, one package root, size limits, selected subdirectory, package identity, headers, version syntax, and PHP/WordPress compatibility.
 
@@ -47,7 +47,7 @@ Archive-integrity and cleanup failures are closed outcomes when their state is k
 
 ## Standalone composition
 
-The package bootstrap composes a `BranchUpdater` using a host-supplied provider, attempt store, private archive directory, package executor, and mutation lock. Defaults use the WordPress package executor and WordPress updater lock.
+The package bootstrap composes a `BranchUpdater` using a host-supplied provider, attempt store, private archive directory, package executor, mutation lock, and optional `maximumArtifactBytes`. The artifact limit defaults to 52,428,800 bytes (50 MiB). Defaults use the WordPress package executor and WordPress updater lock.
 
 ```php
 use RAN\WPBranchUpdater\V1\Persistence\FileAttemptStore;
@@ -58,6 +58,7 @@ $branches = $configure(
     provider: $provider,
     attempts: new FileAttemptStore('/srv/private/branch-attempts.json'),
     archiveDirectory: '/srv/private/branch-archives',
+    maximumArtifactBytes: 134217728,
 );
 ```
 
@@ -106,7 +107,7 @@ The collaborators implement `Contract\AdmittedAttemptJournal`, `Contract\Admitte
 
 ## Provider boundary
 
-Production providers are host-supplied. The `GitHubFixtureProvider` and `BitbucketFixtureProvider` classes shipped in test support are local ZIP fixtures only; they are not production HTTP clients.
+Production providers are host-supplied. The `GitHubFixtureProvider` and `BitbucketFixtureProvider` classes shipped in test support are local ZIP fixtures only; they are not production HTTP clients. A provider implementation must treat the `maximumArtifactBytes` value passed to `ArchiveOffer::acquire()` as a transport ceiling, not merely as a post-download validation hint.
 
 A host remains responsible for credential handling, webhook authentication, scheduling, durable admission/deduplication, and recovery decisions. The branch package is responsible only for its declared deployment lifecycle.
 

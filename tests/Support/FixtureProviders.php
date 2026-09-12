@@ -27,7 +27,11 @@ abstract class FixtureProvider implements BranchProvider {
 			$this->name(),
 			$this->repositoryId ?? $d->repositoryId,
 			$expected,
-			static function ( string $destination ) use ( $archive ): void {
+			static function ( string $destination, int $maximumArtifactBytes ) use ( $archive ): void {
+				$size = filesize( $archive );
+				if ( false === $size || $size < 1 || $size > $maximumArtifactBytes ) {
+					throw new RuntimeException( 'Fixture archive exceeds the provider acquisition limit.' );
+				}
 				if ( ! copy( $archive, $destination ) ) {
 					throw new RuntimeException( 'Fixture archive copy failed.' );
 				}
