@@ -49,7 +49,7 @@
       "@lint"
     ],
     "validate:strict": "composer validate --strict --no-check-publish",
-    "test:release-publisher": "node --test tests/release-publisher-decision.test.mjs tests/release-publisher.test.mjs tests/release-publisher-version.test.mjs"
+    "test:release-publisher": "node --test tests/release-publisher-decision.test.mjs tests/release-publisher.test.mjs tests/release-publisher-version.test.mjs tests/release-publisher-recovery.test.mjs"
   },
   "config": {
     "platform": {
