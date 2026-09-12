@@ -43,7 +43,7 @@
     "test:identifier": "@php tests/installed-package-identifier.php",
     "test:error-code": "@php tests/core-package-error-code.php",
     "lint": "find src tests scripts -type f -name '*.php' -print0 | xargs -0 -n1 php -l && php -l bootstrap.php",
-    "standards": "phpcs --standard=.phpcs.xml --report=summary",
+    "standards": "phpcs --standard=.phpcs.xml -s",
     "standards:fix": "phpcbf --standard=.phpcs.xml --report=summary",
     "analyze": "phpstan analyse --configuration=phpstan.neon --no-progress --memory-limit=1G",
     "check": [
