@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace RAN\WPBranchUpdater\V1\Runtime;
 
+use RAN\WPBranchUpdater\V1\Archive\PreparedArchive;
 use RAN\WPBranchUpdater\V1\Contract\BranchProvider;
 use RAN\WPBranchUpdater\V1\Contract\MutationLock;
 use RAN\WPBranchUpdater\V1\Contract\PackageExecutor;
@@ -17,7 +18,8 @@ final class StandaloneBranchRunner {
 		private readonly FileAttemptStore $attempts,
 		private readonly PackageExecutor $executor,
 		private readonly string $archiveDirectory,
-		private readonly MutationLock $lock
+		private readonly MutationLock $lock,
+		private readonly mixed $maximumArtifactBytes = PreparedArchive::DEFAULT_MAXIMUM_ARTIFACT_BYTES
 	) {}
 
 	/** Returns the closed terminal outcome; normal failures remain terminal outcomes. */
@@ -26,7 +28,7 @@ final class StandaloneBranchRunner {
 		$target = new StandaloneTargetFacts( $this->executor );
 		$runner = new AdmittedBranchRunner(
 			new FileAttemptJournal( $this->attempts, $deployment->attemptId ),
-			new ProviderArchiveSource( $this->provider, $this->archiveDirectory ),
+			new ProviderArchiveSource( $this->provider, $this->archiveDirectory, $this->maximumArtifactBytes ),
 			$target,
 			new StandalonePackageExecutor( $this->executor, $target ),
 			$this->lock
