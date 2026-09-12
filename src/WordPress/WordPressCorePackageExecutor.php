@@ -125,16 +125,21 @@ class WordPressCorePackageExecutor {
 		} catch ( Throwable ) {
 			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::INVALID_REQUEST );
 		}
-		return array( 'path' => $artifact->getPath(), 'slug' => $slug, 'subdirectory' => $subdirectory, 'identifier' => $identifier );
+		return array(
+			'path'         => $artifact->getPath(),
+			'slug'         => $slug,
+			'subdirectory' => $subdirectory,
+			'identifier'   => $identifier,
+		);
 	}
 
 	private function updateOffer( string $type, PreparedPackageArtifact $artifact, string $slug, string $identifier ): object {
-		$offer = array(
-			'id' => $this->offerNamespace . '/' . $slug,
-			'slug' => $slug,
-			'new_version' => $artifact->getExpectedVersion(),
-			'package' => $artifact->getPath(),
-			'autoupdate' => true,
+		$offer          = array(
+			'id'           => $this->offerNamespace . '/' . $slug,
+			'slug'         => $slug,
+			'new_version'  => $artifact->getExpectedVersion(),
+			'package'      => $artifact->getPath(),
+			'autoupdate'   => true,
 			'requires_php' => '8.2',
 		);
 		$offer[ $type ] = $identifier;
@@ -253,7 +258,7 @@ class WordPressCorePackageExecutor {
 			return false;
 		}
 		$subdirectorySegments = null === $subdirectory ? array() : explode( '/', $subdirectory );
-		$candidates = array();
+		$candidates           = array();
 		try {
 			for ( $index = 0; $index < $zip->numFiles; ++$index ) {
 				$name = $zip->getNameIndex( $index );
@@ -296,7 +301,7 @@ class WordPressCorePackageExecutor {
 	}
 	private function mapResult( mixed $result, string $type, string $action, ?string $identifier, array $completions ): CorePackageExecutionResult {
 		$successfulInstallation = $this->isCanonicalInstallationResult( $result );
-		$requiresCompletion = true === $result || $successfulInstallation || $this->isRestoredPluginFailure( $type, $result );
+		$requiresCompletion     = true === $result || $successfulInstallation || $this->isRestoredPluginFailure( $type, $result );
 		if ( array() !== $completions || $requiresCompletion ) {
 			if ( 1 !== count( $completions ) || ! $this->completionMatches( $completions[0], $type, $action, $identifier ) ) {
 				return CorePackageExecutionResult::failed( CorePackageExecutionFailure::OPERATION_MISMATCH );
