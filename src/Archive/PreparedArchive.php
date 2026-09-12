@@ -12,7 +12,8 @@ use RuntimeException;
 final class PreparedArchive implements PreparedPackageArtifact {
 	public const DEFAULT_MAXIMUM_ARTIFACT_BYTES = 52428800;
 
-	private const EXPANDED_RATIO = 4;
+	private const MAXIMUM_ARTIFACT_BYTES = 1073741824;
+	private const EXPANDED_RATIO          = 4;
 
 	private bool $cleaned = false;
 
@@ -28,8 +29,9 @@ final class PreparedArchive implements PreparedPackageArtifact {
 		ArchiveOffer $offer,
 		BranchDeploymentDeclaration $d,
 		string $directory,
-		int $maximumArtifactBytes = self::DEFAULT_MAXIMUM_ARTIFACT_BYTES
+		mixed $maximumArtifactBytes = self::DEFAULT_MAXIMUM_ARTIFACT_BYTES
 	): self {
+		$maximumArtifactBytes = self::maximumArtifactBytes( $maximumArtifactBytes );
 		$maximumExpandedBytes = self::maximumExpandedBytes( $maximumArtifactBytes );
 		if ( ( file_exists( $directory ) || is_link( $directory ) ) && ( is_link( $directory ) || ! is_dir( $directory ) ) ) {
 			throw new RuntimeException( 'Archive directory is unsafe.' );
@@ -119,9 +121,22 @@ final class PreparedArchive implements PreparedPackageArtifact {
 		$this->cleaned = true;
 	}
 
+	private static function maximumArtifactBytes( mixed $value ): int {
+		if (
+			( ! is_int( $value ) && ( ! is_string( $value ) || preg_match( '/^[1-9][0-9]*$/D', $value ) !== 1 ) )
+			|| ( is_string( $value ) && ( (int) $value < 1 || (string) (int) $value !== $value ) )
+			|| (int) $value < 1
+			|| (int) $value > self::MAXIMUM_ARTIFACT_BYTES
+		) {
+			throw new RuntimeException( 'Maximum artifact bytes must be a canonical positive integer not exceeding 1 GiB.' );
+		}
+
+		return (int) $value;
+	}
+
 	private static function maximumExpandedBytes( int $maximumArtifactBytes ): int {
-		if ( $maximumArtifactBytes < 1 || $maximumArtifactBytes > intdiv( PHP_INT_MAX, self::EXPANDED_RATIO ) ) {
-			throw new RuntimeException( 'Archive size limit is invalid.' );
+		if ( $maximumArtifactBytes > intdiv( PHP_INT_MAX, self::EXPANDED_RATIO ) ) {
+			throw new RuntimeException( 'Archive expanded-size limit cannot be represented safely on this platform.' );
 		}
 
 		return $maximumArtifactBytes * self::EXPANDED_RATIO;
