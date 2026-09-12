@@ -19,7 +19,7 @@ final class ProviderArchiveSource implements AdmittedArchiveSource {
 	public function __construct(
 		private readonly BranchProvider $provider,
 		private readonly string $directory,
-		private readonly int $maximumArtifactBytes = PreparedArchive::DEFAULT_MAXIMUM_ARTIFACT_BYTES
+		private readonly mixed $maximumArtifactBytes = PreparedArchive::DEFAULT_MAXIMUM_ARTIFACT_BYTES
 	) {}
 
 	public function prepare( BranchDeploymentDeclaration $deployment, ?array $baseline ): AdmittedBranchArtifact {
