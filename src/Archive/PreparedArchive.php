@@ -43,7 +43,7 @@ final class PreparedArchive implements PreparedPackageArtifact {
 			throw new RuntimeException( 'Archive directory is not private.' );
 		}
 		$path = tempnam( $directory, 'ran-branch-' );
-		// @phpstan-ignore booleanOr.leftAlwaysFalse -- tempnam() can return false at runtime and archive custody must fail closed.
+		// @phpstan-ignore booleanOr.leftAlwaysFalse (runtime failure guard)
 		if ( false === $path || ! chmod( $path, 0600 ) ) {
 			throw new RuntimeException( 'Cannot create private archive file.' );
 		}
