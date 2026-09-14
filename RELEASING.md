@@ -65,16 +65,21 @@ Release Please prepares PRs; this repository's separate publisher owns releases.
 Packagist registration is a separate publication step and is not implied by a
 GitHub release.
 
-## Before the first release
+## Prerelease consumption
 
 A consuming root project can declare the GitHub VCS repository and require
-`ran/wp-branch-updater` using `dev-main`. Commit the root project's lockfile, verify its source reference
-against the reviewed full commit SHA, and explicitly allow that development
-dependency. Composer
+`ran/wp-branch-updater` using the reviewed prerelease or, while developing
+against the current source, `dev-main`. Commit the root project's lockfile and
+verify its source reference against the reviewed full commit SHA. Composer
 repository declarations are root-only and are not inherited from dependencies.
-The root also declares the `ran/updater-support` VCS repository and its reviewed
-development dependency explicitly until the first support release. Replace the development pin with an owner-approved beta tag after publication.
-There is no claimed `0.1.0` release and no local path repository requirement.
+
+`ran/updater-support` is now published and is a normal production dependency of
+the branch updater. The branch updater owns its exact support constraint; a
+consumer should not add an independent moving `dev-main` requirement. Until the
+support dependency leaves its beta line, a source-based consumer must admit beta
+packages (for example with `minimum-stability: beta` and `prefer-stable: true`)
+and declare the updater-support VCS repository so Composer can discover the
+published tag. There is no local path repository requirement.
 
 The initial bootstrap boundary is the fresh repository's seed commit. The
 following `feat` commit supplies the first release's source and changelog scope.
