@@ -59,16 +59,6 @@ merge SHA and verifies exact readback before reconciling the lifecycle label.
 Recovery is not authority to publish an arbitrary old commit or to synthesize or
 move a tag manually.
 
-One historical exception exists for Release Please PR #38. Repository rules at
-the time exposed only squash merging, producing beta.3 candidate
-`d07237618f4ae836920098e00061f728c2af8879` instead of the required two-parent
-merge. Recovery may normalize only that exact candidate after proving its sole
-parent is the recorded PR base, its tree exactly equals the Release Please head
-tree, the exact PR/head/base/version identity still matches, and all of the
-normal historical CI, ancestry, remote-state and release-content checks pass.
-No other squash or rebase candidate is admitted; normal release PRs still require
-`Create a merge commit`.
-
 Do not create manual release tags, move existing tags, bypass failed checks, or
 edit generated version/changelog content outside a reviewed release correction.
 Release Please prepares PRs; this repository's separate publisher owns releases.
