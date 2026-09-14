@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.0-beta.4](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.3...v1.0.0-beta.4) (2026-09-14)
+
+
+### Bug Fixes
+
+* **release:** recognize production dependency changes ([#43](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/43)) ([e4e9af3](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/commit/e4e9af33b449740d5f513aaf5760e7f04dc2cf7f))
+
+
+### Dependencies
+
+* pin updater-support 0.1.0-beta.2 ([#42](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/42)) ([d68b9d3](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/commit/d68b9d337cb23284a4f3ec5216b172bee413f2be))
+
 ## [1.0.0-beta.3](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.2...v1.0.0-beta.3) (2026-09-14)
 
 
