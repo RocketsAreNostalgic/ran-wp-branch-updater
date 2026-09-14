@@ -8,7 +8,7 @@
     "ext-hash": "*",
     "ext-json": "*",
     "ext-zip": "*",
-    "ran/updater-support": "dev-main"
+    "ran/updater-support": "0.1.0-beta.1"
   },
   "require-dev": {
     "phpcompatibility/php-compatibility": "10.0.0-alpha2",
@@ -46,7 +46,7 @@
     "lint": "find src tests scripts -type f -name '*.php' -print0 | xargs -0 -n1 php -l && php -l bootstrap.php",
     "standards": "phpcs --standard=.phpcs.xml -s",
     "standards:fix": "phpcbf --standard=.phpcs.xml --report=summary",
-    "analyze": "phpstan analyse --configuration=phpstan.neon --no-progress --memory-limit=1G",
+    "analyze": "phpstan analyse --configuration phpstan.neon --no-progress --memory-limit=1G",
     "check": [
       "@validate:strict",
       "@standards",
