@@ -17,8 +17,8 @@ const TREE = "200bd265af8afb10279399161be1eadef8a3fc5b";
 const VERSION = "1.0.0-beta.3";
 const RELEASE_BRANCH = "release-please--branches--main--components--ran/wp-branch-updater";
 
-function git(root, args) {
-  return execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+function git(root, args, options = {}) {
+  return execFileSync("git", args, { cwd: root, encoding: "utf8", ...options }).trim();
 }
 
 function pull(changes = {}) {
@@ -65,6 +65,63 @@ function input(changes = {}) {
     },
     ...changes,
   };
+}
+
+function recoveryFixture() {
+  const root = mkdtempSync(join(tmpdir(), "branch-updater-beta3-recovery-"));
+  git(root, ["init", "--initial-branch=main"]);
+  git(root, ["config", "user.email", "test@example.test"]);
+  git(root, ["config", "user.name", "Test"]);
+
+  const composer = JSON.stringify({ name: "ran/wp-branch-updater", type: "library" });
+  const priorHistory = "## [1.0.0-beta.2](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.1...v1.0.0-beta.2) (2026-09-12)\n\n### Bug Fixes\n\n* prior beta\n";
+  writeFileSync(join(root, "composer.json"), composer);
+  writeFileSync(join(root, ".release-please-manifest.json"), JSON.stringify({ ".": "1.0.0-beta.2" }));
+  writeFileSync(join(root, "CHANGELOG.md"), `# Changelog\n\n${priorHistory}`);
+  git(root, ["add", "."]);
+  git(root, ["commit", "-m", "chore: beta.2 fixture"]);
+  const baseReplacement = git(root, ["rev-parse", "HEAD"]);
+  git(root, ["update-ref", `refs/replace/${BASE}`, baseReplacement]);
+
+  writeFileSync(join(root, ".release-please-manifest.json"), JSON.stringify({ ".": VERSION }));
+  writeFileSync(
+    join(root, "CHANGELOG.md"),
+    `# Changelog\n\n## [${VERSION}](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.2...v${VERSION}) (2026-09-14)\n\n\n### Features\n\n* expose validated expanded archive bytes\n\n${priorHistory}`,
+  );
+  git(root, ["add", ".release-please-manifest.json", "CHANGELOG.md"]);
+  const candidateTreeReplacement = git(root, ["write-tree"]);
+  git(root, ["update-ref", `refs/replace/${TREE}`, candidateTreeReplacement]);
+  const candidateReplacement = git(
+    root,
+    ["commit-tree", TREE, "-p", BASE],
+    { input: `chore(main): release ${VERSION}\n` },
+  );
+  git(root, ["update-ref", `refs/replace/${CANDIDATE}`, candidateReplacement]);
+
+  const current = git(
+    root,
+    ["commit-tree", candidateTreeReplacement, "-p", CANDIDATE],
+    { input: "chore: recovery test head\n" },
+  );
+  git(root, ["update-ref", "refs/heads/main", current]);
+  git(root, ["symbolic-ref", "HEAD", "refs/heads/main"]);
+  git(root, ["reset", "--hard", current]);
+
+  const eventPath = join(root, "event.json");
+  writeFileSync(eventPath, JSON.stringify({
+    repository: { id: REPOSITORY_ID },
+    workflow_run: {
+      event: "push",
+      conclusion: "success",
+      head_branch: "main",
+      head_sha: current,
+      head_repository: { id: REPOSITORY_ID, full_name: REPOSITORY },
+    },
+  }));
+
+  assert.equal(git(root, ["show", "-s", "--format=%P", CANDIDATE]), BASE);
+  assert.equal(git(root, ["show", "-s", "--format=%T", CANDIDATE]), TREE);
+  return { root, current, eventPath };
 }
 
 function runRecoveryTransport(current) {
@@ -213,33 +270,15 @@ test("unrelated squash candidates remain rejected by normal publication rules", 
 });
 
 test("runRecovery publishes the exact historical beta.3 candidate and reconciles its lifecycle", async (context) => {
-  const root = process.cwd();
-  const current = git(root, ["rev-parse", "HEAD"]);
-  assert.equal(git(root, ["show", "-s", "--format=%P", CANDIDATE]), BASE);
-  assert.equal(git(root, ["show", "-s", "--format=%T", CANDIDATE]), TREE);
-  execFileSync("git", ["merge-base", "--is-ancestor", CANDIDATE, current], { cwd: root, stdio: "ignore" });
-
-  const temp = mkdtempSync(join(tmpdir(), "branch-updater-beta3-recovery-"));
-  const eventPath = join(temp, "event.json");
-  writeFileSync(eventPath, JSON.stringify({
-    repository: { id: REPOSITORY_ID },
-    workflow_run: {
-      event: "push",
-      conclusion: "success",
-      head_branch: "main",
-      head_sha: current,
-      head_repository: { id: REPOSITORY_ID, full_name: REPOSITORY },
-    },
-  }));
-
-  const mocked = runRecoveryTransport(current);
-  const restore = recoveryEnvironment(eventPath, mocked.fetch);
+  const value = recoveryFixture();
+  const mocked = runRecoveryTransport(value.current);
+  const restore = recoveryEnvironment(value.eventPath, mocked.fetch);
   context.after(() => {
     restore();
-    rmSync(temp, { recursive: true, force: true });
+    rmSync(value.root, { recursive: true, force: true });
   });
 
-  const result = await runRecovery(root);
+  const result = await runRecovery(value.root);
   assert.equal(result.action, "create_release");
   assert.equal(result.recoveredCandidateSha, CANDIDATE);
   assert.equal(mocked.state.tag.object.sha, CANDIDATE);
