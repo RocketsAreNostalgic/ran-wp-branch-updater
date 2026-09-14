@@ -17,7 +17,7 @@ if ( ! is_dir( $consumer ) && ! mkdir( $consumer, 0700, true ) ) {
 
 $manifest = array(
 	'name'         => 'ran/branch-updater-consumer-fixture',
-	'repositories'      => array(
+	'repositories' => array(
 		array(
 			'type'    => 'path',
 			'url'     => $package,
@@ -33,7 +33,6 @@ $manifest = array(
 	),
 	'require'      => array(
 		'php'                   => '^8.2',
-		'ran/updater-support'   => 'dev-main',
 		'ran/wp-branch-updater' => 'dev-main',
 	),
 );
