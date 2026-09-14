@@ -31,14 +31,6 @@ import {
 const FULL_SHA = /^[a-f0-9]{40}$/;
 const REPOSITORY = "RocketsAreNostalgic/ran-wp-branch-updater";
 const RELEASE_BRANCH = "release-please--branches--main--components--ran/wp-branch-updater";
-const BETA4_SQUASH_RECOVERY = Object.freeze({
-  candidateSha: "e325811348cc5e24ec2364483698533ca061cb59",
-  pullNumber: 44,
-  version: "1.0.0-beta.4",
-  baseSha: "e4e9af33b449740d5f513aaf5760e7f04dc2cf7f",
-  headSha: "5e719f5695543bf31dfbf41efcfce8b1838dd703",
-  treeSha: "961d8ac6b81d4641c424990b24719e1c46ecc750",
-});
 
 function isAncestor(root, ancestor, descendant) {
   try {
@@ -179,40 +171,6 @@ function historicalInput(root, payload, repositoryId, candidateSha, pulls, state
   };
 }
 
-export function normalizeRecoveryDecisionInput(input, pull) {
-  if (input?.candidateSha !== BETA4_SQUASH_RECOVERY.candidateSha) {
-    return input;
-  }
-
-  const exactCandidate = input?.identity?.candidateSha === BETA4_SQUASH_RECOVERY.candidateSha
-    && input?.identity?.version === BETA4_SQUASH_RECOVERY.version
-    && input?.commit?.sha === BETA4_SQUASH_RECOVERY.candidateSha
-    && Array.isArray(input?.commit?.parents)
-    && input.commit.parents.length === 1
-    && input.commit.parents[0]?.sha === BETA4_SQUASH_RECOVERY.baseSha
-    && input?.commit?.tree?.sha === BETA4_SQUASH_RECOVERY.treeSha
-    && pull?.number === BETA4_SQUASH_RECOVERY.pullNumber
-    && pull?.merge_commit_sha === BETA4_SQUASH_RECOVERY.candidateSha
-    && pull?.base?.sha === BETA4_SQUASH_RECOVERY.baseSha
-    && pull?.head?.sha === BETA4_SQUASH_RECOVERY.headSha
-    && pull?.head_tree_sha === BETA4_SQUASH_RECOVERY.treeSha;
-
-  if (!exactCandidate) {
-    refuse("recovery_beta4_squash_invalid", "beta.4 squash recovery identity does not match the exact historical candidate");
-  }
-
-  return {
-    ...input,
-    commit: {
-      ...input.commit,
-      parents: [
-        { sha: BETA4_SQUASH_RECOVERY.baseSha },
-        { sha: BETA4_SQUASH_RECOVERY.headSha },
-      ],
-    },
-  };
-}
-
 export async function runRecovery(root = process.cwd()) {
   const eventPath = process.env.GITHUB_EVENT_PATH;
   const repository = process.env.GITHUB_REPOSITORY;
@@ -259,10 +217,6 @@ export async function runRecovery(root = process.cwd()) {
   const identity = validateCandidate(root, candidateSha);
   let state = await remoteState(repository, identity.tag);
   let input = historicalInput(root, payload, repositoryId, candidateSha, hydrated, state);
-  input = normalizeRecoveryDecisionInput(
-    input,
-    hydrated.find((pull) => pull?.number === listedPull.number),
-  );
   let result = decidePublication(input);
   if (process.env.RAN_RELEASE_PUBLISHER_MUTATE !== "1") {
     refuse("mutation_disabled", "publisher mutation requires RAN_RELEASE_PUBLISHER_MUTATE=1");
@@ -282,10 +236,6 @@ export async function runRecovery(root = process.cwd()) {
   }
   const freshHydrated = await hydrateExactReleasePullTree(repository, candidateSha, freshAssociated, api);
   input = historicalInput(root, payload, repositoryId, candidateSha, freshHydrated, freshState);
-  input = normalizeRecoveryDecisionInput(
-    input,
-    freshHydrated.find((pull) => pull?.number === listedPull.number),
-  );
   result = decidePublication(input);
 
   if (result.action === "create_release") {
