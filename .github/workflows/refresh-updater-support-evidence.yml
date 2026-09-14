@@ -32,7 +32,7 @@ jobs:
 
       - name: Verify exact resolved version and source
         run: |
-          php -r '$lock=json_decode(file_get_contents("composer.lock"), true, 512, JSON_THROW_ON_ERROR); $p=array_values(array_filter($lock["packages"], fn($p)=>$p["name"]==="ran/updater-support")); if(count($p)!==1 || $p[0]["version"]!=="0.1.0-beta.2" || $p[0]["source"]["reference"]!=="83384bb6f4652d8988374867f4103fde63878451") { fwrite(STDERR, "Unexpected updater-support resolution\n"); exit(1); }'
+          php -r '$lock=json_decode(file_get_contents("composer.lock"), true, 512, JSON_THROW_ON_ERROR); $p=array_values(array_filter($lock["packages"], fn($p)=>$p["name"]==="ran/updater-support")); if(count($p)!==1 || $p[0]["version"]!=="v0.1.0-beta.2" || $p[0]["source"]["reference"]!=="83384bb6f4652d8988374867f4103fde63878451") { fwrite(STDERR, "Unexpected updater-support resolution\n"); exit(1); }'
           composer validate --strict --no-check-publish
 
       - name: Upload generated lock evidence
