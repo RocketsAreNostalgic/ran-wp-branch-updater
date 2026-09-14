@@ -17,7 +17,7 @@ function git(root, args) {
   return execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
 }
 
-function fixture() {
+function fixture({ squashCandidate = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), "branch-updater-recovery-"));
   git(root, ["init", "--initial-branch=main"]);
   git(root, ["config", "user.email", "test@example.test"]);
@@ -44,7 +44,12 @@ function fixture() {
   const headTree = git(root, ["show", "-s", "--format=%T", head]);
 
   git(root, ["checkout", "main"]);
-  git(root, ["merge", "--no-ff", "--no-edit", head]);
+  if (squashCandidate) {
+    git(root, ["merge", "--squash", head]);
+    git(root, ["commit", "-m", "chore(main): release 1.0.0-beta.1"]);
+  } else {
+    git(root, ["merge", "--no-ff", "--no-edit", head]);
+  }
   const candidate = git(root, ["rev-parse", "HEAD"]);
 
   writeFileSync(join(root, "ordinary.txt"), "later main\n");
@@ -277,6 +282,18 @@ test("recovery refuses a non-ancestor or ambiguous pending candidate", async () 
       restore();
     }
   }
+});
+
+test("recovery rejects one-parent historical release geometry", async (context) => {
+  const value = fixture({ squashCandidate: true });
+  const mocked = mockedTransport(value);
+  context.after(environment(value, mocked.fetch));
+
+  await assert.rejects(
+    runRecovery(value.root),
+    (error) => error.code === "release_pr_not_normal_merge",
+  );
+  assert.equal(writes(mocked.calls).length, 0);
 });
 
 test("recovery reuses normal PR geometry validation", async (context) => {
