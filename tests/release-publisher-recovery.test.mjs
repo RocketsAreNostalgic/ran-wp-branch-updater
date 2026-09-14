@@ -46,7 +46,7 @@ function fixture({ squashCandidate = false } = {}) {
   git(root, ["checkout", "main"]);
   if (squashCandidate) {
     git(root, ["merge", "--squash", head]);
-    git(root, ["commit", "-m", "chore(main): release 1.0.0-beta.1"]);
+    git(root, ["commit", "-m", "chore(main): release 1.0.0-beta.1 (#25)"]);
   } else {
     git(root, ["merge", "--no-ff", "--no-edit", head]);
   }
