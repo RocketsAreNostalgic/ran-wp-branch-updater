@@ -17,10 +17,12 @@ configure
 
 ## Install and configure
 
-At the current source-based beta, a consuming root must explicitly configure VCS repositories for both this package and `ran/updater-support`, and require both development branches. Composer does not inherit repository declarations from dependencies, and its default `stable` minimum stability will not admit a transitive development constraint on its own.
+While consuming the current prerelease line from GitHub, a root project must explicitly configure VCS repositories for both this package and `ran/updater-support`. Composer does not inherit repository declarations from dependencies. The root requires the branch updater; its exact released updater-support constraint is resolved transitively. Because that transitive support dependency is currently a beta release, the root must admit beta packages while preferring stable packages where available.
 
 ```json
 {
+  "minimum-stability": "beta",
+  "prefer-stable": true,
   "repositories": [
     {
       "type": "vcs",
@@ -32,13 +34,12 @@ At the current source-based beta, a consuming root must explicitly configure VCS
     }
   ],
   "require": {
-    "ran/wp-branch-updater": "dev-main",
-    "ran/updater-support": "dev-main"
+    "ran/wp-branch-updater": "dev-main"
   }
 }
 ```
 
-Pin the reviewed package and support revisions in the consuming release's lock file. Do not relax global `minimum-stability` solely to admit these dependencies. Load the consumer's Composer autoloader before requiring `bootstrap.php`; this package does not load a private autoloader. Configure the updater only after WordPress has loaded, and do not call `deploy()` before WordPress is available.
+Pin the reviewed package and transitive support revisions in the consuming release's lock file. Do not add a separate moving updater-support requirement: the branch updater owns that production dependency constraint. Load the consumer's Composer autoloader before requiring `bootstrap.php`; this package does not load a private autoloader. Configure the updater only after WordPress has loaded, and do not call `deploy()` before WordPress is available.
 
 ```php
 use RAN\WPBranchUpdater\V1\Persistence\FileAttemptStore;
