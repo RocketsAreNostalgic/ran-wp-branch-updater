@@ -16,8 +16,10 @@ if ( ! is_dir( $consumer ) && ! mkdir( $consumer, 0700, true ) ) {
 
 
 $manifest = array(
-	'name'         => 'ran/branch-updater-consumer-fixture',
-	'repositories' => array(
+	'name'              => 'ran/branch-updater-consumer-fixture',
+	'minimum-stability' => 'beta',
+	'prefer-stable'     => true,
+	'repositories'      => array(
 		array(
 			'type'    => 'path',
 			'url'     => $package,
@@ -31,7 +33,7 @@ $manifest = array(
 			'url'  => 'https://github.com/RocketsAreNostalgic/ran-updater-support',
 		),
 	),
-	'require'      => array(
+	'require'           => array(
 		'php'                   => '^8.2',
 		'ran/wp-branch-updater' => 'dev-main',
 	),
