@@ -21,7 +21,8 @@ final class PreparedArchive implements PreparedPackageArtifact {
 		public readonly string $resolvedRef,
 		private array $identity,
 		private string $digest,
-		public readonly string $version
+		public readonly string $version,
+		private readonly int $expandedBytes
 	) {}
 
 	public static function downloadAndValidate(
@@ -75,7 +76,7 @@ final class PreparedArchive implements PreparedPackageArtifact {
 				$maximumExpandedBytes,
 				function_exists( 'get_bloginfo' ) ? (string) get_bloginfo( 'version' ) : ''
 			);
-			return new self( $path, $offer->resolvedRef, $identity, $digest, $inspection['expected_version'] );
+			return new self( $path, $offer->resolvedRef, $identity, $digest, $inspection['expected_version'], $inspection['expanded'] );
 		} catch ( \Throwable $e ) {
 			if ( null !== $created ) {
 				$current = self::identity( $path );
@@ -102,6 +103,11 @@ final class PreparedArchive implements PreparedPackageArtifact {
 
 	public function getExpectedVersion(): string {
 		return $this->version;
+	}
+
+	public function expandedBytes(): int {
+		$this->assertUnchanged();
+		return $this->expandedBytes;
 	}
 
 	public function assertUnchanged(): void {
