@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0-beta.3](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.2...v1.0.0-beta.3) (2026-09-14)
+
+
+### Features
+
+* expose validated expanded archive bytes ([#37](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/37)) ([89da8d3](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/commit/89da8d311df577b80686d618c5b9aaaa99ef5470))
+
 ## [1.0.0-beta.2](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.1...v1.0.0-beta.2) (2026-09-12)
 
 
