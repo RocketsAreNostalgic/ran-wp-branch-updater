@@ -29,11 +29,11 @@ $assert(
 );
 
 $invalidSubdirectories = array(
-	'raw control'             => "packages/demo\n",
-	'encoded drive prefix'    => 'C%3A/packages/demo',
-	'encoded drive letter'    => '%43:/packages/demo',
-	'double encoded traversal'=> 'packages/%252e%252e/demo',
-	'decode depth exceeded'   => 'packages/%' . str_repeat( '25', 8 ) . '41',
+	'raw control'              => "packages/demo\n",
+	'encoded drive prefix'     => 'C%3A/packages/demo',
+	'encoded drive letter'     => '%43:/packages/demo',
+	'double encoded traversal' => 'packages/%252e%252e/demo',
+	'decode depth exceeded'    => 'packages/%' . str_repeat( '25', 8 ) . '41',
 );
 foreach ( $invalidSubdirectories as $label => $value ) {
 	try {
