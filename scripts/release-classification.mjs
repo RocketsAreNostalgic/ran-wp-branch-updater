@@ -83,7 +83,7 @@ export function assertReleaseClassification({
   title,
 }) {
   if (!productionRequirementsChanged(baseComposer, headComposer)) {
-    return { required: false, classification: classifyTitle(title) };
+    return { required: false, classification: null };
   }
 
   const classification = classifyTitle(title);
