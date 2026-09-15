@@ -31,7 +31,23 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
+          fetch-depth: 0
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Node for release classification
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.1.0
+        with:
+          node-version: '24.11.0'
+          check-latest: false
+
+      - name: Require release-driving squash title for production dependency changes
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          RAN_RELEASE_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          RAN_RELEASE_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RAN_RELEASE_PR_TITLE: ${{ github.event.pull_request.title }}
+        run: node scripts/release-classification.mjs
 
       - name: Set up PHP floor
         uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
