@@ -47,7 +47,7 @@ test("parses scoped and breaking Conventional Commit titles", () => {
   });
 });
 
-test("rejects non-Conventional pull request titles", () => {
+test("rejects non-Conventional pull request titles when classification is required", () => {
   assert.throws(
     () => classifyTitle("Update release classification"),
     /Conventional Commit syntax/,
@@ -78,7 +78,7 @@ test("detects production requirement changes independent of key order", () => {
   );
 });
 
-test("does not escalate require-dev-only changes", () => {
+test("does not escalate require-dev-only changes or lint unrelated titles", () => {
   const result = assertReleaseClassification({
     baseComposer,
     headComposer: {
@@ -88,11 +88,11 @@ test("does not escalate require-dev-only changes", () => {
       },
     },
     releaseConfig,
-    title: "chore: update development tooling",
+    title: "Update development tooling",
   });
 
   assert.equal(result.required, false);
-  assert.equal(result.classification.type, "chore");
+  assert.equal(result.classification, null);
 });
 
 test("accepts a visible dependency classification for production requirement changes", () => {
