@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace RAN\WPBranchUpdater\V1\Archive;
 
+use InvalidArgumentException;
+use RAN\UpdaterSupport\V1\RepositoryRelativePath;
+
 /** Normalize and validate a repository-relative package directory. */
 final class PackageSubdirectory {
 	public static function normalize( mixed $value ): ?string {
@@ -13,27 +16,15 @@ final class PackageSubdirectory {
 		if ( ! is_string( $value ) ) {
 			throw self::invalid();
 		}
-		$value = trim( $value );
-		if ( '' === $value ) {
+		if ( '' === trim( $value ) ) {
 			return null;
 		}
-		if ( str_starts_with( $value, '/' )
-			|| str_contains( $value, '\\' )
-			|| preg_match( '/^[A-Za-z]:/', $value )
-			|| preg_match( '/[\x00-\x1F\x7F]/', $value ) ) {
+
+		try {
+			return RepositoryRelativePath::normalize( $value );
+		} catch ( InvalidArgumentException ) {
 			throw self::invalid();
 		}
-		if ( str_ends_with( $value, '/' ) ) {
-			$value = substr( $value, 0, -1 );
-		}
-		$segments = explode( '/', $value );
-		foreach ( $segments as $segment ) {
-			if ( '' === $segment || '.' === $segment || '..' === $segment ) {
-				throw self::invalid();
-			}
-			self::assertDecodedSegmentIsSafe( $segment );
-		}
-		return implode( '/', $segments );
 	}
 
 	public static function slug( mixed $value ): string {
@@ -65,25 +56,7 @@ final class PackageSubdirectory {
 		return strtolower( self::installationSlug( $providerSlug, $subdirectory ) );
 	}
 
-	private static function assertDecodedSegmentIsSafe( string $segment ): void {
-		$decoded = $segment;
-		for ( $pass = 0, $limit = strlen( $segment ); $pass < $limit; ++$pass ) {
-			$next = rawurldecode( $decoded );
-			if ( $next === $decoded ) {
-				break;
-			}
-			$decoded = $next;
-			if ( '.' === $decoded
-				|| '..' === $decoded
-				|| str_contains( $decoded, '/' )
-				|| str_contains( $decoded, '\\' )
-				|| preg_match( '/[\x00-\x1F\x7F]/', $decoded ) ) {
-				throw self::invalid();
-			}
-		}
-	}
-
-	private static function invalid(): \InvalidArgumentException {
-		return new \InvalidArgumentException( 'The package subdirectory must be a normalized relative path.' );
+	private static function invalid(): InvalidArgumentException {
+		return new InvalidArgumentException( 'The package subdirectory must be a normalized relative path.' );
 	}
 }
