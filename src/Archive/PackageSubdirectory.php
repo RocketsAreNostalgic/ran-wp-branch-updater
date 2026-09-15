@@ -17,6 +17,9 @@ final class PackageSubdirectory {
 			throw self::invalid();
 		}
 		if ( '' === trim( $value ) ) {
+			if ( 1 === preg_match( '/[\x00-\x1F\x7F]/', $value ) ) {
+				throw self::invalid();
+			}
 			return null;
 		}
 
