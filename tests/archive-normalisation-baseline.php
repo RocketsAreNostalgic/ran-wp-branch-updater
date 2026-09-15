@@ -29,6 +29,7 @@ $assert(
 );
 
 $invalidSubdirectories = array(
+	'control only'             => "\n",
 	'raw control'              => "packages/demo\n",
 	'encoded drive prefix'     => 'C%3A/packages/demo',
 	'encoded drive letter'     => '%43:/packages/demo',
