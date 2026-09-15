@@ -5,6 +5,7 @@ declare(strict_types=1);
 require dirname( __DIR__ ) . '/vendor/autoload.php';
 
 use RAN\WPBranchUpdater\V1\Archive\ArchiveValidator;
+use RAN\WPBranchUpdater\V1\Archive\PackageSubdirectory;
 use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 
 $assert = static function ( bool $actual, string $message ): void {
@@ -12,6 +13,47 @@ $assert = static function ( bool $actual, string $message ): void {
 		throw new RuntimeException( 'FAIL: ' . $message );
 	}
 };
+
+$assert( null === PackageSubdirectory::normalize( null ), 'optional package subdirectory remains nullable' );
+$assert( null === PackageSubdirectory::normalize( '   ' ), 'blank package subdirectory remains nullable' );
+$assert( 'packages/demo' === PackageSubdirectory::normalize( '  packages/demo/  ' ), 'shared path primitive preserves normalization behavior' );
+$assert( 'demo' === PackageSubdirectory::slug( 'packages/demo' ), 'package subdirectory slug remains the final path segment' );
+$assert( 'demo' === PackageSubdirectory::normalizeSlug( 'demo' ), 'single-segment slug normalization remains local' );
+$assert( 'demo' === PackageSubdirectory::installationSlug( 'provider-name', 'packages/demo' ), 'subdirectory remains installation-slug authority when present' );
+$assert( 'provider-name' === PackageSubdirectory::installationSlug( 'provider-name', null ), 'provider slug remains installation fallback' );
+$assert( 'mixed' === PackageSubdirectory::deploymentSlug( 'MiXeD', null ), 'deployment slug remains lowercase' );
+$assert( 'packages/C%3A-name' === PackageSubdirectory::normalize( 'packages/C%3A-name' ), 'encoded colon outside the first segment remains valid' );
+$assert(
+	'packages/%' . str_repeat( '25', 7 ) . '41' === PackageSubdirectory::normalize( 'packages/%' . str_repeat( '25', 7 ) . '41' ),
+	'shared bounded decode depth remains accepted at the supported boundary'
+);
+
+$invalidSubdirectories = array(
+	'raw control'             => "packages/demo\n",
+	'encoded drive prefix'    => 'C%3A/packages/demo',
+	'encoded drive letter'    => '%43:/packages/demo',
+	'double encoded traversal'=> 'packages/%252e%252e/demo',
+	'decode depth exceeded'   => 'packages/%' . str_repeat( '25', 8 ) . '41',
+);
+foreach ( $invalidSubdirectories as $label => $value ) {
+	try {
+		PackageSubdirectory::normalize( $value );
+		$assert( false, 'unsafe package subdirectory unexpectedly normalized: ' . $label );
+	} catch ( InvalidArgumentException $expected ) {
+		$assert(
+			'The package subdirectory must be a normalized relative path.' === $expected->getMessage(),
+			'branch-updater exception mapping remains stable for ' . $label
+		);
+	}
+}
+
+try {
+	PackageSubdirectory::normalizeSlug( 'packages/demo' );
+	$assert( false, 'nested path must not become a provider slug' );
+} catch ( InvalidArgumentException $expected ) {
+	$assert( 'The package subdirectory must be a normalized relative path.' === $expected->getMessage(), 'slug exception mapping remains stable' );
+}
+
 $root = __DIR__ . '/build/archive-normalisation-' . bin2hex( random_bytes( 4 ) );
 if ( ! mkdir( $root, 0700, true ) ) {
 	throw new RuntimeException( 'Cannot create archive baseline fixture directory.' );
@@ -107,4 +149,4 @@ foreach ( glob( $root . '/*.zip' ) ?: array() as $path ) {
 }
 rmdir( $root );
 
-echo "PASS archive safety, identity, header, and compatibility baseline\n";
+echo "PASS archive safety, shared package-subdirectory policy, identity, header, and compatibility baseline\n";
