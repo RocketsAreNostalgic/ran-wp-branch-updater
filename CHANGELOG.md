@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0-beta.5](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.4...v1.0.0-beta.5) (2026-09-15)
+
+
+### Bug Fixes
+
+* **release:** enforce squash release classification ([#51](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/51)) ([967e92b](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/commit/967e92b5eb5b5858eb8aa0e724dcaf97292fcd49))
+
 ## [1.0.0-beta.4](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.3...v1.0.0-beta.4) (2026-09-14)
 
 
