@@ -4,20 +4,20 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "e62272fbfd1dc7f592afba9cda0729c2",
+    "content-hash": "5b5d926438712997572aeebba0c1e758",
     "packages": [
         {
             "name": "ran/updater-support",
-            "version": "v0.1.0-beta.2",
+            "version": "v0.1.0-beta.3",
             "source": {
                 "type": "git",
                 "url": "https://github.com/RocketsAreNostalgic/ran-updater-support.git",
-                "reference": "83384bb6f4652d8988374867f4103fde63878451"
+                "reference": "333e652a2662880a89361cf92b2454b81c75d61b"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/RocketsAreNostalgic/ran-updater-support/zipball/83384bb6f4652d8988374867f4103fde63878451",
-                "reference": "83384bb6f4652d8988374867f4103fde63878451",
+                "url": "https://api.github.com/repos/RocketsAreNostalgic/ran-updater-support/zipball/333e652a2662880a89361cf92b2454b81c75d61b",
+                "reference": "333e652a2662880a89361cf92b2454b81c75d61b",
                 "shasum": ""
             },
             "require": {
@@ -76,7 +76,7 @@
                 "security": "https://github.com/RocketsAreNostalgic/ran-updater-support/security/advisories/new",
                 "source": "https://github.com/RocketsAreNostalgic/ran-updater-support"
             },
-            "time": "2026-09-14T16:25:11+00:00"
+            "time": "2026-09-15T20:41:13+00:00"
         }
     ],
     "packages-dev": [
