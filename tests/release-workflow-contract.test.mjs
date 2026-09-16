@@ -7,7 +7,7 @@ const workflow = readFileSync(
 	'utf8'
 );
 
-test('release workflow authenticates the canonical CI path before mutation', () => {
+test('release job requires the canonical CI workflow path', () => {
 	const jobStart = workflow.indexOf('jobs:\n  release:');
 	const ifMarker = '    if: >-\n';
 	const ifStart = workflow.indexOf(ifMarker, jobStart);
@@ -18,14 +18,17 @@ test('release workflow authenticates the canonical CI path before mutation', () 
 		.slice(ifStart + ifMarker.length, runsOn)
 		.trimEnd()
 		.split('\n');
-	assert.ok(
-		conditionLines.every(
-			(line) => line.startsWith('      ') && !line.trimStart().startsWith('#')
-		)
-	);
+	const allLinesActive = conditionLines.every((line) => {
+		return line.startsWith('      ') && !line.trimStart().startsWith('#');
+	});
+	assert.ok(allLinesActive);
+
 	const condition = conditionLines.map((line) => line.trim()).join(' ');
-	assert.match(
-		condition,
-		/&& github\.event\.workflow_run\.path == '\.github\/workflows\/ci\.yml' &&/
-	);
+	const terms = condition
+		.replace('${{', '')
+		.replace('}}', '')
+		.split('&&')
+		.map((term) => term.trim());
+	const pathGuard = "github.event.workflow_run.path == '.github/workflows/ci.yml'";
+	assert.ok(terms.includes(pathGuard));
 });
