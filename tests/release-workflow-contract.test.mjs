@@ -38,7 +38,15 @@ test('release job requires the canonical CI workflow path', () => {
 });
 
 test('required quality cannot be manufactured without PR classification', () => {
-	assert.doesNotMatch(ciWorkflow, /^\s*workflow_dispatch:/m);
+	const onStart = ciWorkflow.indexOf('on:\n');
+	const onEnd = ciWorkflow.indexOf('\nconcurrency:', onStart);
+	assert.ok(onStart >= 0 && onEnd > onStart);
+	const triggers = ciWorkflow
+		.slice(onStart + 'on:\n'.length, onEnd)
+		.split('\n')
+		.filter((line) => /^  [a-zA-Z0-9_-]+:/.test(line))
+		.map((line) => line.trim().slice(0, -1));
+	assert.deepEqual(triggers, ['pull_request', 'push']);
 	assert.match(
 		ciWorkflow,
 		/pull_request:\n\s+types: \[opened, synchronize, reopened, edited\]/
