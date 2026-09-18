@@ -32,3 +32,27 @@ test('release job requires the canonical CI workflow path', () => {
 	const pathGuard = "github.event.workflow_run.path == '.github/workflows/ci.yml'";
 	assert.ok(terms.includes(pathGuard));
 });
+
+test('trusted release classification workflow stays on protected base', () => {
+	assert.match(classificationWorkflow, /^\s*pull_request_target:/m);
+	assert.match(
+		classificationWorkflow,
+		/ref: \$\{\{ steps\.pr\.outputs\.base_sha \}\}/
+	);
+	assert.match(
+		classificationWorkflow,
+		/git fetch --no-tags origin "\+refs\/pull\/\$\{RAN_PR_NUMBER\}\/head:refs\/remotes\/origin\/pr-head"/
+	);
+	assert.match(
+		classificationWorkflow,
+		/test "\$\(git rev-parse refs\/remotes\/origin\/pr-head\)" = "\$RAN_HEAD_SHA"/
+	);
+	assert.match(
+		classificationWorkflow,
+		/run: node scripts\/release-classification\.mjs/
+	);
+	assert.doesNotMatch(
+		classificationWorkflow,
+		/ref: \$\{\{ github\.event\.pull_request\.head\.sha \}\}/
+	);
+});
