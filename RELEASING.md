@@ -27,11 +27,8 @@ The variable acknowledges that setting; it does not enable it.
    Composer validation, PHP contract tests and lint, and publisher tests. A
    successful same-repository main push starts Release Please.
 2. Release Please opens a version PR. Approve its Actions workflow run if GitHub
-   requires approval for the bot-created PR. If that exact release-PR head has
-   no required `quality` check because GitHub suppressed the bot-created PR
-   event, make a body-only metadata edit on the unchanged PR to trigger the
-   existing `pull_request: edited` CI path. Do not change the release title or
-   source merely to trigger CI. Review the version and complete changelog diff.
+   requires approval for the bot-created PR; `CI` also supports manual dispatch
+   against the exact PR branch. Review the version and complete changelog diff.
    The first release must advance `0.0.0` to `0.1.0-beta.1`; later releases use
    Release Please's semantic prerelease version derived from the reviewed commit
    history. The publisher accepts only canonical `MAJOR.MINOR.PATCH-beta.N`
