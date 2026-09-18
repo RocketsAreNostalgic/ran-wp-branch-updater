@@ -6,6 +6,10 @@ const workflow = readFileSync(
 	new URL('../.github/workflows/release-please.yml', import.meta.url),
 	'utf8'
 );
+const classificationWorkflow = readFileSync(
+	new URL('../.github/workflows/release-classification.yml', import.meta.url),
+	'utf8'
+);
 
 test('release job requires the canonical CI workflow path', () => {
 	const jobStart = workflow.indexOf('jobs:\n  release:');
@@ -31,4 +35,37 @@ test('release job requires the canonical CI workflow path', () => {
 		.map((term) => term.trim());
 	const pathGuard = "github.event.workflow_run.path == '.github/workflows/ci.yml'";
 	assert.ok(terms.includes(pathGuard));
+});
+
+test('trusted release classification workflow stays on protected base', () => {
+	assert.match(classificationWorkflow, /^\s*pull_request_target:/m);
+	assert.match(
+		classificationWorkflow,
+		/pull_request_target:\n\s+branches: \[main\]/
+	);
+	assert.match(classificationWorkflow, /test "\$base_ref" = main/);
+	assert.match(
+		classificationWorkflow,
+		/test "\$base_repo" = "\$GITHUB_REPOSITORY"/
+	);
+	assert.match(
+		classificationWorkflow,
+		/ref: \$\{\{ steps\.pr\.outputs\.base_sha \}\}/
+	);
+	assert.match(
+		classificationWorkflow,
+		/git fetch --no-tags origin "\+refs\/pull\/\$\{RAN_PR_NUMBER\}\/head:refs\/remotes\/origin\/pr-head"/
+	);
+	assert.match(
+		classificationWorkflow,
+		/test "\$\(git rev-parse refs\/remotes\/origin\/pr-head\)" = "\$RAN_HEAD_SHA"/
+	);
+	assert.match(
+		classificationWorkflow,
+		/run: node scripts\/trusted-release-classification\.mjs/
+	);
+	assert.doesNotMatch(
+		classificationWorkflow,
+		/ref: \$\{\{ github\.event\.pull_request\.head\.sha \}\}/
+	);
 });
