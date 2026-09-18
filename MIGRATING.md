@@ -104,3 +104,5 @@ Consumers should load their normal Composer autoloader. The package does not pro
 ## No compatibility layer
 
 The previous beta namespace and class identities are intentionally unsupported after this cut. Update imports and type hints as one migration rather than relying on aliases or shims.
+
+The same hard cut applies to standalone `FileAttemptStore` journal data. The public v1 baseline accepts only states that satisfy the current transition invariants; beta-era pre-fence `needs_attention` records are rejected as malformed rather than translated. Historical beta journals must be reconciled by the host before adopting the v1 baseline. No migration helper or schema adapter is loaded at runtime.
