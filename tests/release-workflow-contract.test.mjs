@@ -6,6 +6,10 @@ const workflow = readFileSync(
 	new URL('../.github/workflows/release-please.yml', import.meta.url),
 	'utf8'
 );
+const ciWorkflow = readFileSync(
+	new URL('../.github/workflows/ci.yml', import.meta.url),
+	'utf8'
+);
 
 test('release job requires the canonical CI workflow path', () => {
 	const jobStart = workflow.indexOf('jobs:\n  release:');
@@ -31,4 +35,16 @@ test('release job requires the canonical CI workflow path', () => {
 		.map((term) => term.trim());
 	const pathGuard = "github.event.workflow_run.path == '.github/workflows/ci.yml'";
 	assert.ok(terms.includes(pathGuard));
+});
+
+test('required quality cannot be manufactured without PR classification', () => {
+	assert.doesNotMatch(ciWorkflow, /^\s*workflow_dispatch:/m);
+	assert.match(
+		ciWorkflow,
+		/pull_request:\n\s+types: \[opened, synchronize, reopened, edited\]/
+	);
+	assert.match(
+		ciWorkflow,
+		/RAN_RELEASE_PR_TITLE: \$\{\{ github\.event\.pull_request\.title \}\}/
+	);
 });
