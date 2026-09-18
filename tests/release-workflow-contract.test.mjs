@@ -6,6 +6,10 @@ const workflow = readFileSync(
 	new URL('../.github/workflows/release-please.yml', import.meta.url),
 	'utf8'
 );
+const classificationWorkflow = readFileSync(
+	new URL('../.github/workflows/release-classification.yml', import.meta.url),
+	'utf8'
+);
 
 test('release job requires the canonical CI workflow path', () => {
 	const jobStart = workflow.indexOf('jobs:\n  release:');
