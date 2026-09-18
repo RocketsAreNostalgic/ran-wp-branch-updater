@@ -74,24 +74,18 @@ if ( 'failed' !== $store->get( 'attempt' )['state'] ) {
 	throw new RuntimeException( 'Valid pre-fence failed state was rejected.' );
 }
 
-$write( array_merge( $base, array(
+$reject( array_merge( $base, array(
 	'state'       => 'needs_attention',
 	'outcome'     => 'legacy_attention',
 	'finished_at' => '2026-09-08T22:00:00+00:00',
 ) ) );
-if ( 'needs_attention' !== $store->get( 'attempt' )['state'] ) {
-	throw new RuntimeException( 'Legacy pre-fence attention state was rejected.' );
-}
 
-$write( array_merge( $base, array(
+$reject( array_merge( $base, array(
 	'state'        => 'needs_attention',
 	'resolved_ref' => 'abc123',
 	'outcome'      => 'legacy_attention',
 	'finished_at'  => '2026-09-08T22:00:00+00:00',
 ) ) );
-if ( 'needs_attention' !== $store->get( 'attempt' )['state'] ) {
-	throw new RuntimeException( 'Legacy resolved pre-fence attention state was rejected.' );
-}
 
 $write( array_merge( $base, array(
 	'state'               => 'needs_attention',
@@ -130,4 +124,4 @@ if ( 'running' !== $transitionStore->get( 'transition' )['state'] ) {
 	throw new RuntimeException( 'Rejected terminal transition mutated the journal.' );
 }
 
-echo "PASS persisted journal state invariants and legacy compatibility\n";
+echo "PASS persisted journal state invariants\n";
