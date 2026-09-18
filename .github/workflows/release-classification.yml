@@ -88,4 +88,4 @@ jobs:
           RAN_RELEASE_PR_TITLE: ${{ steps.pr.outputs.title }}
           RAN_RELEASE_PR_HEAD_REF: ${{ steps.pr.outputs.head_ref }}
           RAN_RELEASE_PR_AUTHOR: ${{ steps.pr.outputs.author }}
-        run: node scripts/release-classification.mjs
+        run: node scripts/trusted-release-classification.mjs
