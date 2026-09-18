@@ -49,7 +49,7 @@ test('trusted release classification workflow stays on protected base', () => {
 	);
 	assert.match(
 		classificationWorkflow,
-		/run: node scripts\/release-classification\.mjs/
+		/run: node scripts\/trusted-release-classification\.mjs/
 	);
 	assert.doesNotMatch(
 		classificationWorkflow,
