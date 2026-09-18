@@ -187,12 +187,9 @@ final class FileAttemptStore {
 		if ( 'succeeded' === $r['state'] ) {
 			return is_string( $r['resolved_ref'] ) && is_string( $r['mutation_started_at'] );
 		}
-		if ( 'needs_attention' === $r['state'] && null !== $r['mutation_started_at'] ) {
-			return is_string( $r['resolved_ref'] );
+		if ( 'needs_attention' === $r['state'] ) {
+			return is_string( $r['resolved_ref'] ) && is_string( $r['mutation_started_at'] );
 		}
-		// Versions before the stricter transition invariant could persist a
-		// pre-fence needs_attention record. Keep that conservative legacy state
-		// readable so it continues to block automatic target reuse after upgrade.
 		return true;
 	}
 
