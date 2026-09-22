@@ -6,6 +6,9 @@ const workflow = readFileSync(
 	new URL('../.github/workflows/release-please.yml', import.meta.url),
 	'utf8'
 );
+const releaseConfig = JSON.parse(
+	readFileSync(new URL('../release-please-config.json', import.meta.url), 'utf8')
+);
 const classificationWorkflow = readFileSync(
 	new URL('../.github/workflows/release-classification.yml', import.meta.url),
 	'utf8'
@@ -28,6 +31,7 @@ test('release workflow is a thin pinned Profile A caller', () => {
 	assert.doesNotMatch(workflow, /release-publisher/);
 	assert.doesNotMatch(workflow, /release-please-action/);
 	assert.doesNotMatch(workflow, /RAN_RELEASE_PUBLISHER/);
+	assert.equal(releaseConfig.packages['.']['skip-github-release'], undefined);
 });
 
 test('trusted release classification workflow stays on protected base', () => {
