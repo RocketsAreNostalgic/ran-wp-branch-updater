@@ -13,6 +13,7 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   baseline:
@@ -35,19 +36,54 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
+      - name: Resolve exact Release Please PR for dispatch
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        id: dispatch-pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RAN_DISPATCH_HEAD_SHA: ${{ github.sha }}
+          RAN_DISPATCH_HEAD_REF: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          expected_head='release-please--branches--main--components--ran/wp-branch-updater'
+          test "$RAN_DISPATCH_HEAD_REF" = "$expected_head"
+          pulls="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/pulls?state=open&base=main&per_page=100")"
+          candidate="$(jq -cer \
+            --arg bot 'github-actions[bot]' \
+            --arg head "$expected_head" \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg sha "$RAN_DISPATCH_HEAD_SHA" \
+            'add
+            | [.[] | select(
+                .state == "open"
+                and .user.login == $bot
+                and .base.ref == "main"
+                and .base.repo.full_name == $repository
+                and .head.ref == $head
+                and .head.repo.full_name == $repository
+                and .head.sha == $sha
+              )]
+            | if length == 1 then .[0] else error("Expected exactly one canonical Release Please pull request for dispatch.") end' \
+            <<< "$pulls")"
+          {
+            printf 'base_sha=%s\n' "$(jq -er '.base.sha | select(test("^[0-9a-f]{40}$"))' <<< "$candidate")"
+            printf 'head_sha=%s\n' "$(jq -er '.head.sha | select(test("^[0-9a-f]{40}$"))' <<< "$candidate")"
+            printf 'title=%s\n' "$(jq -er '.title | select(type == "string" and length > 0 and (contains("\n") | not))' <<< "$candidate")"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Set up Node for release classification
-        if: ${{ github.event_name == 'pull_request' }}
+        if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: '24.11.0'
           check-latest: false
 
       - name: Require release-driving squash title for production dependency changes
-        if: ${{ github.event_name == 'pull_request' }}
+        if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
         env:
-          RAN_RELEASE_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          RAN_RELEASE_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          RAN_RELEASE_PR_TITLE: ${{ github.event.pull_request.title }}
+          RAN_RELEASE_BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || steps.dispatch-pr.outputs.base_sha }}
+          RAN_RELEASE_HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || steps.dispatch-pr.outputs.head_sha }}
+          RAN_RELEASE_PR_TITLE: ${{ github.event_name == 'pull_request' && github.event.pull_request.title || steps.dispatch-pr.outputs.title }}
         run: node scripts/release-classification.mjs
 
       - name: Set up PHP floor
