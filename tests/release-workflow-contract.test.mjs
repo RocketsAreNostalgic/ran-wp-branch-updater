@@ -11,30 +11,23 @@ const classificationWorkflow = readFileSync(
 	'utf8'
 );
 
-test('release job requires the canonical CI workflow path', () => {
-	const jobStart = workflow.indexOf('jobs:\n  release:');
-	const ifMarker = '    if: >-\n';
-	const ifStart = workflow.indexOf(ifMarker, jobStart);
-	const runsOn = workflow.indexOf('\n    runs-on:', ifStart);
-
-	assert.ok(jobStart >= 0 && ifStart > jobStart && runsOn > ifStart);
-	const conditionLines = workflow
-		.slice(ifStart + ifMarker.length, runsOn)
-		.trimEnd()
-		.split('\n');
-	const allLinesActive = conditionLines.every((line) => {
-		return line.startsWith('      ') && !line.trimStart().startsWith('#');
-	});
-	assert.ok(allLinesActive);
-
-	const condition = conditionLines.map((line) => line.trim()).join(' ');
-	const terms = condition
-		.replace('${{', '')
-		.replace('}}', '')
-		.split('&&')
-		.map((term) => term.trim());
-	const pathGuard = "github.event.workflow_run.path == '.github/workflows/ci.yml'";
-	assert.ok(terms.includes(pathGuard));
+test('release workflow is a thin pinned Profile A caller', () => {
+	assert.match(workflow, /workflow_run:/);
+	assert.match(workflow, /workflows: \[CI\]/);
+	assert.match(workflow, /permissions: \{\}/);
+	assert.match(
+		workflow,
+		/uses: RocketsAreNostalgic\/\.github\/\.github\/workflows\/release-profile-a\.yml@289352e08cdf10b15d07c4e1c890f385afc3d3f5/
+	);
+	assert.match(workflow, /expected-workflow-path: \.github\/workflows\/ci\.yml/);
+	assert.match(
+		workflow,
+		/release-pr-head: release-please--branches--main--components--ran\/wp-branch-updater/
+	);
+	assert.match(workflow, /actions: write/);
+	assert.doesNotMatch(workflow, /release-publisher/);
+	assert.doesNotMatch(workflow, /release-please-action/);
+	assert.doesNotMatch(workflow, /RAN_RELEASE_PUBLISHER/);
 });
 
 test('trusted release classification workflow stays on protected base', () => {
