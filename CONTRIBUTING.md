@@ -9,6 +9,23 @@ composer install --no-interaction --prefer-dist
 composer check
 ```
 
+Focused commands use the shared PHP command contract:
+
+| Command | Scope |
+| --- | --- |
+| `composer lint:syntax` | Parser checks for `src/`, `tests/`, `scripts/` and `bootstrap.php` |
+| `composer standards` | PHPCS/WPCS/PHPCompatibility over shipped `src/` and `bootstrap.php` |
+| `composer standards:fix` | PHPCBF with the same rules and source paths |
+| `composer analyze` | Blocking PHPStan level 5 over `src/` |
+| `composer test` | All ordinary package and release-control contract tests |
+
+`composer check` retains syntax, standards, analysis and test checks, plus strict
+manifest validation. `standards:fix` is a manual source edit. The former
+`composer lint` command is now `composer lint:syntax`.
+Individual `test:*` commands remain available for focused work. The installed
+consumer proof below stays outside this aggregate because it creates and
+resolves a separate Composer project; CI still requires it.
+
 For changes to runtime PHP or Composer metadata, also prove a separate installed Composer consumer:
 
 ```sh
