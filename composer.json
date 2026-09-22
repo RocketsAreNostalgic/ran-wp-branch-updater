@@ -43,7 +43,6 @@
     "test:journal": "@php tests/journal-invariants.php",
     "test:identifier": "@php tests/installed-package-identifier.php",
     "test:error-code": "@php tests/core-package-error-code.php",
-    "lint": "find src tests scripts -type f -name '*.php' -print0 | xargs -0 -n1 php -l && php -l bootstrap.php",
     "standards": "phpcs --standard=.phpcs.xml -s",
     "standards:fix": "phpcbf --standard=.phpcs.xml --report=summary",
     "analyze": "phpstan analyse --configuration=phpstan.neon --no-progress --memory-limit=1G",
@@ -51,6 +50,13 @@
       "@validate:strict",
       "@standards",
       "@analyze",
+      "@test",
+      "@lint:syntax"
+    ],
+    "validate:strict": "composer validate --strict --no-check-publish",
+    "test:release-control": "node --test tests/release-workflow-contract.test.mjs tests/release-classification.test.mjs",
+    "lint:syntax": "bash -o pipefail -c 'find src tests scripts -type f -name \"*.php\" -print0 | xargs -0 -n1 php -l && php -l bootstrap.php'",
+    "test": [
       "@test:contract",
       "@test:architecture",
       "@test:archive",
@@ -60,11 +66,8 @@
       "@test:journal",
       "@test:identifier",
       "@test:error-code",
-      "@test:release-control",
-      "@lint"
-    ],
-    "validate:strict": "composer validate --strict --no-check-publish",
-    "test:release-control": "node --test tests/release-workflow-contract.test.mjs tests/release-classification.test.mjs"
+      "@test:release-control"
+    ]
   },
   "config": {
     "platform": {

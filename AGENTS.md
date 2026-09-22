@@ -10,6 +10,8 @@ Keep the package's actual contract local: PHP `^8.2`, the `RAN\WPBranchUpdater\V
 
 `composer check` is the ordinary deterministic PHP quality contract. It must retain strict Composer validation, shared PHPCS/PHPCompatibility checks, PHPStan, the existing architecture/archive/runner/journal/error-code and release workflow/classification tests, and the PHP syntax sweep. PHPCS governs the shipped `src/` plus `bootstrap.php` surface; test fixtures and maintenance scripts remain covered by syntax lint and their executable behavioral/contract tests rather than being reformatted as part of standards adoption. PHPStan starts at level 5 so adoption adds semantic analysis without redefining the package's existing public array contracts; raising the level and adding array-shape/generic contracts is a separate reviewed API-quality change. The installed no-dev consumer proof remains a separate required CI lane.
 
+`composer lint:syntax` is the focused parser sweep; `composer standards` / `composer standards:fix` run PHPCS/PHPCBF; `composer analyze` retains blocking level 5; `composer test` aggregates the existing ordinary tests. No analysis or fixture scope changes are implied by these command names.
+
 Read [ARCHITECTURE.md](ARCHITECTURE.md) before changing production structure. Preserve the updater-family vocabulary by responsibility: Declaration, Provider, Adapter, Artifact, Runner, Coordinator, Journal, Store, State, Archive, Contract, Runtime, and WordPress. Do not create cosmetic symmetry with the release updater where runtime responsibilities differ.
 
 - `BranchUpdater` declares targets; `BranchDeployment` is the target handle; `BranchDeploymentDeclaration` is immutable execution data; `deploy()` remains the public mutation verb.
