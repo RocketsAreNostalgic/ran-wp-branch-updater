@@ -1,87 +1,33 @@
 # Releases
 
-This package follows the RAN release-updater's exact-commit publishing process.
-Its prerelease sequence starts at `v0.1.0-beta.1`. Composer derives versions
-from Git tags; the manifest's `0.0.0` value means unreleased. Release Please
-owns later semantic version selection, including major, minor, or patch changes
-when Conventional Commit semantics require them; the publisher admits only
-canonical `MAJOR.MINOR.PATCH-beta.N` prerelease versions.
+This package uses the organisation-owned **Profile A** release lifecycle.
+
+Release Please owns semantic version selection, changelog generation, the managed release PR, tag creation, and the GitHub Release. The repository-local workflow is only a thin caller of the pinned shared Profile A contract in `RocketsAreNostalgic/.github`.
 
 ## Repository setup
 
-The repository uses `main`, protected against deletion and force pushes, with
-pull requests and the `quality` CI check required. Release PRs must use a normal
-merge commit: squash and rebase merges cannot satisfy the publisher's parent and
-tree checks. Every PR receives independent review of its exact base and head;
-merging remains an explicit owner decision.
+The repository uses protected `main` with required terminal `quality`. Production releases are immutable. `CI` supports input-free `workflow_dispatch` so the shared Profile A contract can qualify the exact bot-created Release Please PR head when GitHub suppresses recursive `pull_request` events from `GITHUB_TOKEN`.
 
-Enable GitHub Actions PR creation and immutable releases before releasing.
-Set the repository variable
-`RAN_RELEASE_PUBLISHER_IMMUTABLE_RELEASES_ACKNOWLEDGED_REPOSITORY_ID` to the exact
-numeric repository ID only after verifying immutable releases are enabled.
-The variable acknowledges that setting; it does not enable it.
+Ordinary pull requests follow the repository's approved merge policy. Publication no longer depends on a local two-parent merge proof, lifecycle-label reconciler, repository-ID acknowledgement variable, or historical publisher recovery path.
 
 ## Prepare and publish
 
-1. Merge reviewed Conventional Commits through the normal PR process. CI runs
-   Composer validation, PHP contract tests and lint, and publisher tests. A
-   successful same-repository main push starts Release Please.
-2. Release Please opens a version PR. Approve its Actions workflow run if GitHub
-   requires approval for the bot-created PR; `CI` also supports manual dispatch
-   against the exact PR branch. Review the version and complete changelog diff.
-   The first release must advance `0.0.0` to `0.1.0-beta.1`; later releases use
-   Release Please's semantic prerelease version derived from the reviewed commit
-   history. The publisher accepts only canonical `MAJOR.MINOR.PATCH-beta.N`
-   versions and independently verifies that each release advances its parent.
-3. Run independent review against the exact PR base and head, resolve findings,
-   and present the checks and normal-merge method to the owner. Merge only after
-   explicit authorization. Only the manifest version and prepended changelog
-   section may change in the release PR.
-4. Successful CI for that exact main merge permits publication. The publisher
-   verifies the PR's two parents and head tree, rechecks main and remote release
-   state, and creates one immutable prerelease targeting the exact merge SHA.
-   It publishes no uploaded assets. GitHub's source archives are the Composer
-   distribution. Conflicting or partial remote state fails closed.
-5. The publisher verifies the tag, release metadata, notes and empty asset list
-   before changing the PR's lifecycle label. A retry after label interruption
-   reconciles the existing release instead of publishing a second one.
+1. Merge reviewed changes through the protected PR process. Exact `main` CI must succeed.
+2. Shared Profile A admits only the canonical successful same-repository `main` CI revision and runs Release Please against current `main`.
+3. If Release Please creates or updates its bot-owned release PR, Profile A binds the configured release branch to its exact head and dispatches this repository's existing read-only `CI` only when that head lacks successful or in-flight qualification.
+4. Review the generated version/changelog proposal and merge only after required checks and review complete.
+5. Exact `main` CI for the merged release revision admits Release Please again; Release Please creates the version tag and GitHub Release under the organisation immutable-release baseline.
 
-If a reviewed Release Please merge remains pending because an earlier publisher
-bug prevented publication, the same release workflow may recover that exact
-historical merge after a later successful `main` CI run. Recovery is deliberately
-bounded: there must be exactly one merged pending Release Please candidate, no
-later merged Release Please candidate may succeed it, it must remain an ancestor
-of current `main`, its original normal-merge geometry and release metadata must
-still validate, an exact successful same-repository `main` CI run must exist for
-that historical merge, and remote tag/release state must be non-conflicting. The
-immutable publisher still creates the release at the historical Release Please
-merge SHA and verifies exact readback before reconciling the lifecycle label.
-Recovery is not authority to publish an arbitrary old commit or to synthesize or
-move a tag manually.
+Release Please is authoritative for prerelease progression, including legitimate SemVer-core changes. The repository does not maintain a second version engine, publication state machine, or standing historical replay path.
 
-Do not create manual release tags, move existing tags, bypass failed checks, or
-edit generated version/changelog content outside a reviewed release correction.
-Release Please prepares PRs; this repository's separate publisher owns releases.
-Packagist registration is a separate publication step and is not implied by a
-GitHub release.
+If publication fails, repair the cause through reviewed source/configuration and fresh qualification. Do not manually create or move tags, rewrite the manifest backwards, bypass failed checks, or reintroduce repository-local recovery authority.
+
+## Release classification
+
+The repository retains its package-specific release-classification checks for production dependency/significance policy. That Quality concern is separate from generic publication authority and may be simplified independently if it later fails the programme deletion test.
 
 ## Prerelease consumption
 
-A consuming root project can declare the GitHub VCS repository and require
-`ran/wp-branch-updater` using the reviewed prerelease or, while developing
-against the current source, `dev-main`. Commit the root project's lockfile and
-verify its source reference against the reviewed full commit SHA. Composer
-repository declarations are root-only and are not inherited from dependencies.
+A consuming root project can declare the GitHub VCS repository and require `ran/wp-branch-updater` using a reviewed prerelease or, for development only, `dev-main`. Commit the root project's lockfile and verify the selected source identity.
 
-`ran/updater-support` is now published and is a normal production dependency of
-the branch updater. The branch updater owns its exact support constraint; a
-consumer should not add an independent moving `dev-main` requirement. Until the
-support dependency leaves its beta line, a source-based consumer must admit beta
-packages (for example with `minimum-stability: beta` and `prefer-stable: true`)
-and declare the updater-support VCS repository so Composer can discover the
-published tag. There is no local path repository requirement.
-
-The initial bootstrap boundary is the fresh repository's seed commit. The
-following `feat` commit supplies the first release's source and changelog scope.
-See the [Release Please manifest reference](https://github.com/googleapis/release-please/blob/main/docs/manifest-releaser.md)
-and [GitHub immutable releases documentation](https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/establish-provenance-and-integrity/prevent-release-changes).
+`ran/updater-support` is a versioned production dependency. Until it leaves its beta line, source-based consumers must admit beta packages and declare the updater-support VCS repository so Composer can discover the published tag.
