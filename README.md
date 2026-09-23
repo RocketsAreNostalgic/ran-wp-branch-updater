@@ -17,7 +17,7 @@ configure
 
 ## Install and configure
 
-While consuming the current prerelease line from GitHub, a root project must explicitly configure VCS repositories for both this package and `ran/updater-support`. Composer does not inherit repository declarations from dependencies. The root requires the branch updater; its exact released updater-support constraint is resolved transitively. Because that transitive support dependency is currently a beta release, the root must admit beta packages while preferring stable packages where available.
+While consuming the current prerelease line from GitHub, a root project must explicitly configure VCS repositories for both this package and `ran/updater-support`. Composer does not inherit repository declarations from dependencies. The root requires the branch updater; its compatible `ran/updater-support` constraint, `^1.0.0-beta.4`, is resolved transitively. Because that transitive support dependency is currently a beta release, the root must admit beta packages while preferring stable packages where available.
 
 ```json
 {
@@ -39,7 +39,7 @@ While consuming the current prerelease line from GitHub, a root project must exp
 }
 ```
 
-Pin the reviewed package and transitive support revisions in the consuming release's lock file. Do not add a separate moving updater-support requirement: the branch updater owns that production dependency constraint. Load the consumer's Composer autoloader before requiring `bootstrap.php`; this package does not load a private autoloader. Configure the updater only after WordPress has loaded, and do not call `deploy()` before WordPress is available.
+Commit the consuming root project's `composer.lock` to pin the reviewed package and transitive support revisions. A first install without a lock file, or an update that includes Support, can select a different compatible Support 1.x release subject to the root project's constraints and stability settings. Subsequent `composer install` runs use the root lock's selected versions. This library's committed lock file qualifies its own development and CI installation; it does not pin dependencies for consumers. Do not add a separate moving updater-support requirement: the branch updater owns that production dependency constraint. Load the consumer's Composer autoloader before requiring `bootstrap.php`; this package does not load a private autoloader. Configure the updater only after WordPress has loaded, and do not call `deploy()` before WordPress is available.
 
 ```php
 use RAN\WPBranchUpdater\V1\Persistence\FileAttemptStore;
