@@ -8,7 +8,7 @@
     "ext-hash": "*",
     "ext-json": "*",
     "ext-zip": "*",
-    "ran/updater-support": "0.1.0-beta.3"
+    "ran/updater-support": "^1.0.0-beta.4"
   },
   "require-dev": {
     "phpcompatibility/php-compatibility": "10.0.0-alpha2",

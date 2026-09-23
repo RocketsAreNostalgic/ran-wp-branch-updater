@@ -138,7 +138,7 @@ final class ArchiveValidator {
 		}
 	}
 	private function validateEntryName( string $name ): string {
-		$path = ArchiveSafety::normalizePath( $name );
+		$path = ArchiveSafety::normalize_path( $name );
 		if ( null === $path ) {
 			$this->fail( self::CODE_PATH_UNSAFE, 'The archive contains an unsafe path.' );
 		}
@@ -153,7 +153,7 @@ final class ArchiveValidator {
 				'directory' => $entry['directory'],
 			);
 		}
-		$failure = ArchiveSafety::collisionFailure( $paths );
+		$failure = ArchiveSafety::collision_failure( $paths );
 		if ( 'path_duplicate' === $failure ) {
 			$this->fail( self::CODE_PATH_COLLISION, 'The archive contains duplicate paths.' );
 		}
@@ -169,7 +169,7 @@ final class ArchiveValidator {
 		$operations = 0;
 		$attributes = 0;
 		$available  = $zip->getExternalAttributesIndex( $index, $operations, $attributes, ZipArchive::FL_UNCHANGED );
-		$failure    = ArchiveSafety::entryTypeFailure( $available ? $operations : null, $available ? $attributes : null, $namedDirectory );
+		$failure    = ArchiveSafety::entry_type_failure( $available ? $operations : null, $available ? $attributes : null, $namedDirectory );
 		if ( 'entry_type_unsupported' === $failure ) {
 			$this->fail( self::CODE_ENTRY_UNSUPPORTED, 'The archive contains a link or device entry.' );
 		}
