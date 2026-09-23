@@ -4,7 +4,9 @@ This is the independent `ran/wp-branch-updater` Composer library. Keep committed
 
 ## RAN quality profile
 
-This repository uses the RAN `php-library` quality profile. PHP coding and compatibility ancestry comes from `ran/coding-standards` through `RANWordPressLibrary`; the tracked Composer lock binds the reviewed candidate revision until the shared package receives its first versioned release.
+This repository uses the RAN `php-library` quality profile. PHP coding and compatibility ancestry comes from `ran/coding-standards` through `RANWordPressLibrary`; the tracked Composer lock binds the published v1.0.0 release
+under the `^1.0` development constraint. The additional `RANOwnedMethods`
+check remains explicitly opt-in; this version adoption does not activate it.
 
 Keep the package's actual contract local: PHP `^8.2`, the `RAN\WPBranchUpdater\V1` namespace, source paths, updater-specific tests, and justified runtime/security exceptions. Do not add a WordPress-version floor unless this package explicitly claims one, and do not copy shared rules back into local configuration.
 
