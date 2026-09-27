@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.0-beta.7](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.6...v1.0.0-beta.7) (2026-09-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* use snake_case for admitted attempt journals ([#64](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/64))
+
+### Code Refactoring
+
+* use snake_case for admitted attempt journals ([#64](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/64)) ([01cdc29](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/commit/01cdc293eddb6a2e75324901ee7408e7b76579c8))
+
 ## [1.0.0-beta.6](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.5...v1.0.0-beta.6) (2026-09-23)
 
 
