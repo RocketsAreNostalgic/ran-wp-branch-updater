@@ -6,6 +6,7 @@ require dirname( __DIR__ ) . '/vendor/autoload.php';
 
 use RAN\WPBranchUpdater\V1\Persistence\BranchDeploymentJournalFailure;
 use RAN\WPBranchUpdater\V1\Persistence\FileAttemptStore;
+use RAN\WPBranchUpdater\V1\Persistence\FileAttemptJournal;
 use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 
 $root = __DIR__ . '/build/journal-invariants-' . bin2hex( random_bytes( 4 ) );
@@ -122,6 +123,16 @@ try {
 }
 if ( 'running' !== $transitionStore->get( 'transition' )['state'] ) {
 	throw new RuntimeException( 'Rejected terminal transition mutated the journal.' );
+}
+
+$journal = new FileAttemptJournal( store: $transitionStore, attempt_id: 'transition' );
+$journal->record_resolved_ref( ref: 'abc123' );
+$journal->mark_mutation_started();
+$journal->finish( code: 'deployed' );
+$record = $transitionStore->get( 'transition' );
+if ( 'abc123' !== $record['resolved_ref'] || null === $record['mutation_started_at']
+	|| 'succeeded' !== $record['state'] || 'deployed' !== $record['outcome'] ) {
+	throw new RuntimeException( 'Named-argument journal transitions did not preserve persisted state.' );
 }
 
 echo "PASS persisted journal state invariants\n";

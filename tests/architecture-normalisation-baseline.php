@@ -27,10 +27,10 @@ final class ArchitectureBaselineTrace {
 
 final class ArchitectureBaselineJournal implements AdmittedAttemptJournal {
 	public function __construct( private ArchitectureBaselineTrace $trace ) {}
-	public function recordResolvedRef( string $ref ): void {
+	public function record_resolved_ref( string $ref ): void {
 		$this->trace->add( 'journal.resolved:' . $ref );
 	}
-	public function markMutationStarted(): void {
+	public function mark_mutation_started(): void {
 		$this->trace->add( 'journal.fence' );
 	}
 	public function finish( string $code ): void {

@@ -101,3 +101,15 @@ CI also installs the package into a separate no-dev Composer consumer and runs `
 ## Community
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing a change. Use [SUPPORT.md](SUPPORT.md) for non-sensitive support and [SECURITY.md](SECURITY.md) for confidential vulnerability reports. Participation is governed by [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+
+### Journal naming boundary
+
+`AdmittedAttemptJournal` implementations use `record_resolved_ref()` and
+`mark_mutation_started()`; `finish()` is unchanged. `FileAttemptJournal` accepts
+`attempt_id` as its constructor parameter. Hosts must update implementations,
+callers and named arguments together when adopting this breaking beta contract.
+Persisted journal keys, outcomes and the mutation sequence are unchanged.
+
+Owned-method and variable naming checks cover the journal interface and file
+journal only. Other contracts and the host adapter's remaining names are tracked
+in Branch #59 and Core #167; passing this scope does not complete their migration.

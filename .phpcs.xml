@@ -16,11 +16,18 @@
 
 	<rule ref="RANWordPressLibrary"/>
 
-	<!-- The public OOP API intentionally uses its established camelCase contract. -->
-	<rule ref="WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid">
-		<severity>0</severity>
+	<!-- #59: enforce only the audited journal declarations; other owned contracts remain deferred. -->
+	<rule ref="RANOwnedMethods">
+		<include-pattern>/src/Contract/AdmittedAttemptJournal.php</include-pattern>
+		<include-pattern>/src/Persistence/FileAttemptJournal.php</include-pattern>
 	</rule>
 	<rule ref="WordPress.NamingConventions.ValidVariableName">
+		<include-pattern>/src/Contract/AdmittedAttemptJournal.php</include-pattern>
+		<include-pattern>/src/Persistence/FileAttemptJournal.php</include-pattern>
+	</rule>
+
+	<!-- #59: remaining public contracts are deferred to connected caller cohorts. -->
+	<rule ref="WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid">
 		<severity>0</severity>
 	</rule>
 	<!-- Yoda rewrites are not part of this library's established API/code style contract. -->

@@ -21,12 +21,12 @@ use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionResult;
 final class RunnerFixtureJournal implements AdmittedAttemptJournal {
 	public int $finishCalls = 0;
 	public function __construct( private ?\Throwable $recordFailure = null, private ?\Throwable $fenceFailure = null ) {}
-	public function recordResolvedRef( string $ref ): void {
+	public function record_resolved_ref( string $ref ): void {
 		if ( null !== $this->recordFailure ) {
 			throw $this->recordFailure;
 		}
 	}
-	public function markMutationStarted(): void {
+	public function mark_mutation_started(): void {
 		if ( null !== $this->fenceFailure ) {
 			throw $this->fenceFailure;
 		}
