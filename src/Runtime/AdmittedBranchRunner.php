@@ -43,7 +43,7 @@ final class AdmittedBranchRunner {
 				throw new AdmittedBranchStageFailure( 'downgrade_blocked' );
 			}
 			$this->executor->preflight( $deployment, $artifact );
-			$this->journal->recordResolvedRef( $artifact->resolvedRef() );
+			$this->journal->record_resolved_ref( $artifact->resolvedRef() );
 			$stage   = 'lock_unavailable';
 			$outcome = $this->lock->run(
 				function () use ( $deployment, $baseline, $artifact, &$fenced, &$cleanupAttempted, &$stage ): string {
@@ -64,7 +64,7 @@ final class AdmittedBranchRunner {
 						}
 						$this->target->assertMutationAllowed();
 						$this->executor->preflight( $deployment, $artifact );
-						$this->journal->markMutationStarted();
+						$this->journal->mark_mutation_started();
 						$fenced = true;
 						$result = $this->executor->execute( $deployment, $baseline, $artifact );
 						if ( $this->target->maintenanceActive() ) {
