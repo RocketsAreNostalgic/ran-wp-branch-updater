@@ -8,4 +8,5 @@ parameters:
 	level: 5
 	treatPhpDocTypesAsCertain: false
 	paths:
+		- bootstrap.php
 		- src
