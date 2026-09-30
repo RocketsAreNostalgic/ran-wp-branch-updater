@@ -34,6 +34,7 @@
     "source": "https://github.com/RocketsAreNostalgic/ran-wp-branch-updater"
   },
   "scripts": {
+    "test:analysis-bootstrap": "bash tests/analysis-bootstrap.sh",
     "test:contract": "@php tests/contract.php",
     "test:architecture": "@php tests/architecture-normalisation-baseline.php",
     "test:archive": "@php tests/archive-normalisation-baseline.php",
@@ -57,6 +58,7 @@
     "test:release-control": "node --test tests/release-workflow-contract.test.mjs tests/release-classification.test.mjs",
     "lint:syntax": "bash -o pipefail -c 'find src tests scripts -type f -name \"*.php\" -print0 | xargs -0 -n1 php -l && php -l bootstrap.php'",
     "test": [
+      "@test:analysis-bootstrap",
       "@test:contract",
       "@test:architecture",
       "@test:archive",
