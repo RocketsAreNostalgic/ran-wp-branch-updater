@@ -1,7 +1,7 @@
 # Support
 
 Before the first beta, reports about development source are welcome. Once beta
-releases are available, the latest beta is the supported version. Use [a public issue](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/new)
+releases are available, the latest beta is the supported version. Use [the issue chooser](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/new/choose)
 for ordinary support, reproducible non-sensitive defects, and feature requests.
 There is no guaranteed response or resolution time.
 
@@ -18,4 +18,4 @@ providers are not production transports. Do not put vulnerability details,
 credentials, tokens, private repository or site information, ZIPs, temporary
 paths, or log extracts in an issue or pull request. Use
 [SECURITY.md](SECURITY.md) for confidential vulnerability reporting and
-[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for conduct reports.
+[RAN Code of Conduct](https://github.com/RocketsAreNostalgic/.github/blob/main/CODE_OF_CONDUCT.md) for conduct reports.
