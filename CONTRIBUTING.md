@@ -16,12 +16,16 @@ Focused commands use the shared PHP command contract:
 | `composer lint:syntax` | Parser checks for `src/`, `tests/`, `scripts/` and `bootstrap.php` |
 | `composer standards` | PHPCS/WPCS/PHPCompatibility over shipped `src/` and `bootstrap.php` |
 | `composer standards:fix` | PHPCBF with the same rules and source paths |
-| `composer analyze` | Blocking PHPStan level 5 over `src/` |
+| `composer analyze` | Blocking PHPStan level 5 over `src/` and installed `bootstrap.php` |
 | `composer test` | All ordinary package and release-control contract tests |
 
 `composer check` retains syntax, standards, analysis and test checks, plus strict
 manifest validation. `standards:fix` is a manual source edit. The former
 `composer lint` command is now `composer lint:syntax`.
+`composer test:analysis-bootstrap` runs the actual analysis command against an
+isolated bootstrap copy: the original must pass and an inserted undefined
+function must produce the expected diagnostic in that file. This prevents the
+installed bootstrap silently dropping out of analysis scope.
 Individual `test:*` commands remain available for focused work. The installed
 consumer proof below stays outside this aggregate because it creates and
 resolves a separate Composer project; CI still requires it.
