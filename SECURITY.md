@@ -9,8 +9,9 @@ reporting form:
 
 <https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/security/advisories/new>
 
-If that form is unavailable, open a public issue containing only a request for
-confidential contact: <https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/new>.
+If that form is unavailable, use the [issue chooser](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/new/choose)
+and select `Security reporting help` only to request a confidential contact route.
+This public form must contain no vulnerability details, exploit steps or reproduction traces.
 Do not include vulnerability details, credentials, tokens, private repository
 or site information, ZIPs, temporary paths, or log extracts in a public issue.
 

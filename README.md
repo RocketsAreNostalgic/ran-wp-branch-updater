@@ -100,7 +100,7 @@ CI also installs the package into a separate no-dev Composer consumer and runs `
 
 ## Community
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing a change. Use [SUPPORT.md](SUPPORT.md) for non-sensitive support and [SECURITY.md](SECURITY.md) for confidential vulnerability reports. Participation is governed by [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing a change. Use [SUPPORT.md](SUPPORT.md) for non-sensitive support and [SECURITY.md](SECURITY.md) for confidential vulnerability reports. Participation is governed by [RAN Code of Conduct](https://github.com/RocketsAreNostalgic/.github/blob/main/CODE_OF_CONDUCT.md).
 
 ### Journal naming boundary
 
