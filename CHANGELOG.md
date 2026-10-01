@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.0.0-beta.8](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.7...v1.0.0-beta.8) (2026-10-01)
+
+
+### ⚠ BREAKING CHANGES
+
+* complete connected Branch snake_case API ([#72](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/72))
+* use snake_case bootstrap named arguments ([#70](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/70))
+* migrate package-local owned names to snake_case ([#68](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/68))
+
+### Code Refactoring
+
+* complete connected Branch snake_case API ([#72](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/72)) ([e2238f3](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/commit/e2238f3b5b999a810f7f573613813ce65042ed2a))
+* migrate package-local owned names to snake_case ([#68](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/68)) ([7ff885d](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/commit/7ff885dca4dc569c48981370350217c963f8870e))
+* use snake_case bootstrap named arguments ([#70](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/70)) ([7ffa651](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/commit/7ffa651aa195b5fad84ab91c1890931b6622bcd2))
+
 ## [1.0.0-beta.7](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.6...v1.0.0-beta.7) (2026-09-27)
 
 
