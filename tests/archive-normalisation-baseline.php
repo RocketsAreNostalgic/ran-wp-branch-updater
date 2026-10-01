@@ -79,7 +79,7 @@ $deployment = static fn(
 	string $id,
 	string $operation = 'install',
 	?string $subdirectory = 'demo',
-	?string $installedIdentifier = null
+	?string $installed_identifier = null
 ): BranchDeploymentDeclaration => new BranchDeploymentDeclaration(
 	$id,
 	'plugin',
@@ -90,7 +90,7 @@ $deployment = static fn(
 	'abc123',
 	$operation,
 	$subdirectory,
-	$installedIdentifier
+	$installed_identifier
 );
 $validator = new ArchiveValidator();
 $validate = static function ( string $path, BranchDeploymentDeclaration $deployment, ?string $installed = null, string $wordpressVersion = '6.5' ) use ( $validator ): array {

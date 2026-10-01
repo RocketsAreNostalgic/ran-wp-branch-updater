@@ -35,47 +35,47 @@ final class AdmittedBranchRunner {
 		$cleanup_attempted = false;
 		$stage             = 'policy_blocked';
 		try {
-			$this->target->assertMutationAllowed();
-			$baseline = $this->target->frozenTarget( $deployment, true );
+			$this->target->assert_mutation_allowed();
+			$baseline = $this->target->frozen_target( $deployment, true );
 			$stage    = 'preflight_failed';
 			$artifact = $this->archives->prepare( $deployment, $baseline );
-			if ( null !== $baseline && version_compare( $artifact->expectedVersion(), $baseline['version'], '<' ) ) {
+			if ( null !== $baseline && version_compare( $artifact->expected_version(), $baseline['version'], '<' ) ) {
 				throw new AdmittedBranchStageFailure( 'downgrade_blocked' );
 			}
 			$this->executor->preflight( $deployment, $artifact );
-			$this->journal->record_resolved_ref( $artifact->resolvedRef() );
+			$this->journal->record_resolved_ref( $artifact->resolved_ref() );
 			$stage   = 'lock_unavailable';
 			$outcome = $this->lock->run(
 				function () use ( $deployment, $baseline, $artifact, &$fenced, &$cleanup_attempted, &$stage ): string {
 					$primary = null;
 					try {
 						$stage            = 'policy_blocked';
-						$current_baseline = $this->target->frozenTarget( $deployment, false );
-						if ( null !== $current_baseline && version_compare( $artifact->expectedVersion(), $current_baseline['version'], '<' ) ) {
+						$current_baseline = $this->target->frozen_target( $deployment, false );
+						if ( null !== $current_baseline && version_compare( $artifact->expected_version(), $current_baseline['version'], '<' ) ) {
 							throw new AdmittedBranchStageFailure( 'downgrade_blocked' );
 						}
 						$stage = 'provider_failed';
-						$this->archives->verifyCurrentHead();
+						$this->archives->verify_current_head();
 						$stage = 'archive_integrity_failed';
-						$artifact->assertUnchanged();
+						$artifact->assert_unchanged();
 						$stage = 'policy_blocked';
-						if ( $this->target->maintenanceActive() ) {
+						if ( $this->target->maintenance_active() ) {
 							return 'deployment_maintenance_active';
 						}
-						$this->target->assertMutationAllowed();
+						$this->target->assert_mutation_allowed();
 						$this->executor->preflight( $deployment, $artifact );
 						$this->journal->mark_mutation_started();
 						$fenced = true;
 						$result = $this->executor->execute( $deployment, $baseline, $artifact );
-						if ( $this->target->maintenanceActive() ) {
+						if ( $this->target->maintenance_active() ) {
 							return 'maintenance_remaining';
 						}
 						if ( $result->is_successful() ) {
 							if ( 'update' === $deployment->operation ) {
-								$this->target->recheckManaged( $deployment );
+								$this->target->recheck_managed( $deployment );
 							}
 							$installed = $this->target->installed( $deployment );
-							if ( ! hash_equals( $artifact->expectedVersion(), $installed['version'] ) ) {
+							if ( ! hash_equals( $artifact->expected_version(), $installed['version'] ) ) {
 								return 'installed_version_mismatch';
 							}
 							if ( null !== $baseline && $baseline['active'] !== $installed['active'] ) {
@@ -89,7 +89,7 @@ final class AdmittedBranchRunner {
 							}
 							return 'deployed';
 						}
-						$current = null === $baseline ? null : $this->target->baselineNow( $deployment, $baseline );
+						$current = null === $baseline ? null : $this->target->baseline_now( $deployment, $baseline );
 						if ( null === $current || $current['version'] !== $baseline['version'] || $current['active'] !== $baseline['active'] ) {
 							return 'restoration_uncertain';
 						}
@@ -134,7 +134,7 @@ final class AdmittedBranchRunner {
 			if ( $this->is_ambiguous( $failure ) ) {
 				throw $failure;
 			}
-			$outcome = $fenced ? 'interrupted' : ( $failure instanceof AdmittedBranchStageFailure ? $failure->outcomeCode : $stage );
+			$outcome = $fenced ? 'interrupted' : ( $failure instanceof AdmittedBranchStageFailure ? $failure->outcome_code : $stage );
 		}
 		$this->journal->finish( $outcome );
 		return $outcome;

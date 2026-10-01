@@ -19,11 +19,11 @@ use RAN\WPBranchUpdater\V1\Runtime\StandaloneBranchRunner;
 
 final class RAN_BranchDeploymentHardStopExecutor implements PackageExecutor {
 	public function preflight( BranchDeploymentDeclaration $deployment, PreparedArchive $archive ): array {
-		$archive->assertUnchanged();
+		$archive->assert_unchanged();
 		return array();
 	}
 	public function execute( BranchDeploymentDeclaration $deployment, PreparedArchive $archive ): void {
-		$archive->assertUnchanged();
+		$archive->assert_unchanged();
 		if ( ! function_exists( 'posix_kill' ) ) {
 			throw new RuntimeException( 'The hard-stop proof requires posix_kill.' );
 		}

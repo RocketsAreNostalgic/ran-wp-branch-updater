@@ -8,6 +8,6 @@ use RAN\WPBranchUpdater\V1\Archive\ArchiveOffer;
 use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 
 interface BranchProvider {
-	/** Must resolve $deployment->expectedHead and reject it when $branch has advanced. */
+	/** Must resolve $deployment->expected_head and reject it when $branch has advanced. */
 	public function prepare( BranchDeploymentDeclaration $deployment ): ArchiveOffer;
 }

@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace RAN\WPBranchUpdater\V1\Contract;
 
 interface AdmittedBranchArtifact {
-	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
-	public function resolvedRef(): string;
-	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
-	public function expectedVersion(): string;
-	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
-	public function assertUnchanged(): void;
+
+	public function resolved_ref(): string;
+
+	public function expected_version(): string;
+
+	public function assert_unchanged(): void;
 	public function cleanup(): void;
 }

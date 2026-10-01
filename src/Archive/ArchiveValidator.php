@@ -56,10 +56,12 @@ final class ArchiveValidator {
 			$this->fail( self::CODE_ZIP_INVALID, 'The archive is not a readable ZIP file.' );
 		}
 		try {
+			// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- ZipArchive::$numFiles is an externally imposed extension property.
 			$this->assert_entry_count( $zip->numFiles );
 			$entries  = array();
 			$root     = null;
 			$expanded = 0;
+			// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- ZipArchive::$numFiles is an externally imposed extension property.
 			for ( $index = 0; $index < $zip->numFiles; ++$index ) {
 				$stat = $zip->statIndex( $index, ZipArchive::FL_UNCHANGED );
 				if ( false === $stat || ! is_string( $stat['name'] ?? null ) || ! is_int( $stat['size'] ?? null ) || $stat['size'] < 0 || ! is_int( $stat['crc'] ?? null ) ) {
@@ -102,10 +104,10 @@ final class ArchiveValidator {
 		if ( null === $installed ) {
 			return;
 		}
-		if ( 'theme' === $d->packageType && ! hash_equals( $d->slug, $installed ) ) {
+		if ( 'theme' === $d->package_type && ! hash_equals( $d->slug, $installed ) ) {
 			$this->fail( self::CODE_THEME_IDENTITY_MISMATCH, 'The installed theme identity does not match the deployment.' );
 		}
-		if ( 'plugin' === $d->packageType && ( ! str_contains( $installed, '/' ) || ! hash_equals( $d->slug, basename( dirname( $installed ) ) ) ) ) {
+		if ( 'plugin' === $d->package_type && ( ! str_contains( $installed, '/' ) || ! hash_equals( $d->slug, basename( dirname( $installed ) ) ) ) ) {
 			$this->fail( self::CODE_PACKAGE_IDENTITY, 'The installed plugin identity does not match the deployment.' );
 		}
 	}
@@ -125,7 +127,7 @@ final class ArchiveValidator {
 		} catch ( \InvalidArgumentException ) {
 			$this->fail( self::CODE_PACKAGE_IDENTITY, 'The installed package identity is unsafe.' );
 		}
-		if ( 'plugin' === $d->packageType && ! str_contains( $installed, '/' ) ) {
+		if ( 'plugin' === $d->package_type && ! str_contains( $installed, '/' ) ) {
 			$this->fail( self::CODE_PACKAGE_IDENTITY, 'A plugin update requires a directory-backed installed identity.' );
 		}
 	}
@@ -217,7 +219,7 @@ final class ArchiveValidator {
 		if ( array() === $files ) {
 			$this->fail( null !== $d->subdirectory && '' !== $d->subdirectory ? self::CODE_SUBDIRECTORY_MISSING : self::CODE_PACKAGE_DIRECTORY_MISSING, 'The configured package directory is absent from the archive.' );
 		}
-		if ( 'theme' === $d->packageType ) {
+		if ( 'theme' === $d->package_type ) {
 			$style = $files[ $prefix . '/style.css' ] ?? null;
 			if ( null === $style ) {
 				$this->fail( self::CODE_THEME_MISSING, 'The archive does not contain the expected theme.' );

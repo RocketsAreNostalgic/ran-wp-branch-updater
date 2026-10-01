@@ -15,24 +15,20 @@ final class StandaloneTargetFacts implements AdmittedTargetFacts {
 
 	public function __construct( private readonly PackageExecutor $executor ) {}
 
-	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
-	public function assertMutationAllowed(): void {}
+	public function assert_mutation_allowed(): void {}
 
-	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
-	public function frozenTarget( BranchDeploymentDeclaration $deployment, bool $deferExisting ): ?array {
+	public function frozen_target( BranchDeploymentDeclaration $deployment, bool $defer_existing ): ?array {
 		if ( 'update' === $deployment->operation && $this->executor instanceof WordPressPackageExecutor ) {
 			return $this->executor->installed_facts( $deployment );
 		}
 		return null;
 	}
 
-	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
-	public function maintenanceActive(): bool {
+	public function maintenance_active(): bool {
 		return defined( 'ABSPATH' ) && ( file_exists( ABSPATH . '.maintenance' ) || is_link( ABSPATH . '.maintenance' ) );
 	}
 
-	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
-	public function recheckManaged( BranchDeploymentDeclaration $deployment ): void {}
+	public function recheck_managed( BranchDeploymentDeclaration $deployment ): void {}
 
 	public function installed( BranchDeploymentDeclaration $deployment ): array {
 		if ( null === $this->installed ) {
@@ -41,8 +37,7 @@ final class StandaloneTargetFacts implements AdmittedTargetFacts {
 		return $this->installed;
 	}
 
-	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
-	public function baselineNow( BranchDeploymentDeclaration $deployment, array $baseline ): ?array {
+	public function baseline_now( BranchDeploymentDeclaration $deployment, array $baseline ): ?array {
 		if ( $this->executor instanceof WordPressPackageExecutor ) {
 			return $this->executor->installed_facts( $deployment );
 		}
@@ -56,8 +51,8 @@ final class StandaloneTargetFacts implements AdmittedTargetFacts {
 	/** @param array{identifier:string,version:string,active:bool}|null $observed */
 	public function record_installed( BranchDeploymentDeclaration $deployment, PreparedArchiveArtifact $artifact, ?array $observed ): void {
 		$this->installed = $observed ?? array(
-			'identifier' => $deployment->installedIdentifier ?? $deployment->slug,
-			'version'    => $artifact->expectedVersion(),
+			'identifier' => $deployment->installed_identifier ?? $deployment->slug,
+			'version'    => $artifact->expected_version(),
 			'active'     => false,
 		);
 	}

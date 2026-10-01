@@ -9,19 +9,16 @@ use RAN\WPBranchUpdater\V1\Contract\AdmittedBranchArtifact;
 final readonly class PreparedArchiveArtifact implements AdmittedBranchArtifact {
 	public function __construct( private PreparedArchive $archive ) {}
 
-	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
-	public function resolvedRef(): string {
-		return $this->archive->resolvedRef;
+	public function resolved_ref(): string {
+		return $this->archive->resolved_ref;
 	}
 
-	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
-	public function expectedVersion(): string {
+	public function expected_version(): string {
 		return $this->archive->version;
 	}
 
-	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
-	public function assertUnchanged(): void {
-		$this->archive->assertUnchanged();
+	public function assert_unchanged(): void {
+		$this->archive->assert_unchanged();
 	}
 
 	public function cleanup(): void {

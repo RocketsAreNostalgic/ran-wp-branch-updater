@@ -24,8 +24,7 @@ final class BranchUpdater {
 	}
 
 	/** Create the single runner allowed to complete one already-admitted attempt. */
-	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
-	public static function forAdmittedAttempt(
+	public static function for_admitted_attempt(
 		BranchDeploymentDeclaration $deployment,
 		AdmittedAttemptJournal $journal,
 		AdmittedArchiveSource $archives,
@@ -38,24 +37,24 @@ final class BranchUpdater {
 
 	public function plugin(
 		string $repository,
-		string $repositoryId,
+		string $repository_id,
 		string $branch,
-		?string $pluginFile = null,
-		?string $packageSlug = null,
+		?string $plugin_file = null,
+		?string $package_slug = null,
 		?string $subdirectory = null
 	): BranchDeployment {
-		if ( null === $pluginFile && null === $packageSlug ) {
+		if ( null === $plugin_file && null === $package_slug ) {
 			throw new \InvalidArgumentException( 'A plugin file or package slug is required.' );
 		}
-		if ( null !== $pluginFile && null !== $packageSlug && $this->plugin_slug( $pluginFile ) !== $packageSlug ) {
+		if ( null !== $plugin_file && null !== $package_slug && $this->plugin_slug( $plugin_file ) !== $package_slug ) {
 			throw new \InvalidArgumentException( 'The plugin file and package slug disagree.' );
 		}
-		$slug = $packageSlug ?? $this->plugin_slug( (string) $pluginFile );
-		return $this->pending( 'plugin', $repository, $repositoryId, $branch, $slug, $subdirectory, false === $this->admitted ? $pluginFile : ( $pluginFile ?? $this->admitted->installedIdentifier ) );
+		$slug = $package_slug ?? $this->plugin_slug( (string) $plugin_file );
+		return $this->pending( 'plugin', $repository, $repository_id, $branch, $slug, $subdirectory, false === $this->admitted ? $plugin_file : ( $plugin_file ?? $this->admitted->installed_identifier ) );
 	}
 
-	public function theme( string $repository, string $repositoryId, string $branch, string $stylesheet, ?string $subdirectory = null ): BranchDeployment {
-		return $this->pending( 'theme', $repository, $repositoryId, $branch, $stylesheet, $subdirectory, false === $this->admitted ? $stylesheet : $this->admitted->installedIdentifier );
+	public function theme( string $repository, string $repository_id, string $branch, string $stylesheet, ?string $subdirectory = null ): BranchDeployment {
+		return $this->pending( 'theme', $repository, $repository_id, $branch, $stylesheet, $subdirectory, false === $this->admitted ? $stylesheet : $this->admitted->installed_identifier );
 	}
 
 	private function pending( string $type, string $repository, string $repository_id, string $branch, string $slug, ?string $subdirectory, ?string $installed_identifier ): BranchDeployment {
@@ -64,13 +63,13 @@ final class BranchUpdater {
 		}
 		$bound      = false !== $this->admitted;
 		$deployment = new BranchDeploymentDeclaration(
-			$bound ? $this->admitted->attemptId : bin2hex( random_bytes( 16 ) ),
+			$bound ? $this->admitted->attempt_id : bin2hex( random_bytes( 16 ) ),
 			$type,
 			$slug,
 			$repository,
 			$repository_id,
 			$branch,
-			$bound ? $this->admitted->expectedHead : null,
+			$bound ? $this->admitted->expected_head : null,
 			$bound ? $this->admitted->operation : 'update',
 			PackageSubdirectory::normalize( $subdirectory ),
 			$installed_identifier

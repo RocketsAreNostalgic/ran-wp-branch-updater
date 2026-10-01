@@ -18,22 +18,21 @@ final class PreparedArchive implements PreparedPackageArtifact {
 
 	private function __construct(
 		private string $path,
-		public readonly string $resolvedRef,
+		public readonly string $resolved_ref,
 		private array $identity,
 		private string $digest,
 		public readonly string $version,
 		private readonly int $expanded_bytes
 	) {}
 
-	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
-	public static function downloadAndValidate(
+	public static function download_and_validate(
 		ArchiveOffer $offer,
 		BranchDeploymentDeclaration $d,
 		string $directory,
-		mixed $maximumArtifactBytes = self::DEFAULT_MAXIMUM_ARTIFACT_BYTES
+		mixed $maximum_artifact_bytes = self::DEFAULT_MAXIMUM_ARTIFACT_BYTES
 	): self {
-		$maximumArtifactBytes   = self::maximum_artifact_bytes( $maximumArtifactBytes );
-		$maximum_expanded_bytes = self::maximum_expanded_bytes( $maximumArtifactBytes );
+		$maximum_artifact_bytes = self::maximum_artifact_bytes( $maximum_artifact_bytes );
+		$maximum_expanded_bytes = self::maximum_expanded_bytes( $maximum_artifact_bytes );
 		if ( ( file_exists( $directory ) || is_link( $directory ) ) && ( is_link( $directory ) || ! is_dir( $directory ) ) ) {
 			throw new RuntimeException( 'Archive directory is unsafe.' );
 		}
@@ -55,13 +54,13 @@ final class PreparedArchive implements PreparedPackageArtifact {
 			if ( null === $created ) {
 				throw new RuntimeException( 'Private archive identity is invalid.' );
 			}
-			$offer->acquire( $path, $maximumArtifactBytes );
+			$offer->acquire( $path, $maximum_artifact_bytes );
 			$identity = self::identity( $path );
 			if ( null === $identity
 				|| $identity['dev'] !== $created['dev']
 				|| $identity['ino'] !== $created['ino']
 				|| $identity['size'] < 1
-				|| $identity['size'] > $maximumArtifactBytes
+				|| $identity['size'] > $maximum_artifact_bytes
 			) {
 				throw new RuntimeException( 'Archive file identity or size is invalid.' );
 			}
@@ -72,12 +71,12 @@ final class PreparedArchive implements PreparedPackageArtifact {
 			$inspection = ( new ArchiveValidator() )->validate(
 				$path,
 				$d,
-				'update' === $d->operation ? $d->installedIdentifier : null,
-				$maximumArtifactBytes,
+				'update' === $d->operation ? $d->installed_identifier : null,
+				$maximum_artifact_bytes,
 				$maximum_expanded_bytes,
 				function_exists( 'get_bloginfo' ) ? (string) get_bloginfo( 'version' ) : ''
 			);
-			return new self( $path, $offer->resolvedRef, $identity, $digest, $inspection['expected_version'], $inspection['expanded'] );
+			return new self( $path, $offer->resolved_ref, $identity, $digest, $inspection['expected_version'], $inspection['expanded'] );
 		} catch ( \Throwable $e ) {
 			if ( null !== $created ) {
 				$current = self::identity( $path );
@@ -96,28 +95,24 @@ final class PreparedArchive implements PreparedPackageArtifact {
 	}
 
 	public function path(): string {
-		$this->assertUnchanged();
+		$this->assert_unchanged();
 		return $this->path;
 	}
 
-	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
-	public function getPath(): string {
+	public function get_path(): string {
 		return $this->path();
 	}
 
-	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
-	public function getExpectedVersion(): string {
+	public function get_expected_version(): string {
 		return $this->version;
 	}
 
-	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
-	public function expandedBytes(): int {
-		$this->assertUnchanged();
+	public function expanded_bytes(): int {
+		$this->assert_unchanged();
 		return $this->expanded_bytes;
 	}
 
-	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
-	public function assertUnchanged(): void {
+	public function assert_unchanged(): void {
 		if ( $this->cleaned || self::identity( $this->path ) !== $this->identity || ! hash_equals( $this->digest, (string) hash_file( 'sha256', $this->path ) ) ) {
 			throw new RuntimeException( 'Prepared archive changed before use.' );
 		}
@@ -127,7 +122,7 @@ final class PreparedArchive implements PreparedPackageArtifact {
 		if ( $this->cleaned ) {
 			return;
 		}
-		$this->assertUnchanged();
+		$this->assert_unchanged();
 		if ( ! unlink( $this->path ) ) {
 			throw new RuntimeException( 'Cannot safely remove archive.' );
 		}

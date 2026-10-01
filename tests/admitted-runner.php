@@ -39,9 +39,9 @@ final class RunnerFixtureJournal implements AdmittedAttemptJournal {
 final class RunnerFixtureArtifact implements AdmittedBranchArtifact {
 	public int $cleanupCalls = 0;
 	public function __construct( private ?\Throwable $cleanupFailure = null ) {}
-	public function resolvedRef(): string { return 'abc123'; }
-	public function expectedVersion(): string { return '1.2.3'; }
-	public function assertUnchanged(): void {}
+	public function resolved_ref(): string { return 'abc123'; }
+	public function expected_version(): string { return '1.2.3'; }
+	public function assert_unchanged(): void {}
 	public function cleanup(): void {
 		++$this->cleanupCalls;
 		if ( null !== $this->cleanupFailure ) {
@@ -53,22 +53,22 @@ final class RunnerFixtureArtifact implements AdmittedBranchArtifact {
 final class RunnerFixtureArchives implements AdmittedArchiveSource {
 	public function __construct( private RunnerFixtureArtifact $artifact ) {}
 	public function prepare( BranchDeploymentDeclaration $deployment, ?array $baseline ): AdmittedBranchArtifact { return $this->artifact; }
-	public function verifyCurrentHead(): void {}
+	public function verify_current_head(): void {}
 }
 
 final class RunnerFixtureTarget implements AdmittedTargetFacts {
 	public function __construct( private ?\Throwable $firstFrozenFailure = null, private bool $installedActive = false ) {}
-	public function assertMutationAllowed(): void {}
-	public function frozenTarget( BranchDeploymentDeclaration $deployment, bool $deferExisting ): ?array {
-		if ( $deferExisting && null !== $this->firstFrozenFailure ) {
+	public function assert_mutation_allowed(): void {}
+	public function frozen_target( BranchDeploymentDeclaration $deployment, bool $defer_existing ): ?array {
+		if ( $defer_existing && null !== $this->firstFrozenFailure ) {
 			throw $this->firstFrozenFailure;
 		}
 		return null;
 	}
-	public function maintenanceActive(): bool { return false; }
-	public function recheckManaged( BranchDeploymentDeclaration $deployment ): void {}
+	public function maintenance_active(): bool { return false; }
+	public function recheck_managed( BranchDeploymentDeclaration $deployment ): void {}
 	public function installed( BranchDeploymentDeclaration $deployment ): array { return array( 'identifier' => 'demo', 'version' => '1.2.3', 'active' => $this->installedActive ); }
-	public function baselineNow( BranchDeploymentDeclaration $deployment, array $baseline ): ?array { return $baseline; }
+	public function baseline_now( BranchDeploymentDeclaration $deployment, array $baseline ): ?array { return $baseline; }
 	public function adopt( BranchDeploymentDeclaration $deployment ): bool { return true; }
 }
 

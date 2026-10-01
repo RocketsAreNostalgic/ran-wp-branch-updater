@@ -11,13 +11,13 @@ use RuntimeException;
 
 /** Test-only local transport. It proves the contract shape, never claims to be a provider client. */
 abstract class FixtureProvider implements BranchProvider {
-	public function __construct( private readonly string $archive, private string $head, private readonly ?string $repositoryId = null ) {}
+	public function __construct( private readonly string $archive, private string $head, private readonly ?string $repository_id = null ) {}
 	abstract protected function name(): string;
 	public function moveHead( string $head ): void {
 		$this->head = $head;
 	}
 	public function prepare( BranchDeploymentDeclaration $d ): ArchiveOffer {
-		if ( null !== $d->expectedHead && $d->expectedHead !== $this->head ) {
+		if ( null !== $d->expected_head && $d->expected_head !== $this->head ) {
 			throw new RuntimeException( $this->name() . ': expected head is stale.' );
 		}
 		$archive  = $this->archive;
@@ -25,11 +25,11 @@ abstract class FixtureProvider implements BranchProvider {
 		$expected = $this->head;
 		return new ArchiveOffer(
 			$this->name(),
-			$this->repositoryId ?? $d->repositoryId,
+			$this->repository_id ?? $d->repository_id,
 			$expected,
-			static function ( string $destination, int $maximumArtifactBytes ) use ( $archive ): void {
+			static function ( string $destination, int $maximum_artifact_bytes ) use ( $archive ): void {
 				$size = filesize( $archive );
-				if ( false === $size || $size < 1 || $size > $maximumArtifactBytes ) {
+				if ( false === $size || $size < 1 || $size > $maximum_artifact_bytes ) {
 					throw new RuntimeException( 'Fixture archive exceeds the provider acquisition limit.' );
 				}
 				if ( ! copy( $archive, $destination ) ) {

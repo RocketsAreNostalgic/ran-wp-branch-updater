@@ -8,7 +8,7 @@ use RuntimeException;
 
 final class AdmittedBranchStageFailure extends RuntimeException {
 	// phpcs:ignore Generic.CodeAnalysis.UselessOverridingMethod.Found -- Promotion creates the public readonly outcome property as well as the exception message.
-	public function __construct( public readonly string $outcomeCode ) {
-		parent::__construct( $outcomeCode );
+	public function __construct( public readonly string $outcome_code ) {
+		parent::__construct( $outcome_code );
 	}
 }
