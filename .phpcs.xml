@@ -16,33 +16,10 @@
 
 	<rule ref="RANWordPressLibrary"/>
 
-	<!-- #59: all owned methods are checked; remaining connected declarations have line-specific deferrals. -->
+	<!-- #59: all shipped owned declarations are audited and checked, including connected contracts. -->
 	<rule ref="RANOwnedMethods"/>
-	<!-- Fully audited variable scopes. Connected parameter/property use remains in #59 / Core #167. -->
-	<rule ref="WordPress.NamingConventions.ValidVariableName">
-		<include-pattern>/bootstrap.php</include-pattern>
-		<include-pattern>/src/Archive/PackageSubdirectory.php</include-pattern>
-		<include-pattern>/src/Archive/PreparedArchiveArtifact.php</include-pattern>
-		<include-pattern>/src/Contract/AdmittedArchiveSource.php</include-pattern>
-		<include-pattern>/src/Contract/AdmittedAttemptJournal.php</include-pattern>
-		<include-pattern>/src/Contract/AdmittedBranchArtifact.php</include-pattern>
-		<include-pattern>/src/Contract/AdmittedPackageExecutor.php</include-pattern>
-		<include-pattern>/src/Contract/BranchProvider.php</include-pattern>
-		<include-pattern>/src/Contract/MutationLock.php</include-pattern>
-		<include-pattern>/src/Contract/PackageExecutor.php</include-pattern>
-		<include-pattern>/src/Contract/PreparedPackageArtifact.php</include-pattern>
-		<include-pattern>/src/Persistence/BranchDeploymentJournalFailure.php</include-pattern>
-		<include-pattern>/src/Persistence/FileAttemptJournal.php</include-pattern>
-		<include-pattern>/src/Persistence/FileMutationLock.php</include-pattern>
-		<include-pattern>/src/Runtime/AdmittedBranchDurabilityFailure.php</include-pattern>
-		<include-pattern>/src/Runtime/BranchDeploymentLockReleaseFailure.php</include-pattern>
-		<include-pattern>/src/Runtime/BranchDeploymentLockStorageFailure.php</include-pattern>
-		<include-pattern>/src/Runtime/CorePackageExecutionFailure.php</include-pattern>
-		<include-pattern>/src/Runtime/CorePackageExecutionResult.php</include-pattern>
-		<include-pattern>/src/Runtime/StandalonePackageExecutor.php</include-pattern>
-		<include-pattern>/src/WordPress/InstalledPackageIdentifier.php</include-pattern>
-		<include-pattern>/src/WordPress/WordPressUpdaterLock.php</include-pattern>
-	</rule>
+	<!-- All shipped variables are audited; only declaration-local external contracts are excepted. -->
+	<rule ref="WordPress.NamingConventions.ValidVariableName"/>
 
 	<!-- RANOwnedMethods covers all declarations, including classes upstream skips. -->
 	<rule ref="WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid">

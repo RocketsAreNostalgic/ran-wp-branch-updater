@@ -16,18 +16,18 @@ final class FileAttemptStore {
 	public function begin( BranchDeploymentDeclaration $d ): array {
 		return $this->mutate(
 			function ( array $records ) use ( $d ): array {
-				if ( isset( $records[ $d->attemptId ] ) ) {
+				if ( isset( $records[ $d->attempt_id ] ) ) {
 					throw new RuntimeException( 'Attempt already exists.' );
 				}
 				foreach ( $records as $record ) {
-					if ( in_array( $record['state'], array( 'running', 'needs_attention' ), true ) && $record['package_type'] === $d->packageType && $record['slug'] === $d->slug ) {
+					if ( in_array( $record['state'], array( 'running', 'needs_attention' ), true ) && $record['package_type'] === $d->package_type && $record['slug'] === $d->slug ) {
 						throw new RuntimeException( 'Target already has an unresolved execution.' );
 					}
 				}
-				$records[ $d->attemptId ] = $this->record( $d );
+				$records[ $d->attempt_id ] = $this->record( $d );
 				return $records;
 			}
-		)[ $d->attemptId ];
+		)[ $d->attempt_id ];
 	}
 
 	public function resolved( string $id, string $ref ): void {
@@ -118,13 +118,13 @@ final class FileAttemptStore {
 
 	private function record( BranchDeploymentDeclaration $d ): array {
 		return array(
-			'id'                  => $d->attemptId,
+			'id'                  => $d->attempt_id,
 			'state'               => 'running',
-			'package_type'        => $d->packageType,
+			'package_type'        => $d->package_type,
 			'slug'                => $d->slug,
 			'repository'          => $d->repository,
 			'branch'              => $d->branch,
-			'expected_head'       => $d->expectedHead,
+			'expected_head'       => $d->expected_head,
 			'resolved_ref'        => null,
 			'mutation_started_at' => null,
 			'outcome'             => null,

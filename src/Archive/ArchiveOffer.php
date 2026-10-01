@@ -12,19 +12,19 @@ final readonly class ArchiveOffer {
 	private Closure $copy_to;
 
 	/**
-	 * $copyTo is a provider implementation boundary, not a generic network callback framework.
+	 * $copy_to is a provider implementation boundary, not a generic network callback framework.
 	 * It must stop acquisition before writing more than $maximum_artifact_bytes.
 	 *
-	 * @param Closure(string,int):void $copyTo
+	 * @param Closure(string,int):void $copy_to
 	 */
 	public function __construct(
 		public string $provider,
-		public string $repositoryId,
-		public string $resolvedRef,
-		Closure $copyTo,
-		private Closure $verifyHead
+		public string $repository_id,
+		public string $resolved_ref,
+		Closure $copy_to,
+		private Closure $verify_head
 	) {
-		$this->copy_to = $copyTo;
+		$this->copy_to = $copy_to;
 	}
 
 	public function acquire( string $destination, int $maximum_artifact_bytes ): void {
@@ -34,8 +34,7 @@ final readonly class ArchiveOffer {
 		( $this->copy_to )( $destination, $maximum_artifact_bytes );
 	}
 
-	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
-	public function verifyCurrentHead(): void {
-		( $this->verifyHead )();
+	public function verify_current_head(): void {
+		( $this->verify_head )();
 	}
 }

@@ -24,27 +24,23 @@ class WordPressCorePackageExecutor {
 	private ?Closure $core_operation;
 	private string $offer_namespace;
 
-	/** @param callable(string, string, string, object|null): mixed|null $coreOperation */
-	public function __construct( ?callable $coreOperation = null, string $offerNamespace = 'ran-branch-deployment' ) {
-		$this->core_operation  = null === $coreOperation ? null : Closure::fromCallable( $coreOperation );
-		$this->offer_namespace = $offerNamespace;
+	/** @param callable(string, string, string, object|null): mixed|null $core_operation */
+	public function __construct( ?callable $core_operation = null, string $offer_namespace = 'ran-branch-deployment' ) {
+		$this->core_operation  = null === $core_operation ? null : Closure::fromCallable( $core_operation );
+		$this->offer_namespace = $offer_namespace;
 	}
 
-	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
-	public function installPlugin( PreparedPackageArtifact $artifact, string $packageSlug, ?string $subdirectory ): CorePackageExecutionResult {
-		return $this->execute_install( 'plugin', $artifact, $packageSlug, $subdirectory );
+	public function install_plugin( PreparedPackageArtifact $artifact, string $package_slug, ?string $subdirectory ): CorePackageExecutionResult {
+		return $this->execute_install( 'plugin', $artifact, $package_slug, $subdirectory );
 	}
-	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
-	public function installTheme( PreparedPackageArtifact $artifact, string $packageSlug, ?string $subdirectory ): CorePackageExecutionResult {
-		return $this->execute_install( 'theme', $artifact, $packageSlug, $subdirectory );
+	public function install_theme( PreparedPackageArtifact $artifact, string $package_slug, ?string $subdirectory ): CorePackageExecutionResult {
+		return $this->execute_install( 'theme', $artifact, $package_slug, $subdirectory );
 	}
-	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
-	public function updatePlugin( PreparedPackageArtifact $artifact, string $packageSlug, ?string $subdirectory, string $pluginFile ): CorePackageExecutionResult {
-		return $this->execute_update( 'plugin', $artifact, $packageSlug, $subdirectory, $pluginFile );
+	public function update_plugin( PreparedPackageArtifact $artifact, string $package_slug, ?string $subdirectory, string $plugin_file ): CorePackageExecutionResult {
+		return $this->execute_update( 'plugin', $artifact, $package_slug, $subdirectory, $plugin_file );
 	}
-	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
-	public function updateTheme( PreparedPackageArtifact $artifact, string $packageSlug, ?string $subdirectory, string $stylesheet ): CorePackageExecutionResult {
-		return $this->execute_update( 'theme', $artifact, $packageSlug, $subdirectory, $stylesheet );
+	public function update_theme( PreparedPackageArtifact $artifact, string $package_slug, ?string $subdirectory, string $stylesheet ): CorePackageExecutionResult {
+		return $this->execute_update( 'theme', $artifact, $package_slug, $subdirectory, $stylesheet );
 	}
 
 	private function execute_install( string $type, PreparedPackageArtifact $artifact, string $package_slug, ?string $subdirectory ): CorePackageExecutionResult {
@@ -122,7 +118,7 @@ class WordPressCorePackageExecutor {
 	/** @return array{path:string,slug:string,subdirectory:string|null,identifier:string}|CorePackageExecutionResult */
 	private function validate_inputs( PreparedPackageArtifact $artifact, string $package_slug, ?string $subdirectory, string $installed_identifier = '' ): array|CorePackageExecutionResult {
 		try {
-			$artifact->assertUnchanged();
+			$artifact->assert_unchanged();
 			$slug         = PackageSubdirectory::normalize_slug( $package_slug );
 			$subdirectory = PackageSubdirectory::normalize( $subdirectory );
 			$identifier   = '' === $installed_identifier ? '' : InstalledPackageIdentifier::normalize( $installed_identifier );
@@ -130,7 +126,7 @@ class WordPressCorePackageExecutor {
 			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::INVALID_REQUEST );
 		}
 		return array(
-			'path'         => $artifact->getPath(),
+			'path'         => $artifact->get_path(),
 			'slug'         => $slug,
 			'subdirectory' => $subdirectory,
 			'identifier'   => $identifier,
@@ -141,8 +137,8 @@ class WordPressCorePackageExecutor {
 		$offer          = array(
 			'id'           => $this->offer_namespace . '/' . $slug,
 			'slug'         => $slug,
-			'new_version'  => $artifact->getExpectedVersion(),
-			'package'      => $artifact->getPath(),
+			'new_version'  => $artifact->get_expected_version(),
+			'package'      => $artifact->get_path(),
 			'autoupdate'   => true,
 			'requires_php' => '8.2',
 		);
@@ -168,10 +164,10 @@ class WordPressCorePackageExecutor {
 			if ( false !== $reply ) {
 				return $reply;
 			}
-			$archive_path         = $artifact->getPath();
+			$archive_path         = $artifact->get_path();
 			$operation_identifier = null === $identifier || ( $extra[ $type ] ?? null ) === $identifier;
 			if ( is_string( $package ) && hash_equals( $archive_path, $package ) && ( $extra['type'] ?? null ) === $type && ( $extra['action'] ?? null ) === $action && $operation_identifier ) {
-				$artifact->assertUnchanged();
+				$artifact->assert_unchanged();
 				return $archive_path;
 			}
 			return $reply;
@@ -259,12 +255,13 @@ class WordPressCorePackageExecutor {
 			return false;
 		}
 		$zip = new \ZipArchive();
-		if ( true !== $zip->open( $artifact->getPath(), \ZipArchive::RDONLY ) ) {
+		if ( true !== $zip->open( $artifact->get_path(), \ZipArchive::RDONLY ) ) {
 			return false;
 		}
 		$subdirectory_segments = null === $subdirectory ? array() : explode( '/', $subdirectory );
 		$candidates            = array();
 		try {
+			// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- ZipArchive owns the numFiles property name.
 			for ( $index = 0; $index < $zip->numFiles; ++$index ) {
 				$name = $zip->getNameIndex( $index );
 				if ( ! is_string( $name ) || str_contains( $name, '\\' ) || str_starts_with( $name, '/' ) ) {

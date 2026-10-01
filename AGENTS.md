@@ -6,13 +6,13 @@ This is the independent `ran/wp-branch-updater` Composer library. Keep committed
 
 This repository uses the RAN `php-library` quality profile. PHP coding and compatibility ancestry comes from `ran/coding-standards` through `RANWordPressLibrary`; the tracked Composer lock binds the published v1.0.0 release
 under the `^1.0` development constraint. The additional `RANOwnedMethods`
-check covers every shipped declaration, including inherited classes. The remaining
-32 connected public declarations have line-specific temporary deferrals owned by
-#59 / Core #167; remove each with its coordinated producer/consumer migration.
-Variable naming covers 21 fully audited source files plus `bootstrap.php` listed in `.phpcs.xml`.
-Other parameter/property scopes remain connected migration debt, not exemptions.
-See the current boundary inventory in CONTRIBUTING.md. `composer test:naming`
-proves the real rules reject representative method, variable and standards regressions.
+check covers every shipped declaration, including inherited classes, with no
+remaining owned-method migration deferrals. Variable naming covers all shipped
+source and `bootstrap.php`; precise ZipArchive::$numFiles exceptions preserve
+that external API. `composer test:naming` proves method, property, parameter,
+variable and standards enforcement. The connected beta API is intentionally
+breaking: prepare and qualify matching Core consumers before released adoption.
+See MIGRATING.md and the accepted #59 / Core #167 handoff.
 Yoda conditions, unused parameters, useless overrides, reserved parameter names
 and exception-output checks are enforced. Keep justified callback, promoted-property
 and diagnostic exceptions restricted to their annotated lines.

@@ -25,11 +25,11 @@ final class WordPressPackageExecutor implements PackageExecutor {
 		if ( ! defined( 'ABSPATH' ) ) {
 			throw new RuntimeException( 'WordPress upgrader is unavailable.' );
 		}
-		return match ( array( $d->operation, $d->packageType ) ) {
-			array( 'install', 'plugin' ) => $this->core->installPlugin( $archive, $d->slug, $d->subdirectory ),
-			array( 'install', 'theme' ) => $this->core->installTheme( $archive, $d->slug, $d->subdirectory ),
-			array( 'update', 'plugin' ) => $this->core->updatePlugin( $archive, $d->slug, $d->subdirectory, $d->installedIdentifier ?? $d->slug . '/' . $d->slug . '.php' ),
-			array( 'update', 'theme' ) => $this->core->updateTheme( $archive, $d->slug, $d->subdirectory, $d->installedIdentifier ?? $d->slug ),
+		return match ( array( $d->operation, $d->package_type ) ) {
+			array( 'install', 'plugin' ) => $this->core->install_plugin( $archive, $d->slug, $d->subdirectory ),
+			array( 'install', 'theme' ) => $this->core->install_theme( $archive, $d->slug, $d->subdirectory ),
+			array( 'update', 'plugin' ) => $this->core->update_plugin( $archive, $d->slug, $d->subdirectory, $d->installed_identifier ?? $d->slug . '/' . $d->slug . '.php' ),
+			array( 'update', 'theme' ) => $this->core->update_theme( $archive, $d->slug, $d->subdirectory, $d->installed_identifier ?? $d->slug ),
 			default => throw new RuntimeException( 'Unsupported package operation.' ),
 		};
 	}
@@ -47,14 +47,14 @@ final class WordPressPackageExecutor implements PackageExecutor {
 		if ( file_exists( ABSPATH . '.maintenance' ) || is_link( ABSPATH . '.maintenance' ) ) {
 			throw new RuntimeException( 'WordPress maintenance mode is active.' );
 		}
-		$identifier = $d->installedIdentifier ?? ( 'plugin' === $d->packageType ? $d->slug . '/' . $d->slug . '.php' : $d->slug );
-		$before     = $this->installed_state( $d->packageType, $identifier );
-		$archive->assertUnchanged();
+		$identifier = $d->installed_identifier ?? ( 'plugin' === $d->package_type ? $d->slug . '/' . $d->slug . '.php' : $d->slug );
+		$before     = $this->installed_state( $d->package_type, $identifier );
+		$archive->assert_unchanged();
 		return $before;
 	}
 	public function installed_facts( BranchDeploymentDeclaration $d ): array {
-		$identifier = $d->installedIdentifier ?? ( 'plugin' === $d->packageType ? $d->slug . '/' . $d->slug . '.php' : $d->slug );
-		$state      = $this->installed_state( $d->packageType, $identifier );
+		$identifier = $d->installed_identifier ?? ( 'plugin' === $d->package_type ? $d->slug . '/' . $d->slug . '.php' : $d->slug );
+		$state      = $this->installed_state( $d->package_type, $identifier );
 		if ( null === $state['version'] ) {
 			throw new RuntimeException( 'WordPress did not report an installed package version.' );
 		}

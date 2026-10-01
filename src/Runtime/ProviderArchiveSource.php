@@ -25,14 +25,14 @@ final class ProviderArchiveSource implements AdmittedArchiveSource {
 	public function prepare( BranchDeploymentDeclaration $deployment, ?array $baseline ): AdmittedBranchArtifact {
 		try {
 			$offer = $this->provider->prepare( $deployment );
-			if ( ! hash_equals( $deployment->repositoryId, $offer->repositoryId ) ) {
+			if ( ! hash_equals( $deployment->repository_id, $offer->repository_id ) ) {
 				throw new AdmittedBranchStageFailure( 'provider_failed' );
 			}
-			if ( null !== $deployment->expectedHead && ! hash_equals( $deployment->expectedHead, $offer->resolvedRef ) ) {
+			if ( null !== $deployment->expected_head && ! hash_equals( $deployment->expected_head, $offer->resolved_ref ) ) {
 				throw new AdmittedBranchStageFailure( 'provider_failed' );
 			}
 			$this->offer                  = $offer;
-			$this->constrain_current_head = null !== $deployment->expectedHead;
+			$this->constrain_current_head = null !== $deployment->expected_head;
 		} catch ( AdmittedBranchStageFailure $failure ) {
 			throw $failure;
 		} catch ( RuntimeException $failure ) {
@@ -40,7 +40,7 @@ final class ProviderArchiveSource implements AdmittedArchiveSource {
 		}
 		try {
 			return new PreparedArchiveArtifact(
-				PreparedArchive::downloadAndValidate(
+				PreparedArchive::download_and_validate(
 					$offer,
 					$deployment,
 					$this->directory,
@@ -52,10 +52,9 @@ final class ProviderArchiveSource implements AdmittedArchiveSource {
 		}
 	}
 
-	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
-	public function verifyCurrentHead(): void {
+	public function verify_current_head(): void {
 		if ( $this->constrain_current_head && null !== $this->offer ) {
-			$this->offer->verifyCurrentHead();
+			$this->offer->verify_current_head();
 		}
 	}
 }

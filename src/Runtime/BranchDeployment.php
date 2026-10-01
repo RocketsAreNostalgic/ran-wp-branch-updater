@@ -14,22 +14,22 @@ final readonly class BranchDeployment {
 
 	/** The durable standalone journal key, stable before and after deploy(). */
 	public function attempt_id(): string {
-		return $this->declaration->attemptId;
+		return $this->declaration->attempt_id;
 	}
 
 	/** Returns the runner's closed terminal outcome; ambiguous durability failures propagate. */
-	public function deploy( ?string $expectedCommit = null, ?string $operation = null ): string {
+	public function deploy( ?string $expected_commit = null, ?string $operation = null ): string {
 		$deployment = new BranchDeploymentDeclaration(
-			$this->declaration->attemptId,
-			$this->declaration->packageType,
+			$this->declaration->attempt_id,
+			$this->declaration->package_type,
 			$this->declaration->slug,
 			$this->declaration->repository,
-			$this->declaration->repositoryId,
+			$this->declaration->repository_id,
 			$this->declaration->branch,
-			null === $expectedCommit ? $this->declaration->expectedHead : $expectedCommit,
+			null === $expected_commit ? $this->declaration->expected_head : $expected_commit,
 			null === $operation ? $this->declaration->operation : $operation,
 			$this->declaration->subdirectory,
-			$this->declaration->installedIdentifier
+			$this->declaration->installed_identifier
 		);
 		if ( false !== $this->admitted && (array) $deployment !== (array) $this->admitted ) {
 			throw new \InvalidArgumentException( 'The admitted deployment terminal declaration does not match.' );

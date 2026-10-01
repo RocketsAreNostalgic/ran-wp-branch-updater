@@ -27,7 +27,7 @@ final class StandaloneBranchRunner {
 		$this->attempts->begin( $deployment );
 		$target = new StandaloneTargetFacts( $this->executor );
 		$runner = new AdmittedBranchRunner(
-			new FileAttemptJournal( $this->attempts, $deployment->attemptId ),
+			new FileAttemptJournal( $this->attempts, $deployment->attempt_id ),
 			new ProviderArchiveSource( $this->provider, $this->archive_directory, $this->maximum_artifact_bytes ),
 			$target,
 			new StandalonePackageExecutor( $this->executor, $target ),

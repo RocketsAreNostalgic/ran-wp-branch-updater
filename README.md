@@ -62,13 +62,13 @@ State and archive directories must be private and durable. Do not use WordPress'
 ```php
 $outcome = $branches->plugin(
     repository: 'acme/example-plugin',
-    repositoryId: '123456789',
+    repository_id: '123456789',
     branch: 'main',
-    pluginFile: 'example-plugin/example-plugin.php',
-)->deploy(expectedCommit: $verifiedCommit);
+    plugin_file: 'example-plugin/example-plugin.php',
+)->deploy(expected_commit: $verifiedCommit);
 ```
 
-Pass an expected commit only after the host has authenticated and admitted it. The provider resolves and acquires the branch artifact; when `expectedCommit` is supplied, the runner verifies that branch head again immediately before the mutation fence. The archive is always rechecked before the fence. WordPress Core performs the installation/update, and postconditions are then verified before the attempt is finished.
+Pass an expected commit only after the host has authenticated and admitted it. The provider resolves and acquires the branch artifact; when `expected_commit` is supplied, the runner verifies that branch head again immediately before the mutation fence. The archive is always rechecked before the fence. WordPress Core performs the installation/update, and postconditions are then verified before the attempt is finished.
 
 New installs remain inactive. Do not retry an uncertain outcome automatically.
 
@@ -110,6 +110,8 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing a change. Use [SUPPORT.
 callers and named arguments together when adopting this breaking beta contract.
 Persisted journal keys, outcomes and the mutation sequence are unchanged.
 
-Owned-method and variable naming checks cover the journal interface and file
-journal only. Other contracts and the host adapter's remaining names are tracked
-in Branch #59 and Core #167; passing this scope does not complete their migration.
+Owned-method and variable naming checks cover all shipped source and bootstrap.
+The remaining connected API migration uses direct snake_case replacements; see
+[MIGRATING.md](MIGRATING.md). Hosts must adopt matching declarations, callers,
+named arguments and overrides together. Mixed old/new tuples are unsupported;
+source preparation does not imply a published package or installed Core adoption.

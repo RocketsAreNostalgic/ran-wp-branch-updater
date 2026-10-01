@@ -29,44 +29,49 @@ $zip->addFromString( 'repository/demo/demo.php', $contents );
 $zip->close();
 
 $deployment = new BranchDeploymentDeclaration(
-	'prepared-archive-facts',
-	'plugin',
-	'demo',
-	'acme/demo',
-	'repository-id',
-	'main',
-	'abc123',
-	'install',
-	'demo',
-	null
+	attempt_id: 'prepared-archive-facts',
+	package_type: 'plugin',
+	slug: 'demo',
+	repository: 'acme/demo',
+	repository_id: 'repository-id',
+	branch: 'main',
+	expected_head: 'abc123',
+	operation: 'install',
+	subdirectory: 'demo',
+	installed_identifier: null
 );
 
 $offer = static fn(): ArchiveOffer => new ArchiveOffer(
-	'fixture',
-	'repository-id',
-	'abc123',
-	static function ( string $destination, int $maximumArtifactBytes ) use ( $source ): void {
+	provider: 'fixture',
+	repository_id: 'repository-id',
+	resolved_ref: 'abc123',
+	copy_to: static function ( string $destination, int $maximum_artifact_bytes ) use ( $source ): void {
 		$size = filesize( $source );
-		if ( false === $size || $size < 1 || $size > $maximumArtifactBytes || ! copy( $source, $destination ) ) {
+		if ( false === $size || $size < 1 || $size > $maximum_artifact_bytes || ! copy( $source, $destination ) ) {
 			throw new RuntimeException( 'Cannot acquire prepared archive fixture.' );
 		}
 	},
-	static function (): void {}
+	verify_head: static function (): void {}
 );
 
 $constructor = ( new ReflectionClass( PreparedArchive::class ) )->getConstructor();
 $assert( null !== $constructor && $constructor->isPrivate(), 'prepared archive facts cannot be supplied through public construction' );
 
-$artifact = PreparedArchive::downloadAndValidate( $offer(), $deployment, $root . '/archives' );
-$assert( strlen( $contents ) === $artifact->expandedBytes(), 'prepared archive retains the expanded byte count from validation' );
+$artifact = PreparedArchive::download_and_validate(
+	offer: $offer(),
+	d: $deployment,
+	directory: $root . '/archives',
+	maximum_artifact_bytes: PreparedArchive::DEFAULT_MAXIMUM_ARTIFACT_BYTES
+);
+$assert( strlen( $contents ) === $artifact->expanded_bytes(), 'prepared archive retains the expanded byte count from validation' );
 $artifact->cleanup();
 $assert( ! glob( $root . '/archives/*' ), 'successful prepared archive cleanup remains unchanged' );
 
-$tampered = PreparedArchive::downloadAndValidate( $offer(), $deployment, $root . '/archives' );
+$tampered = PreparedArchive::download_and_validate( $offer(), $deployment, $root . '/archives' );
 $path     = $tampered->path();
 file_put_contents( $path, 'changed' );
 try {
-	$tampered->expandedBytes();
+	$tampered->expanded_bytes();
 	$assert( false, 'expanded archive facts must not be returned after custody is broken' );
 } catch ( RuntimeException $expected ) {
 	$assert( 'Prepared archive changed before use.' === $expected->getMessage(), 'expanded archive fact remains bound to exact prepared bytes' );

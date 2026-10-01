@@ -44,15 +44,15 @@ final class ArchitectureBaselineArtifact implements AdmittedBranchArtifact {
 		private string $version = '1.2.3',
 		private ?\Throwable $integrityFailure = null
 	) {}
-	public function resolvedRef(): string {
+	public function resolved_ref(): string {
 		$this->trace->add( 'artifact.resolved' );
 		return 'abc123';
 	}
-	public function expectedVersion(): string {
+	public function expected_version(): string {
 		$this->trace->add( 'artifact.version' );
 		return $this->version;
 	}
-	public function assertUnchanged(): void {
+	public function assert_unchanged(): void {
 		$this->trace->add( 'artifact.integrity' );
 		if ( null !== $this->integrityFailure ) {
 			throw $this->integrityFailure;
@@ -73,7 +73,7 @@ final class ArchitectureBaselineArchives implements AdmittedArchiveSource {
 		$this->trace->add( 'archives.prepare' );
 		return $this->artifact;
 	}
-	public function verifyCurrentHead(): void {
+	public function verify_current_head(): void {
 		$this->trace->add( 'archives.verify_head' );
 		if ( null !== $this->headFailure ) {
 			throw $this->headFailure;
@@ -95,7 +95,7 @@ final class ArchitectureBaselineTarget implements AdmittedTargetFacts {
 		private ?\Throwable $initialPolicyFailure = null,
 		private ?\Throwable $lockedPolicyFailure = null
 	) {}
-	public function assertMutationAllowed(): void {
+	public function assert_mutation_allowed(): void {
 		++$this->policyCalls;
 		$initial = 1 === $this->policyCalls;
 		$this->trace->add( $initial ? 'target.policy.initial' : 'target.policy.locked' );
@@ -104,25 +104,25 @@ final class ArchitectureBaselineTarget implements AdmittedTargetFacts {
 			throw $failure;
 		}
 	}
-	public function frozenTarget( BranchDeploymentDeclaration $deployment, bool $deferExisting ): ?array {
-		$this->trace->add( $deferExisting ? 'target.baseline.initial' : 'target.baseline.locked' );
-		return $deferExisting ? $this->initialBaseline : $this->lockedBaseline;
+	public function frozen_target( BranchDeploymentDeclaration $deployment, bool $defer_existing ): ?array {
+		$this->trace->add( $defer_existing ? 'target.baseline.initial' : 'target.baseline.locked' );
+		return $defer_existing ? $this->initialBaseline : $this->lockedBaseline;
 	}
-	public function maintenanceActive(): bool {
+	public function maintenance_active(): bool {
 		$label = 0 === $this->maintenanceCalls ? 'target.maintenance.before' : 'target.maintenance.after';
 		$state = $this->maintenanceStates[ $this->maintenanceCalls ] ?? false;
 		++$this->maintenanceCalls;
 		$this->trace->add( $label );
 		return $state;
 	}
-	public function recheckManaged( BranchDeploymentDeclaration $deployment ): void {
+	public function recheck_managed( BranchDeploymentDeclaration $deployment ): void {
 		$this->trace->add( 'target.recheck_managed' );
 	}
 	public function installed( BranchDeploymentDeclaration $deployment ): array {
 		$this->trace->add( 'target.installed' );
 		return $this->installedFacts;
 	}
-	public function baselineNow( BranchDeploymentDeclaration $deployment, array $baseline ): ?array {
+	public function baseline_now( BranchDeploymentDeclaration $deployment, array $baseline ): ?array {
 		$this->trace->add( 'target.baseline.restored' );
 		return $this->restoredFacts;
 	}

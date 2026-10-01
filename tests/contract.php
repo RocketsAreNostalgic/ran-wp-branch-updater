@@ -38,14 +38,14 @@ $executor  = new RecordingExecutor();
 $lock      = new FileMutationLock( $root . '/mutation.lock' );
 $bootstrap = require dirname( __DIR__ ) . '/bootstrap.php';
 $package   = $bootstrap( new GitHubFixtureProvider( $zip, 'abc123' ), $store, $root . '/archives', $executor, $lock );
-$result    = $package->plugin( repository: 'acme/demo', repositoryId: 'fixture-1', branch: 'main', pluginFile: 'demo/demo.php', subdirectory: 'demo' )->deploy( expectedCommit: 'abc123' );
+$result    = $package->plugin( repository: 'acme/demo', repository_id: 'fixture-1', branch: 'main', plugin_file: 'demo/demo.php', subdirectory: 'demo' )->deploy( expected_commit: 'abc123' );
 $assert( $result === 'deployed', 'github fixture executes' );
 $assert( count( $executor->calls ) === 1, 'executor received real local ZIP' );
 $assert( ! glob( $root . '/archives/*' ), 'archive is cleaned' );
 
 $bitbucketStore    = new FileAttemptStore( $root . '/bitbucket-attempts.json' );
 $bitbucketExecutor = new RecordingExecutor();
-$bitbucketResult   = $bootstrap( new BitbucketFixtureProvider( $zip, 'abc123' ), $bitbucketStore, $root . '/archives', $bitbucketExecutor, $lock )->plugin( repository: 'acme/demo', repositoryId: 'fixture-1', branch: 'main', pluginFile: 'demo/demo.php', subdirectory: 'demo' )->deploy( expectedCommit: 'abc123' );
+$bitbucketResult   = $bootstrap( new BitbucketFixtureProvider( $zip, 'abc123' ), $bitbucketStore, $root . '/archives', $bitbucketExecutor, $lock )->plugin( repository: 'acme/demo', repository_id: 'fixture-1', branch: 'main', plugin_file: 'demo/demo.php', subdirectory: 'demo' )->deploy( expected_commit: 'abc123' );
 $assert( $bitbucketResult === 'deployed', 'bitbucket fixture executes' );
 $assert( count( $bitbucketExecutor->calls ) === 1, 'bitbucket executor received real local ZIP' );
 $assert( ! glob( $root . '/archives/*' ), 'bitbucket archive is cleaned' );
@@ -63,20 +63,20 @@ $standaloneResult     = $bootstrap(
 	maximum_artifact_bytes: $standaloneLimit
 )->plugin(
 	repository: 'acme/demo',
-	repositoryId: 'fixture-1',
+	repository_id: 'fixture-1',
 	branch: 'main',
-	pluginFile: 'demo/demo.php',
+	plugin_file: 'demo/demo.php',
 	subdirectory: 'demo'
-)->deploy( expectedCommit: 'abc123' );
+)->deploy( expected_commit: 'abc123' );
 $assert( 'archive_integrity_failed' === $standaloneResult, 'documented standalone composition honors the configured artifact ceiling' );
 $assert( ! glob( $root . '/archives/*' ), 'standalone over-limit acquisition leaves no archive behind' );
 
 $offer        = ( new GitHubFixtureProvider( $zip, 'abc123' ) )->prepare( $deploy( 'tamper', 'abc123' ) );
-$artifact     = PreparedArchive::downloadAndValidate( $offer, $deploy( 'tamper', 'abc123' ), $root . '/archives' );
+$artifact     = PreparedArchive::download_and_validate( $offer, $deploy( 'tamper', 'abc123' ), $root . '/archives' );
 $tamperedPath = $artifact->path();
 file_put_contents( $tamperedPath, 'changed' );
 try {
-	$artifact->assertUnchanged();
+	$artifact->assert_unchanged();
 	$assert( false, 'tampered archive must fail custody assertion' );
 } catch ( \RuntimeException $expected ) {
 	$assert( $expected->getMessage() === 'Prepared archive changed before use.', 'tamper is rejected by custody assertion' );
@@ -94,13 +94,13 @@ $providerFactory = static function ( string $archive ): BranchProvider {
 		public function prepare( BranchDeploymentDeclaration $deployment ): ArchiveOffer {
 			return new ArchiveOffer(
 				'limit-fixture',
-				$deployment->repositoryId,
-				$deployment->expectedHead ?? 'abc123',
-				function ( string $destination, int $maximumArtifactBytes ): void {
+				$deployment->repository_id,
+				$deployment->expected_head ?? 'abc123',
+				function ( string $destination, int $maximum_artifact_bytes ): void {
 					++$this->acquisitions;
-					$this->limits[] = $maximumArtifactBytes;
+					$this->limits[] = $maximum_artifact_bytes;
 					$size           = filesize( $this->archive );
-					if ( false === $size || $size < 1 || $size > $maximumArtifactBytes ) {
+					if ( false === $size || $size < 1 || $size > $maximum_artifact_bytes ) {
 						throw new \RuntimeException( 'Provider acquisition limit reached.' );
 					}
 					if ( ! copy( $this->archive, $destination ) ) {
@@ -126,7 +126,7 @@ try {
 	( new ProviderArchiveSource( $smallProvider, $root . '/archives', $smallLimit ) )->prepare( $deploy( 'small-limit', 'abc123' ), null );
 	$assert( false, 'provider acquisition must reject an artifact beyond the configured ceiling' );
 } catch ( AdmittedBranchStageFailure $expected ) {
-	$assert( 'archive_integrity_failed' === $expected->outcomeCode, 'provider acquisition limit maps to archive integrity failure' );
+	$assert( 'archive_integrity_failed' === $expected->outcome_code, 'provider acquisition limit maps to archive integrity failure' );
 }
 $assert( 1 === $smallProvider->acquisitions, 'bounded provider is invoked once for an over-limit artifact' );
 $assert( array( $smallLimit ) === $smallProvider->limits, 'over-limit provider sees the configured ceiling before writing' );
@@ -138,7 +138,7 @@ foreach ( array( 0, '536870912', intdiv( PHP_INT_MAX, 4 ) + 1 ) as $invalidLimit
 		( new ProviderArchiveSource( $invalidProvider, $root . '/archives', $invalidLimit ) )->prepare( $deploy( 'invalid-limit', 'abc123' ), null );
 		$assert( false, 'invalid artifact limit must fail' );
 	} catch ( AdmittedBranchStageFailure $expected ) {
-		$assert( 'archive_integrity_failed' === $expected->outcomeCode, 'invalid artifact limit uses the closed source failure' );
+		$assert( 'archive_integrity_failed' === $expected->outcome_code, 'invalid artifact limit uses the closed source failure' );
 	}
 	$assert( 0 === $invalidProvider->acquisitions, 'invalid artifact limit fails before provider acquisition' );
 }
@@ -157,22 +157,22 @@ try {
 	( new ProviderArchiveSource( $expandedProvider, $root . '/archives', $expandedLimit ) )->prepare( $deploy( 'expanded-limit', 'abc123' ), null );
 	$assert( false, 'configured 4x expanded archive ceiling must reject the fixture' );
 } catch ( AdmittedBranchStageFailure $expected ) {
-	$assert( 'archive_integrity_failed' === $expected->outcomeCode, 'expanded archive limit maps to archive integrity failure' );
+	$assert( 'archive_integrity_failed' === $expected->outcome_code, 'expanded archive limit maps to archive integrity failure' );
 }
 $assert( 1 === $expandedProvider->acquisitions, 'expanded-limit fixture is acquired once before ZIP inspection' );
 $assert( array( $expandedLimit ) === $expandedProvider->limits, 'expanded-limit path retains the configured compressed ceiling' );
 $assert( ! glob( $root . '/archives/*' ), 'expanded-limit rejection cleans the acquired archive' );
 
-$stale = $bootstrap( new BitbucketFixtureProvider( $zip, 'new' ), $store, $root . '/archives', new RecordingExecutor(), $lock )->plugin( repository: 'acme/demo', repositoryId: 'fixture-1', branch: 'main', pluginFile: 'demo/demo.php', subdirectory: 'demo' );
-$assert( $stale->deploy( expectedCommit: 'old' ) === 'provider_failed', 'stale head is a closed pre-fence outcome' );
+$stale = $bootstrap( new BitbucketFixtureProvider( $zip, 'new' ), $store, $root . '/archives', new RecordingExecutor(), $lock )->plugin( repository: 'acme/demo', repository_id: 'fixture-1', branch: 'main', plugin_file: 'demo/demo.php', subdirectory: 'demo' );
+$assert( $stale->deploy( expected_commit: 'old' ) === 'provider_failed', 'stale head is a closed pre-fence outcome' );
 $assert( $store->get( $stale->attempt_id() )['state'] === 'failed', 'stale head rejects pre-fence' );
 
-$wrongRepository = $bootstrap( new GitHubFixtureProvider( $zip, 'abc123', 'wrong-id' ), $store, $root . '/archives', new RecordingExecutor(), $lock )->plugin( repository: 'acme/demo', repositoryId: 'fixture-1', branch: 'main', pluginFile: 'demo/demo.php', subdirectory: 'demo' );
-$assert( $wrongRepository->deploy( expectedCommit: 'abc123' ) === 'provider_failed', 'provider identity is a closed pre-fence outcome' );
+$wrongRepository = $bootstrap( new GitHubFixtureProvider( $zip, 'abc123', 'wrong-id' ), $store, $root . '/archives', new RecordingExecutor(), $lock )->plugin( repository: 'acme/demo', repository_id: 'fixture-1', branch: 'main', plugin_file: 'demo/demo.php', subdirectory: 'demo' );
+$assert( $wrongRepository->deploy( expected_commit: 'abc123' ) === 'provider_failed', 'provider identity is a closed pre-fence outcome' );
 $assert( $store->get( $wrongRepository->attempt_id() )['state'] === 'failed', 'provider repository identity rejects pre-fence' );
 
-$failing = $bootstrap( new GitHubFixtureProvider( $zip, 'abc123' ), $store, $root . '/archives', new RecordingExecutor( true ), $lock )->plugin( repository: 'acme/demo', repositoryId: 'fixture-1', branch: 'main', pluginFile: 'demo/demo.php', subdirectory: 'demo' );
-$assert( $failing->deploy( expectedCommit: 'abc123' ) === 'restoration_uncertain', 'post-fence failure is a closed outcome' );
+$failing = $bootstrap( new GitHubFixtureProvider( $zip, 'abc123' ), $store, $root . '/archives', new RecordingExecutor( true ), $lock )->plugin( repository: 'acme/demo', repository_id: 'fixture-1', branch: 'main', plugin_file: 'demo/demo.php', subdirectory: 'demo' );
+$assert( $failing->deploy( expected_commit: 'abc123' ) === 'restoration_uncertain', 'post-fence failure is a closed outcome' );
 $assert( $store->get( $failing->attempt_id() )['state'] === 'needs_attention', 'post-fence failure is durable attention' );
 $assert( ! glob( $root . '/archives/*' ), 'failure cleans exact archive' );
 

@@ -6,6 +6,16 @@ $root = dirname(__DIR__);
 $method_code = 'RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase';
 $variable_code = 'WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase';
 $cases = [
+    ['src/Contract/AdmittedTargetFacts.php', 'function frozen_target(', 'function frozenTarget(', $method_code],
+    ['src/Archive/PreparedArchive.php', 'function download_and_validate(', 'function downloadAndValidate(', $method_code],
+    ['src/Runtime/BranchUpdater.php', 'function for_admitted_attempt(', 'function forAdmittedAttempt(', $method_code],
+    ['src/WordPress/WordPressCorePackageExecutor.php', 'function update_plugin(', 'function updatePlugin(', $method_code],
+    ['src/Runtime/BranchDeploymentDeclaration.php', '$attempt_id', '$attemptId', $variable_code],
+    ['src/Archive/ArchiveOffer.php', '$verify_head', '$verifyHead', $variable_code],
+    ['src/Runtime/BranchDeployment.php', '$expected_commit', '$expectedCommit', $variable_code],
+    ['src/Runtime/AdmittedBranchRunner.php', '->outcome_code', '->outcomeCode', 'WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase'],
+    ['src/Archive/ArchiveValidator.php', 'phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase', 'external-contract WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase', 'WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase'],
+    ['src/WordPress/WordPressCorePackageExecutor.php', 'phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase', 'external-contract WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase', 'WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase'],
     ['src/WordPress/WordPressUpdaterLock.php', 'phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped', 'reviewed-exception WordPress.Security.EscapeOutput.ExceptionNotEscaped', 'WordPress.Security.EscapeOutput.ExceptionNotEscaped'],
     ['src/WordPress/WordPressPackageExecutor.php', 'phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped', 'reviewed-exception WordPress.Security.EscapeOutput.ExceptionNotEscaped', 'WordPress.Security.EscapeOutput.ExceptionNotEscaped'],
     ['src/Persistence/FileAttemptStore.php', 'phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped', 'reviewed-exception WordPress.Security.EscapeOutput.ExceptionNotEscaped', 'WordPress.Security.EscapeOutput.ExceptionNotEscaped'],

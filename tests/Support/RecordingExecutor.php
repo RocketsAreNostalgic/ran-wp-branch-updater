@@ -16,13 +16,13 @@ final class RecordingExecutor implements PackageExecutor {
 	public function __construct( private readonly bool $fail = false ) {}
 
 	public function preflight( BranchDeploymentDeclaration $deployment, PreparedArchive $archive ): array {
-		$archive->assertUnchanged();
+		$archive->assert_unchanged();
 		return array();
 	}
 
 	public function execute( BranchDeploymentDeclaration $deployment, PreparedArchive $archive ): void {
 		$this->calls[] = array(
-			'id'      => $deployment->attemptId,
+			'id'      => $deployment->attempt_id,
 			'path'    => $archive->path(),
 			'version' => $archive->version,
 		);

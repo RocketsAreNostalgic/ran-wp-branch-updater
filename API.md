@@ -7,12 +7,12 @@ Load the consumer's Composer autoloader before requiring package bootstrap. Prod
 ```php
 $plugin = $branches->plugin(
     repository: 'acme/example-plugin',
-    repositoryId: '123456789',
+    repository_id: '123456789',
     branch: 'main',
-    pluginFile: 'example-plugin/example-plugin.php',
+    plugin_file: 'example-plugin/example-plugin.php',
 );
 
-$outcome = $plugin->deploy(expectedCommit: $commit);
+$outcome = $plugin->deploy(expected_commit: $commit);
 ```
 
 `deploy()` accepts an optional expected commit and operation (`install` or `update`). A deployment created for an already-admitted host attempt cannot override its bound declaration. `attempt_id()` exposes the durable journal key used by host recovery.
@@ -69,7 +69,7 @@ $branches = $configure(
 ```php
 $outcome = $branches->theme(
     repository: 'acme/site-packages',
-    repositoryId: '987654321',
+    repository_id: '987654321',
     branch: 'production',
     stylesheet: 'example-theme',
     subdirectory: 'themes/example-theme',
@@ -85,7 +85,7 @@ Hosts with their own durable admission, archive custody, target facts, and opera
 ```php
 use RAN\WPBranchUpdater\V1\Runtime\BranchUpdater;
 
-$branches = BranchUpdater::forAdmittedAttempt(
+$branches = BranchUpdater::for_admitted_attempt(
     deployment: $admittedDeclaration,
     journal: $journal,
     archives: $archives,
@@ -96,14 +96,14 @@ $branches = BranchUpdater::forAdmittedAttempt(
 
 $outcome = $branches->plugin(
     repository: $admittedDeclaration->repository,
-    repositoryId: $admittedDeclaration->repositoryId,
+    repository_id: $admittedDeclaration->repository_id,
     branch: $admittedDeclaration->branch,
-    packageSlug: $admittedDeclaration->slug,
+    package_slug: $admittedDeclaration->slug,
     subdirectory: $admittedDeclaration->subdirectory,
 )->deploy();
 ```
 
-The collaborators implement `Contract\AdmittedAttemptJournal`, `Contract\AdmittedArchiveSource`, `Contract\AdmittedTargetFacts`, `Contract\AdmittedPackageExecutor`, and `Contract\MutationLock`. Conflicting terminal arguments throw before execution; omitted terminal arguments retain the admitted values. `packageSlug` supports an admitted plugin install before a main file is known, after which host/WordPress adapters resolve the installed identity.
+The collaborators implement `Contract\AdmittedAttemptJournal`, `Contract\AdmittedArchiveSource`, `Contract\AdmittedTargetFacts`, `Contract\AdmittedPackageExecutor`, and `Contract\MutationLock`. Conflicting terminal arguments throw before execution; omitted terminal arguments retain the admitted values. `package_slug` supports an admitted plugin install before a main file is known, after which host/WordPress adapters resolve the installed identity.
 
 ## Provider boundary
 
