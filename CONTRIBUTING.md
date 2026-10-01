@@ -77,7 +77,7 @@ have individual, temporary `phpcs:ignore` annotations linked to #59 / Core #167.
 They are connected migration debt, not public-visibility exceptions. Variable
 naming is enforced on the 21 fully audited source files plus `bootstrap.php` listed in `.phpcs.xml`.
 `composer test:naming`, included in `composer test` and `composer check`, runs
-eleven unchanged/injected pairs through the actual repository rules without
+unchanged/injected pairs through the actual repository rules without
 rewriting tracked files. It covers private/public/protected and inherited owned
 methods plus variable regressions. Both check and fix retain identical scope.
 
@@ -121,8 +121,13 @@ not consumer adoption. Persisted keys, wire fields, protocol strings, external
 WordPress/PHP names, runtime behavior, support floors and dependency versions must
 remain intact. No camelCase declaration in this inventory is externally imposed.
 
-The separate condition, unused-parameter, overriding-method, reserved-parameter
-and exception-output suppressions in `.phpcs.xml` are not removed by naming work.
-Their retained compatibility/runtime reasons require an individual standards
-review under #59 before broader standards acceptance. UI/manual acceptance stays
-deferred; this source qualification does not substitute for it.
+Yoda conditions, unused parameters, useless overrides, reserved parameter names
+and exception-output checks are enforced across the shipped scope. Strict
+comparisons use the shared standard's Yoda order. Line-specific exceptions retain
+the required VCS callback signature, the stage-failure constructor's promoted
+public property, and raw diagnostic messages, codes and chained exceptions.
+These are diagnostic values, not rendered HTML; escaping them would change the
+error contract. `composer test:naming` exercises the real PHPCS gate with clean
+source and deliberately regressed copies, including every newly enabled rule.
+UI/manual acceptance stays deferred; this source qualification does not
+substitute for it.

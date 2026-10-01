@@ -83,9 +83,11 @@ final class PreparedArchive implements PreparedPackageArtifact {
 				$current = self::identity( $path );
 				if ( null !== $current && $current['dev'] === $created['dev'] && $current['ino'] === $created['ino'] ) {
 					if ( ! unlink( $path ) ) {
+						// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Preserve the previous Throwable for internal custody diagnostics; this is not rendered output.
 						throw new RuntimeException( 'Rejected archive could not be cleaned safely.', 0, $e );
 					}
 				} elseif ( file_exists( $path ) || is_link( $path ) ) {
+					// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Preserve the previous Throwable for internal custody diagnostics; this is not rendered output.
 					throw new RuntimeException( 'Rejected archive replacement could not be cleaned safely.', 0, $e );
 				}
 			}
@@ -151,7 +153,7 @@ final class PreparedArchive implements PreparedPackageArtifact {
 	private static function identity( string $path ): ?array {
 		clearstatcache( true, $path );
 		$s = @lstat( $path );
-		if ( ! is_array( $s ) || is_link( $path ) || ! is_file( $path ) || ( ( $s['mode'] & 0170000 ) !== 0100000 ) || ( ( $s['mode'] & 0777 ) !== 0600 ) || $s['nlink'] !== 1 ) {
+		if ( ! is_array( $s ) || is_link( $path ) || ! is_file( $path ) || ( ( $s['mode'] & 0170000 ) !== 0100000 ) || ( ( $s['mode'] & 0777 ) !== 0600 ) || 1 !== $s['nlink'] ) {
 			return null;
 		}
 		return array(

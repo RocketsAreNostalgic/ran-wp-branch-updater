@@ -1,5 +1,5 @@
 <?php
-// phpcs:disable WordPress.WP.AlternativeFunctions,WordPress.Security.EscapeOutput -- ZIP stream validation needs direct bounded reads and throws bounded internal failures.
+// phpcs:disable WordPress.WP.AlternativeFunctions -- ZIP stream validation needs direct bounded reads.
 declare(strict_types=1);
 
 namespace RAN\WPBranchUpdater\V1\Archive;
@@ -300,6 +300,7 @@ final class ArchiveValidator {
 	}
 	/** @return never */
 	private function fail( int $code, string $message ): never {
+		// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Preserve the bounded internal validation message and numeric error code; neither is rendered output.
 		throw new RuntimeException( $message, $code );
 	}
 }
