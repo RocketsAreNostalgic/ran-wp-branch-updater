@@ -169,8 +169,8 @@ class WordPressCorePackageExecutor {
 				return $reply;
 			}
 			$archive_path         = $artifact->getPath();
-			$operation_identifier = null === $identifier || $identifier === ( $extra[ $type ] ?? null );
-			if ( is_string( $package ) && hash_equals( $archive_path, $package ) && $type === ( $extra['type'] ?? null ) && $action === ( $extra['action'] ?? null ) && $operation_identifier ) {
+			$operation_identifier = null === $identifier || ( $extra[ $type ] ?? null ) === $identifier;
+			if ( is_string( $package ) && hash_equals( $archive_path, $package ) && ( $extra['type'] ?? null ) === $type && ( $extra['action'] ?? null ) === $action && $operation_identifier ) {
 				$artifact->assertUnchanged();
 				return $archive_path;
 			}
@@ -183,6 +183,7 @@ class WordPressCorePackageExecutor {
 		if ( 'theme' === $type ) {
 			$theme_root = realpath( get_theme_root( $identifier ) );
 			if ( false === $theme_root || ! is_dir( $theme_root ) ) {
+				// phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Preserve the two-argument WordPress VCS filter callback signature.
 				return static fn ( bool $checkout, string $context ): bool => $checkout;
 			}
 			$allowed_context = $theme_root;
@@ -198,7 +199,7 @@ class WordPressCorePackageExecutor {
 
 	private function source_selection_filter( string $slug, ?string $subdirectory, string $type, string $action, ?string $identifier ): Closure {
 		return static function ( mixed $source, mixed $remote_source, mixed $upgrader, array $extra ) use ( $slug, $subdirectory, $type, $action, $identifier ): mixed {
-			if ( $type !== ( $extra['type'] ?? null ) || $action !== ( $extra['action'] ?? null ) || ( null !== $identifier && $identifier !== ( $extra[ $type ] ?? null ) ) ) {
+			if ( ( $extra['type'] ?? null ) !== $type || ( $extra['action'] ?? null ) !== $action || ( null !== $identifier && ( $extra[ $type ] ?? null ) !== $identifier ) ) {
 				return $source;
 			}
 			if ( ! is_string( $source ) || ! is_string( $remote_source ) ) {
@@ -270,7 +271,7 @@ class WordPressCorePackageExecutor {
 					continue;
 				}
 				$segments = explode( '/', trim( $name, '/' ) );
-				if ( count( $segments ) !== count( $subdirectory_segments ) + 2 || 'style.css' !== end( $segments ) || $subdirectory_segments !== array_slice( $segments, 1, -1 ) ) {
+				if ( count( $segments ) !== count( $subdirectory_segments ) + 2 || 'style.css' !== end( $segments ) || array_slice( $segments, 1, -1 ) !== $subdirectory_segments ) {
 					continue;
 				}
 				$candidates[] = $index;
@@ -295,8 +296,8 @@ class WordPressCorePackageExecutor {
 		}
 	}
 
-	private static function is_canonical_child( string $path, string $parent ): bool {
-		return $path !== $parent && str_starts_with( $path . DIRECTORY_SEPARATOR, $parent . DIRECTORY_SEPARATOR );
+	private static function is_canonical_child( string $path, string $parent_path ): bool {
+		return $path !== $parent_path && str_starts_with( $path . DIRECTORY_SEPARATOR, $parent_path . DIRECTORY_SEPARATOR );
 	}
 	private function completion_collector( array &$completions ): Closure {
 		return static function ( object $upgrader, array $extra ) use ( &$completions ): void {
@@ -337,10 +338,10 @@ class WordPressCorePackageExecutor {
 		return true;
 	}
 	private function completion_matches( array $completion, string $type, string $action, ?string $identifier ): bool {
-		if ( $type !== ( $completion['type'] ?? null ) || $action !== ( $completion['action'] ?? null ) ) {
+		if ( ( $completion['type'] ?? null ) !== $type || ( $completion['action'] ?? null ) !== $action ) {
 			return false;
 		}
-		return null === $identifier || $identifier === ( $completion[ $type ] ?? null );
+		return null === $identifier || ( $completion[ $type ] ?? null ) === $identifier;
 	}
 	private function is_restored_plugin_failure( string $type, mixed $result ): bool {
 		return 'plugin' === $type && $result instanceof WP_Error && 'plugin_update_fatal_error_rollback_successful' === $result->get_error_code();

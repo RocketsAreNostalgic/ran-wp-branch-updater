@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 // phpcs:disable WordPress.WP.AlternativeFunctions -- Atomic local journal custody requires direct filesystem calls.
-// phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Internal exceptions are not rendered.
 namespace RAN\WPBranchUpdater\V1\Persistence;
 
 use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
@@ -144,6 +143,7 @@ final class FileAttemptStore {
 		try {
 			$records = json_decode( (string) file_get_contents( $this->path ), true, 512, JSON_THROW_ON_ERROR );
 		} catch ( Throwable $e ) {
+			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Preserve the previous Throwable for internal journal diagnostics; this is not rendered output.
 			throw new BranchDeploymentJournalFailure( 'Journal is malformed.', 0, $e );
 		}
 		if ( ! is_array( $records ) || array_is_list( $records ) ) {
@@ -162,7 +162,7 @@ final class FileAttemptStore {
 		sort( $keys );
 		$actual = array_keys( $r );
 		sort( $actual );
-		if ( $keys !== $actual || $id !== ( $r['id'] ?? null ) || ! is_string( $r['state'] ?? null ) || ! in_array( $r['state'], array( 'running', 'succeeded', 'failed', 'needs_attention' ), true ) ) {
+		if ( $keys !== $actual || ( $r['id'] ?? null ) !== $id || ! is_string( $r['state'] ?? null ) || ! in_array( $r['state'], array( 'running', 'succeeded', 'failed', 'needs_attention' ), true ) ) {
 			return false;
 		}
 		foreach ( array( 'package_type', 'slug', 'repository', 'branch' ) as $field ) {
@@ -212,6 +212,7 @@ final class FileAttemptStore {
 		try {
 			$json = json_encode( $records, JSON_THROW_ON_ERROR );
 		} catch ( Throwable $e ) {
+			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Preserve the previous Throwable for internal journal diagnostics; this is not rendered output.
 			throw new BranchDeploymentJournalFailure( 'Journal cannot be encoded.', 0, $e );
 		}
 		$tmp = $this->path . '.new';
@@ -251,6 +252,7 @@ final class FileAttemptStore {
 
 	/** @return never */
 	private function fail( string $message ): never {
+		// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- The internal journal failure message is not rendered output and must retain its diagnostic value.
 		throw new BranchDeploymentJournalFailure( $message );
 	}
 }

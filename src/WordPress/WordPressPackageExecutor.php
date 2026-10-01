@@ -1,5 +1,5 @@
 <?php
-// phpcs:disable WordPress.Security.EscapeOutput -- The executor returns internal failures to its caller.
+
 declare(strict_types=1);
 
 namespace RAN\WPBranchUpdater\V1\WordPress;
@@ -17,6 +17,7 @@ final class WordPressPackageExecutor implements PackageExecutor {
 	public function execute( BranchDeploymentDeclaration $d, PreparedArchive $archive ): void {
 		$result = $this->execute_core( $d, $archive );
 		if ( ! $result->is_successful() ) {
+			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Internal enum failure diagnostics are not rendered output.
 			throw new RuntimeException( 'WordPress execution failed: ' . $result->get_failure()->value );
 		}
 	}

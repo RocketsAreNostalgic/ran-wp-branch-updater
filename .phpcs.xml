@@ -48,10 +48,6 @@
 	<rule ref="WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid">
 		<severity>0</severity>
 	</rule>
-	<!-- Yoda rewrites are not part of this library's established API/code style contract. -->
-	<rule ref="WordPress.PHP.YodaConditions">
-		<severity>0</severity>
-	</rule>
 
 	<rule ref="WordPress.NamingConventions.PrefixAllGlobals">
 		<properties>
@@ -62,19 +58,4 @@
 		</properties>
 	</rule>
 
-	<!-- Interface/runtime signatures intentionally retain required parameters and inheritance shape. -->
-	<rule ref="Generic.CodeAnalysis.UnusedFunctionParameter">
-		<severity>0</severity>
-	</rule>
-	<rule ref="Generic.CodeAnalysis.UselessOverridingMethod">
-		<severity>0</severity>
-	</rule>
-	<rule ref="Universal.NamingConventions.NoReservedKeywordParameterNames">
-		<severity>0</severity>
-	</rule>
-
-	<!-- Exception messages are internal failure protocol data, not rendered HTML output. -->
-	<rule ref="WordPress.Security.EscapeOutput.ExceptionNotEscaped">
-		<severity>0</severity>
-	</rule>
 </ruleset>

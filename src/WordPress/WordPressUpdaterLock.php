@@ -23,6 +23,7 @@ class WordPressUpdaterLock implements MutationLock {
 			try {
 				$released = $this->release( $token );
 			} catch ( Throwable $failure ) {
+				// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Preserve the previous Throwable as the exception cause, not rendered output.
 				throw new BranchDeploymentLockReleaseFailure( 'WordPress updater lock release failed.', 0, $failure );
 			}
 			if ( ! $released ) {

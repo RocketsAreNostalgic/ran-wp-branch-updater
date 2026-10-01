@@ -12,7 +12,10 @@ check covers every shipped declaration, including inherited classes. The remaini
 Variable naming covers 21 fully audited source files plus `bootstrap.php` listed in `.phpcs.xml`.
 Other parameter/property scopes remain connected migration debt, not exemptions.
 See the current boundary inventory in CONTRIBUTING.md. `composer test:naming`
-proves the real rules reject representative method and variable regressions.
+proves the real rules reject representative method, variable and standards regressions.
+Yoda conditions, unused parameters, useless overrides, reserved parameter names
+and exception-output checks are enforced. Keep justified callback, promoted-property
+and diagnostic exceptions restricted to their annotated lines.
 
 Keep the package's actual contract local: PHP `^8.2`, the `RAN\WPBranchUpdater\V1` namespace, source paths, updater-specific tests, and justified runtime/security exceptions. Do not add a WordPress-version floor unless this package explicitly claims one, and do not copy shared rules back into local configuration.
 

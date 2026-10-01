@@ -6,6 +6,18 @@ $root = dirname(__DIR__);
 $method_code = 'RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase';
 $variable_code = 'WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase';
 $cases = [
+    ['src/WordPress/WordPressUpdaterLock.php', 'phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped', 'reviewed-exception WordPress.Security.EscapeOutput.ExceptionNotEscaped', 'WordPress.Security.EscapeOutput.ExceptionNotEscaped'],
+    ['src/WordPress/WordPressPackageExecutor.php', 'phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped', 'reviewed-exception WordPress.Security.EscapeOutput.ExceptionNotEscaped', 'WordPress.Security.EscapeOutput.ExceptionNotEscaped'],
+    ['src/Persistence/FileAttemptStore.php', 'phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped', 'reviewed-exception WordPress.Security.EscapeOutput.ExceptionNotEscaped', 'WordPress.Security.EscapeOutput.ExceptionNotEscaped'],
+    ['src/Archive/ArchiveValidator.php', 'phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped', 'reviewed-exception WordPress.Security.EscapeOutput.ExceptionNotEscaped', 'WordPress.Security.EscapeOutput.ExceptionNotEscaped'],
+    ['src/Archive/PreparedArchive.php', 'phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped', 'reviewed-exception WordPress.Security.EscapeOutput.ExceptionNotEscaped', 'WordPress.Security.EscapeOutput.ExceptionNotEscaped'],
+    ['src/Archive/PreparedArchive.php', '1 !== $s[\'nlink\']', '$s[\'nlink\'] !== 1', 'WordPress.PHP.YodaConditions.NotYoda'],
+    ['src/Persistence/FileAttemptStore.php', '( $r[\'id\'] ?? null ) !== $id', '$id !== ( $r[\'id\'] ?? null )', 'WordPress.PHP.YodaConditions.NotYoda'],
+
+    ['src/WordPress/WordPressCorePackageExecutor.php', 'phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed', 'reviewed-exception Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed', 'Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed'],
+    ['src/Runtime/AdmittedBranchStageFailure.php', 'phpcs:ignore Generic.CodeAnalysis.UselessOverridingMethod.Found', 'reviewed-exception Generic.CodeAnalysis.UselessOverridingMethod.Found', 'Generic.CodeAnalysis.UselessOverridingMethod.Found'],
+    ['src/WordPress/WordPressCorePackageExecutor.php', '$parent_path', '$parent', 'Universal.NamingConventions.NoReservedKeywordParameterNames.parentFound'],
+
     ['bootstrap.php', '$archive_directory', '$archiveDirectory', $variable_code],
     ['bootstrap.php', '$maximum_artifact_bytes', '$maximumArtifactBytes', $variable_code],
     ['src/Archive/ArchiveValidator.php', 'function verify_entry_contents(', 'function verifyEntryContents(', $method_code],
@@ -65,4 +77,4 @@ foreach ($cases as [$path, $before, $after, $expected]) {
     }
 }
 
-echo 'PASS naming enforcement: ' . count($cases) . " positive/negative pairs, including inherited owned methods\n";
+echo 'PASS naming and standards enforcement: ' . count($cases) . " positive/negative pairs, including inherited owned methods\n";
