@@ -9,7 +9,7 @@ under the `^1.0` development constraint. The additional `RANOwnedMethods`
 check covers every shipped declaration, including inherited classes. The remaining
 32 connected public declarations have line-specific temporary deferrals owned by
 #59 / Core #167; remove each with its coordinated producer/consumer migration.
-Variable naming covers 21 fully audited source files listed in `.phpcs.xml`.
+Variable naming covers 21 fully audited source files plus `bootstrap.php` listed in `.phpcs.xml`.
 Other parameter/property scopes remain connected migration debt, not exemptions.
 See the current boundary inventory in CONTRIBUTING.md. `composer test:naming`
 proves the real rules reject representative method and variable regressions.

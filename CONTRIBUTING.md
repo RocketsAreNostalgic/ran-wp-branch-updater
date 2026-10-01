@@ -75,9 +75,9 @@ All shipped owned methods now enter `RANOwnedMethods`, including declarations
 upstream WPCS skips because of inheritance. The 32 remaining camelCase methods
 have individual, temporary `phpcs:ignore` annotations linked to #59 / Core #167.
 They are connected migration debt, not public-visibility exceptions. Variable
-naming is enforced on the 21 fully audited files listed in `.phpcs.xml`.
+naming is enforced on the 21 fully audited source files plus `bootstrap.php` listed in `.phpcs.xml`.
 `composer test:naming`, included in `composer test` and `composer check`, runs
-nine unchanged/injected pairs through the actual repository rules without
+eleven unchanged/injected pairs through the actual repository rules without
 rewriting tracked files. It covers private/public/protected and inherited owned
 methods plus variable regressions. Both check and fix retain identical scope.
 
@@ -108,9 +108,9 @@ The same boundary includes public declaration/offer properties, stage-failure
 `outcomeCode`, `ArchiveOffer` constructor parameters (including promoted
 `verifyHead`), archive preparation's public arguments, `frozenTarget`'s
 `deferExisting`, WordPress executor arguments, `BranchUpdater::plugin/theme`
-arguments and `BranchDeployment::deploy`'s `expectedCommit`. Bootstrap's
-`archiveDirectory` and `maximumArtifactBytes` named arguments remain an explicit
-standalone entry-point handoff. Internal users of those property spellings remain
+arguments and `BranchDeployment::deploy`'s `expectedCommit`. The standalone
+bootstrap uses `archive_directory` and `maximum_artifact_bytes`; its installed
+consumer proof checks both positional defaults and explicit named arguments. Internal users of those property spellings remain
 outside whole-file variable enforcement until the connected declarations move.
 
 Branch #59 owns the producer cohort; Core #167 owns host adapters, coordinator,

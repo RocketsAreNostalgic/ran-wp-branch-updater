@@ -71,4 +71,22 @@ if (
 	throw new RuntimeException( 'Installed bootstrap did not retain its default executor and lock.' );
 }
 
-echo "PASS installed Composer consumer bootstrap\n";
+$named = $configure(
+	provider: $provider,
+	attempts: new RAN\WPBranchUpdater\V1\Persistence\FileAttemptStore( $state ),
+	archive_directory: $private . '/named-archives',
+	maximum_artifact_bytes: 134217728
+);
+$namedRunner = ( new ReflectionObject( $named ) )->getProperty( 'runner' )->getValue( $named );
+if ( ! $namedRunner instanceof RAN\WPBranchUpdater\V1\Runtime\StandaloneBranchRunner ) {
+	throw new RuntimeException( 'Named configuration did not create a standalone runner.' );
+}
+$namedFacts = new ReflectionObject( $namedRunner );
+if (
+	$private . '/named-archives' !== $namedFacts->getProperty( 'archive_directory' )->getValue( $namedRunner )
+	|| 134217728 !== $namedFacts->getProperty( 'maximum_artifact_bytes' )->getValue( $namedRunner )
+) {
+	throw new RuntimeException( 'Installed bootstrap did not forward its named arguments.' );
+}
+
+echo "PASS installed Composer consumer bootstrap (positional defaults and named arguments)\n";
