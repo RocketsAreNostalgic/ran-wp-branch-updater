@@ -15,12 +15,12 @@ use RuntimeException;
 final class WordPressPackageExecutor implements PackageExecutor {
 	public function __construct( private readonly WordPressCorePackageExecutor $core = new WordPressCorePackageExecutor() ) {}
 	public function execute( BranchDeploymentDeclaration $d, PreparedArchive $archive ): void {
-		$result = $this->executeCore( $d, $archive );
-		if ( ! $result->isSuccessful() ) {
-			throw new RuntimeException( 'WordPress execution failed: ' . $result->getFailure()->value );
+		$result = $this->execute_core( $d, $archive );
+		if ( ! $result->is_successful() ) {
+			throw new RuntimeException( 'WordPress execution failed: ' . $result->get_failure()->value );
 		}
 	}
-	public function executeCore( BranchDeploymentDeclaration $d, PreparedArchive $archive ): CorePackageExecutionResult {
+	public function execute_core( BranchDeploymentDeclaration $d, PreparedArchive $archive ): CorePackageExecutionResult {
 		if ( ! defined( 'ABSPATH' ) ) {
 			throw new RuntimeException( 'WordPress upgrader is unavailable.' );
 		}
@@ -47,13 +47,13 @@ final class WordPressPackageExecutor implements PackageExecutor {
 			throw new RuntimeException( 'WordPress maintenance mode is active.' );
 		}
 		$identifier = $d->installedIdentifier ?? ( 'plugin' === $d->packageType ? $d->slug . '/' . $d->slug . '.php' : $d->slug );
-		$before     = $this->installedState( $d->packageType, $identifier );
+		$before     = $this->installed_state( $d->packageType, $identifier );
 		$archive->assertUnchanged();
 		return $before;
 	}
-	public function installedFacts( BranchDeploymentDeclaration $d ): array {
+	public function installed_facts( BranchDeploymentDeclaration $d ): array {
 		$identifier = $d->installedIdentifier ?? ( 'plugin' === $d->packageType ? $d->slug . '/' . $d->slug . '.php' : $d->slug );
-		$state      = $this->installedState( $d->packageType, $identifier );
+		$state      = $this->installed_state( $d->packageType, $identifier );
 		if ( null === $state['version'] ) {
 			throw new RuntimeException( 'WordPress did not report an installed package version.' );
 		}
@@ -63,7 +63,7 @@ final class WordPressPackageExecutor implements PackageExecutor {
 			'active'     => $state['active'],
 		);
 	}
-	private function installedState( string $type, string $identifier ): array {
+	private function installed_state( string $type, string $identifier ): array {
 		require_once ABSPATH . 'wp-admin/includes/plugin.php';
 		require_once ABSPATH . 'wp-admin/includes/theme.php';
 		if ( 'plugin' === $type ) {

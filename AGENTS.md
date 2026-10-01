@@ -6,10 +6,13 @@ This is the independent `ran/wp-branch-updater` Composer library. Keep committed
 
 This repository uses the RAN `php-library` quality profile. PHP coding and compatibility ancestry comes from `ran/coding-standards` through `RANWordPressLibrary`; the tracked Composer lock binds the published v1.0.0 release
 under the `^1.0` development constraint. The additional `RANOwnedMethods`
-check is enabled only for `Contract/AdmittedAttemptJournal.php` and
-`Persistence/FileAttemptJournal.php`, the completed #59 journal cohort. Variable
-naming is enforced on the same two files; other owned contracts remain deferred
-to connected caller audits under #59.
+check covers every shipped declaration, including inherited classes. The remaining
+32 connected public declarations have line-specific temporary deferrals owned by
+#59 / Core #167; remove each with its coordinated producer/consumer migration.
+Variable naming covers 21 fully audited source files listed in `.phpcs.xml`.
+Other parameter/property scopes remain connected migration debt, not exemptions.
+See the current boundary inventory in CONTRIBUTING.md. `composer test:naming`
+proves the real rules reject representative method and variable regressions.
 
 Keep the package's actual contract local: PHP `^8.2`, the `RAN\WPBranchUpdater\V1` namespace, source paths, updater-specific tests, and justified runtime/security exceptions. Do not add a WordPress-version floor unless this package explicitly claims one, and do not copy shared rules back into local configuration.
 

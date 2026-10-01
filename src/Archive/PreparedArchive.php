@@ -22,17 +22,18 @@ final class PreparedArchive implements PreparedPackageArtifact {
 		private array $identity,
 		private string $digest,
 		public readonly string $version,
-		private readonly int $expandedBytes
+		private readonly int $expanded_bytes
 	) {}
 
+	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
 	public static function downloadAndValidate(
 		ArchiveOffer $offer,
 		BranchDeploymentDeclaration $d,
 		string $directory,
 		mixed $maximumArtifactBytes = self::DEFAULT_MAXIMUM_ARTIFACT_BYTES
 	): self {
-		$maximumArtifactBytes = self::maximumArtifactBytes( $maximumArtifactBytes );
-		$maximumExpandedBytes = self::maximumExpandedBytes( $maximumArtifactBytes );
+		$maximumArtifactBytes   = self::maximum_artifact_bytes( $maximumArtifactBytes );
+		$maximum_expanded_bytes = self::maximum_expanded_bytes( $maximumArtifactBytes );
 		if ( ( file_exists( $directory ) || is_link( $directory ) ) && ( is_link( $directory ) || ! is_dir( $directory ) ) ) {
 			throw new RuntimeException( 'Archive directory is unsafe.' );
 		}
@@ -73,7 +74,7 @@ final class PreparedArchive implements PreparedPackageArtifact {
 				$d,
 				'update' === $d->operation ? $d->installedIdentifier : null,
 				$maximumArtifactBytes,
-				$maximumExpandedBytes,
+				$maximum_expanded_bytes,
 				function_exists( 'get_bloginfo' ) ? (string) get_bloginfo( 'version' ) : ''
 			);
 			return new self( $path, $offer->resolvedRef, $identity, $digest, $inspection['expected_version'], $inspection['expanded'] );
@@ -97,19 +98,23 @@ final class PreparedArchive implements PreparedPackageArtifact {
 		return $this->path;
 	}
 
+	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
 	public function getPath(): string {
 		return $this->path();
 	}
 
+	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
 	public function getExpectedVersion(): string {
 		return $this->version;
 	}
 
+	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
 	public function expandedBytes(): int {
 		$this->assertUnchanged();
-		return $this->expandedBytes;
+		return $this->expanded_bytes;
 	}
 
+	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
 	public function assertUnchanged(): void {
 		if ( $this->cleaned || self::identity( $this->path ) !== $this->identity || ! hash_equals( $this->digest, (string) hash_file( 'sha256', $this->path ) ) ) {
 			throw new RuntimeException( 'Prepared archive changed before use.' );
@@ -127,20 +132,20 @@ final class PreparedArchive implements PreparedPackageArtifact {
 		$this->cleaned = true;
 	}
 
-	private static function maximumArtifactBytes( mixed $maximumArtifactBytes ): int {
-		if ( ! is_int( $maximumArtifactBytes ) || $maximumArtifactBytes < 1 ) {
+	private static function maximum_artifact_bytes( mixed $maximum_artifact_bytes ): int {
+		if ( ! is_int( $maximum_artifact_bytes ) || $maximum_artifact_bytes < 1 ) {
 			throw new RuntimeException( 'Maximum artifact bytes is invalid.' );
 		}
 
-		return $maximumArtifactBytes;
+		return $maximum_artifact_bytes;
 	}
 
-	private static function maximumExpandedBytes( int $maximumArtifactBytes ): int {
-		if ( $maximumArtifactBytes > intdiv( PHP_INT_MAX, self::EXPANDED_RATIO ) ) {
+	private static function maximum_expanded_bytes( int $maximum_artifact_bytes ): int {
+		if ( $maximum_artifact_bytes > intdiv( PHP_INT_MAX, self::EXPANDED_RATIO ) ) {
 			throw new RuntimeException( 'Maximum artifact bytes is invalid for expanded archive validation.' );
 		}
 
-		return $maximumArtifactBytes * self::EXPANDED_RATIO;
+		return $maximum_artifact_bytes * self::EXPANDED_RATIO;
 	}
 
 	private static function identity( string $path ): ?array {

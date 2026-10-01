@@ -13,7 +13,7 @@ final readonly class BranchDeployment {
 	) {}
 
 	/** The durable standalone journal key, stable before and after deploy(). */
-	public function attemptId(): string {
+	public function attempt_id(): string {
 		return $this->declaration->attemptId;
 	}
 

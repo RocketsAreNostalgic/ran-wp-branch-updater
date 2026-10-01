@@ -29,11 +29,11 @@ final class AdmittedBranchRunner {
 		if ( $this->consumed ) {
 			throw new RuntimeException( 'An admitted deployment runner is already consumed.' );
 		}
-		$this->consumed   = true;
-		$artifact         = null;
-		$fenced           = false;
-		$cleanupAttempted = false;
-		$stage            = 'policy_blocked';
+		$this->consumed    = true;
+		$artifact          = null;
+		$fenced            = false;
+		$cleanup_attempted = false;
+		$stage             = 'policy_blocked';
 		try {
 			$this->target->assertMutationAllowed();
 			$baseline = $this->target->frozenTarget( $deployment, true );
@@ -46,12 +46,12 @@ final class AdmittedBranchRunner {
 			$this->journal->record_resolved_ref( $artifact->resolvedRef() );
 			$stage   = 'lock_unavailable';
 			$outcome = $this->lock->run(
-				function () use ( $deployment, $baseline, $artifact, &$fenced, &$cleanupAttempted, &$stage ): string {
+				function () use ( $deployment, $baseline, $artifact, &$fenced, &$cleanup_attempted, &$stage ): string {
 					$primary = null;
 					try {
-						$stage           = 'policy_blocked';
-						$currentBaseline = $this->target->frozenTarget( $deployment, false );
-						if ( null !== $currentBaseline && version_compare( $artifact->expectedVersion(), $currentBaseline['version'], '<' ) ) {
+						$stage            = 'policy_blocked';
+						$current_baseline = $this->target->frozenTarget( $deployment, false );
+						if ( null !== $current_baseline && version_compare( $artifact->expectedVersion(), $current_baseline['version'], '<' ) ) {
 							throw new AdmittedBranchStageFailure( 'downgrade_blocked' );
 						}
 						$stage = 'provider_failed';
@@ -70,7 +70,7 @@ final class AdmittedBranchRunner {
 						if ( $this->target->maintenanceActive() ) {
 							return 'maintenance_remaining';
 						}
-						if ( $result->isSuccessful() ) {
+						if ( $result->is_successful() ) {
 							if ( 'update' === $deployment->operation ) {
 								$this->target->recheckManaged( $deployment );
 							}
@@ -93,7 +93,7 @@ final class AdmittedBranchRunner {
 						if ( null === $current || $current['version'] !== $baseline['version'] || $current['active'] !== $baseline['active'] ) {
 							return 'restoration_uncertain';
 						}
-						return match ( $result->getFailure() ) {
+						return match ( $result->get_failure() ) {
 							CorePackageExecutionFailure::WORDPRESS_RESTORED => 'activation_failed',
 							CorePackageExecutionFailure::WORDPRESS_REFUSED,
 							CorePackageExecutionFailure::WORDPRESS_FAILED => 'upgrader_failed',
@@ -104,34 +104,34 @@ final class AdmittedBranchRunner {
 						throw $failure;
 					} finally {
 						try {
-							$cleanupAttempted = true;
+							$cleanup_attempted = true;
 							$artifact->cleanup();
-						} catch ( Throwable $cleanupFailure ) {
-							if ( $primary instanceof AdmittedBranchDurabilityFailure || $this->isAmbiguous( $primary ) ) {
+						} catch ( Throwable $cleanup_failure ) {
+							if ( $primary instanceof AdmittedBranchDurabilityFailure || $this->is_ambiguous( $primary ) ) {
 								throw $primary;
 							}
 							$stage = 'archive_cleanup_failed';
-							throw $cleanupFailure;
+							throw $cleanup_failure;
 						}
 					}
 				}
 			);
 		} catch ( Throwable $failure ) {
-			if ( null !== $artifact && ! $cleanupAttempted ) {
+			if ( null !== $artifact && ! $cleanup_attempted ) {
 				try {
-					$cleanupAttempted = true;
+					$cleanup_attempted = true;
 					$artifact->cleanup();
-				} catch ( Throwable $cleanupFailure ) {
+				} catch ( Throwable $cleanup_failure ) {
 					if ( $failure instanceof AdmittedBranchDurabilityFailure ) {
 						throw $failure;
 					}
-					if ( ! $this->isAmbiguous( $failure ) ) {
+					if ( ! $this->is_ambiguous( $failure ) ) {
 						$stage   = 'archive_cleanup_failed';
-						$failure = $cleanupFailure;
+						$failure = $cleanup_failure;
 					}
 				}
 			}
-			if ( $this->isAmbiguous( $failure ) ) {
+			if ( $this->is_ambiguous( $failure ) ) {
 				throw $failure;
 			}
 			$outcome = $fenced ? 'interrupted' : ( $failure instanceof AdmittedBranchStageFailure ? $failure->outcomeCode : $stage );
@@ -140,7 +140,7 @@ final class AdmittedBranchRunner {
 		return $outcome;
 	}
 
-	private function isAmbiguous( ?Throwable $failure ): bool {
+	private function is_ambiguous( ?Throwable $failure ): bool {
 		return $failure instanceof AdmittedBranchDurabilityFailure
 			|| $failure instanceof BranchDeploymentJournalFailure
 			|| $failure instanceof BranchDeploymentLockReleaseFailure

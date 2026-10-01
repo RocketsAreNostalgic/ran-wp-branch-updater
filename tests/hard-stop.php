@@ -40,7 +40,7 @@ if ( 'child' === $mode ) {
 }
 if ( 'recover' === $mode ) {
 	$store = new FileAttemptStore( $argv[2] );
-	$store->recoverStopped( 'hard-stop' );
+	$store->recover_stopped( 'hard-stop' );
 	if ( 'needs_attention' !== $store->get( 'hard-stop' )['state'] ) {
 		throw new RuntimeException( 'Fenced hard stop was not retained.' );
 	}

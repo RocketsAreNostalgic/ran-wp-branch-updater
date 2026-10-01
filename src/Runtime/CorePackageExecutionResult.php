@@ -13,13 +13,13 @@ final readonly class CorePackageExecutionResult {
 	public static function failed( CorePackageExecutionFailure $failure ): self {
 		return new self( $failure );
 	}
-	public function isSuccessful(): bool {
+	public function is_successful(): bool {
 		return null === $this->failure;
 	}
-	public function wasRestoredByWordPress(): bool {
+	public function was_restored_by_wordpress(): bool {
 		return CorePackageExecutionFailure::WORDPRESS_RESTORED === $this->failure;
 	}
-	public function getFailure(): ?CorePackageExecutionFailure {
+	public function get_failure(): ?CorePackageExecutionFailure {
 		return $this->failure;
 	}
 }

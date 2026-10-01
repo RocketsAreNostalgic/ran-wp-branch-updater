@@ -16,17 +16,34 @@
 
 	<rule ref="RANWordPressLibrary"/>
 
-	<!-- #59: enforce only the audited journal declarations; other owned contracts remain deferred. -->
-	<rule ref="RANOwnedMethods">
-		<include-pattern>/src/Contract/AdmittedAttemptJournal.php</include-pattern>
-		<include-pattern>/src/Persistence/FileAttemptJournal.php</include-pattern>
-	</rule>
+	<!-- #59: all owned methods are checked; remaining connected declarations have line-specific deferrals. -->
+	<rule ref="RANOwnedMethods"/>
+	<!-- Fully audited variable scopes. Connected parameter/property use remains in #59 / Core #167. -->
 	<rule ref="WordPress.NamingConventions.ValidVariableName">
+		<include-pattern>/src/Archive/PackageSubdirectory.php</include-pattern>
+		<include-pattern>/src/Archive/PreparedArchiveArtifact.php</include-pattern>
+		<include-pattern>/src/Contract/AdmittedArchiveSource.php</include-pattern>
 		<include-pattern>/src/Contract/AdmittedAttemptJournal.php</include-pattern>
+		<include-pattern>/src/Contract/AdmittedBranchArtifact.php</include-pattern>
+		<include-pattern>/src/Contract/AdmittedPackageExecutor.php</include-pattern>
+		<include-pattern>/src/Contract/BranchProvider.php</include-pattern>
+		<include-pattern>/src/Contract/MutationLock.php</include-pattern>
+		<include-pattern>/src/Contract/PackageExecutor.php</include-pattern>
+		<include-pattern>/src/Contract/PreparedPackageArtifact.php</include-pattern>
+		<include-pattern>/src/Persistence/BranchDeploymentJournalFailure.php</include-pattern>
 		<include-pattern>/src/Persistence/FileAttemptJournal.php</include-pattern>
+		<include-pattern>/src/Persistence/FileMutationLock.php</include-pattern>
+		<include-pattern>/src/Runtime/AdmittedBranchDurabilityFailure.php</include-pattern>
+		<include-pattern>/src/Runtime/BranchDeploymentLockReleaseFailure.php</include-pattern>
+		<include-pattern>/src/Runtime/BranchDeploymentLockStorageFailure.php</include-pattern>
+		<include-pattern>/src/Runtime/CorePackageExecutionFailure.php</include-pattern>
+		<include-pattern>/src/Runtime/CorePackageExecutionResult.php</include-pattern>
+		<include-pattern>/src/Runtime/StandalonePackageExecutor.php</include-pattern>
+		<include-pattern>/src/WordPress/InstalledPackageIdentifier.php</include-pattern>
+		<include-pattern>/src/WordPress/WordPressUpdaterLock.php</include-pattern>
 	</rule>
 
-	<!-- #59: remaining public contracts are deferred to connected caller cohorts. -->
+	<!-- RANOwnedMethods covers all declarations, including classes upstream skips. -->
 	<rule ref="WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid">
 		<severity>0</severity>
 	</rule>

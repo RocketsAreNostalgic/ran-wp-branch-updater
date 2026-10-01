@@ -59,6 +59,7 @@
     "lint:syntax": "bash -o pipefail -c 'find src tests scripts -type f -name \"*.php\" -print0 | xargs -0 -n1 php -l && php -l bootstrap.php'",
     "test": [
       "@test:analysis-bootstrap",
+      "@test:naming",
       "@test:contract",
       "@test:architecture",
       "@test:archive",
@@ -69,7 +70,8 @@
       "@test:identifier",
       "@test:error-code",
       "@test:release-control"
-    ]
+    ],
+    "test:naming": "@php tests/naming-enforcement.php"
   },
   "config": {
     "platform": {
