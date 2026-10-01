@@ -15,7 +15,7 @@ $plugin = $branches->plugin(
 $outcome = $plugin->deploy(expectedCommit: $commit);
 ```
 
-`deploy()` accepts an optional expected commit and operation (`install` or `update`). A deployment created for an already-admitted host attempt cannot override its bound declaration. `attemptId()` exposes the durable journal key used by host recovery.
+`deploy()` accepts an optional expected commit and operation (`install` or `update`). A deployment created for an already-admitted host attempt cannot override its bound declaration. `attempt_id()` exposes the durable journal key used by host recovery.
 
 ## Core concepts
 

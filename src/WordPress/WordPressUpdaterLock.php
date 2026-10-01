@@ -31,11 +31,11 @@ class WordPressUpdaterLock implements MutationLock {
 		}
 	}
 
-	public function currentToken(): ?string {
+	public function current_token(): ?string {
 		global $wpdb;
 		$this->database();
 		$stored = $wpdb->get_var( $wpdb->prepare( 'SELECT option_value FROM %i WHERE option_name = %s', $wpdb->options, self::NAME ) );
-		$this->assertDatabase();
+		$this->assert_database();
 		return is_string( $stored ) && 1 === preg_match( '/^\d+$/D', $stored ) && (int) $stored > time() - self::TIMEOUT ? $stored : null;
 	}
 
@@ -47,13 +47,13 @@ class WordPressUpdaterLock implements MutationLock {
 			return $token;
 		}
 		$stored = $wpdb->get_var( $wpdb->prepare( 'SELECT option_value FROM %i WHERE option_name = %s', $wpdb->options, self::NAME ) );
-		$this->assertDatabase();
+		$this->assert_database();
 		if ( ! is_string( $stored )
 			|| 1 !== preg_match( '/^\d+$/D', $stored )
 			|| (int) $stored > time() - self::TIMEOUT
 			|| ! $this->release( $stored )
 			|| ! $this->insert( $token ) ) {
-			throw $this->contentionFailure();
+			throw $this->contention_failure();
 		}
 		return $token;
 	}
@@ -66,13 +66,13 @@ class WordPressUpdaterLock implements MutationLock {
 			throw new BranchDeploymentLockStorageFailure( 'WordPress updater database is unavailable.' );
 		}
 		if ( 1 === $result ) {
-			$this->invalidateOptionCache();
+			$this->invalidate_option_cache();
 		}
 		return 1 === $result;
 	}
 
 	/** Core retains its established diagnostic without retaining the algorithm. */
-	protected function contentionFailure(): RuntimeException {
+	protected function contention_failure(): RuntimeException {
 		return new RuntimeException( 'WordPress updater is already running.' );
 	}
 
@@ -84,7 +84,7 @@ class WordPressUpdaterLock implements MutationLock {
 			throw new BranchDeploymentLockStorageFailure( 'WordPress updater database is unavailable.' );
 		}
 		if ( 1 === $result ) {
-			$this->invalidateOptionCache();
+			$this->invalidate_option_cache();
 		}
 		return 1 === $result;
 	}
@@ -96,14 +96,14 @@ class WordPressUpdaterLock implements MutationLock {
 		}
 	}
 
-	private function assertDatabase(): void {
+	private function assert_database(): void {
 		global $wpdb;
 		if ( property_exists( $wpdb, 'last_error' ) && '' !== trim( (string) $wpdb->last_error ) ) {
 			throw new BranchDeploymentLockStorageFailure( 'WordPress updater database is unavailable.' );
 		}
 	}
 
-	private function invalidateOptionCache(): void {
+	private function invalidate_option_cache(): void {
 		if ( function_exists( 'wp_cache_delete' ) ) {
 			wp_cache_delete( self::NAME, 'options' );
 			wp_cache_delete( 'notoptions', 'options' );

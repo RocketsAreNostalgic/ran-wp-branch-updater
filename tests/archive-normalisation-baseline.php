@@ -18,10 +18,10 @@ $assert( null === PackageSubdirectory::normalize( null ), 'optional package subd
 $assert( null === PackageSubdirectory::normalize( '   ' ), 'blank package subdirectory remains nullable' );
 $assert( 'packages/demo' === PackageSubdirectory::normalize( '  packages/demo/  ' ), 'shared path primitive preserves normalization behavior' );
 $assert( 'demo' === PackageSubdirectory::slug( 'packages/demo' ), 'package subdirectory slug remains the final path segment' );
-$assert( 'demo' === PackageSubdirectory::normalizeSlug( 'demo' ), 'single-segment slug normalization remains local' );
-$assert( 'demo' === PackageSubdirectory::installationSlug( 'provider-name', 'packages/demo' ), 'subdirectory remains installation-slug authority when present' );
-$assert( 'provider-name' === PackageSubdirectory::installationSlug( 'provider-name', null ), 'provider slug remains installation fallback' );
-$assert( 'mixed' === PackageSubdirectory::deploymentSlug( 'MiXeD', null ), 'deployment slug remains lowercase' );
+$assert( 'demo' === PackageSubdirectory::normalize_slug( 'demo' ), 'single-segment slug normalization remains local' );
+$assert( 'demo' === PackageSubdirectory::installation_slug( 'provider-name', 'packages/demo' ), 'subdirectory remains installation-slug authority when present' );
+$assert( 'provider-name' === PackageSubdirectory::installation_slug( 'provider-name', null ), 'provider slug remains installation fallback' );
+$assert( 'mixed' === PackageSubdirectory::deployment_slug( 'MiXeD', null ), 'deployment slug remains lowercase' );
 $assert( 'packages/C%3A-name' === PackageSubdirectory::normalize( 'packages/C%3A-name' ), 'encoded colon outside the first segment remains valid' );
 $assert(
 	'packages/%' . str_repeat( '25', 7 ) . '41' === PackageSubdirectory::normalize( 'packages/%' . str_repeat( '25', 7 ) . '41' ),
@@ -49,7 +49,7 @@ foreach ( $invalidSubdirectories as $label => $value ) {
 }
 
 try {
-	PackageSubdirectory::normalizeSlug( 'packages/demo' );
+	PackageSubdirectory::normalize_slug( 'packages/demo' );
 	$assert( false, 'nested path must not become a provider slug' );
 } catch ( InvalidArgumentException $expected ) {
 	$assert( 'The package subdirectory must be a normalized relative path.' === $expected->getMessage(), 'slug exception mapping remains stable' );

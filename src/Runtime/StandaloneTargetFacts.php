@@ -15,19 +15,23 @@ final class StandaloneTargetFacts implements AdmittedTargetFacts {
 
 	public function __construct( private readonly PackageExecutor $executor ) {}
 
+	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
 	public function assertMutationAllowed(): void {}
 
+	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
 	public function frozenTarget( BranchDeploymentDeclaration $deployment, bool $deferExisting ): ?array {
 		if ( 'update' === $deployment->operation && $this->executor instanceof WordPressPackageExecutor ) {
-			return $this->executor->installedFacts( $deployment );
+			return $this->executor->installed_facts( $deployment );
 		}
 		return null;
 	}
 
+	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
 	public function maintenanceActive(): bool {
 		return defined( 'ABSPATH' ) && ( file_exists( ABSPATH . '.maintenance' ) || is_link( ABSPATH . '.maintenance' ) );
 	}
 
+	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
 	public function recheckManaged( BranchDeploymentDeclaration $deployment ): void {}
 
 	public function installed( BranchDeploymentDeclaration $deployment ): array {
@@ -37,9 +41,10 @@ final class StandaloneTargetFacts implements AdmittedTargetFacts {
 		return $this->installed;
 	}
 
+	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
 	public function baselineNow( BranchDeploymentDeclaration $deployment, array $baseline ): ?array {
 		if ( $this->executor instanceof WordPressPackageExecutor ) {
-			return $this->executor->installedFacts( $deployment );
+			return $this->executor->installed_facts( $deployment );
 		}
 		return $this->installed;
 	}
@@ -49,7 +54,7 @@ final class StandaloneTargetFacts implements AdmittedTargetFacts {
 	}
 
 	/** @param array{identifier:string,version:string,active:bool}|null $observed */
-	public function recordInstalled( BranchDeploymentDeclaration $deployment, PreparedArchiveArtifact $artifact, ?array $observed ): void {
+	public function record_installed( BranchDeploymentDeclaration $deployment, PreparedArchiveArtifact $artifact, ?array $observed ): void {
 		$this->installed = $observed ?? array(
 			'identifier' => $deployment->installedIdentifier ?? $deployment->slug,
 			'version'    => $artifact->expectedVersion(),

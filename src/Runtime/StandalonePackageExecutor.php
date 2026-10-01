@@ -26,15 +26,15 @@ final readonly class StandalonePackageExecutor implements AdmittedPackageExecuto
 			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::INVALID_REQUEST );
 		}
 		if ( $this->executor instanceof WordPressPackageExecutor ) {
-			$result = $this->executor->executeCore( $deployment, $artifact->archive() );
-			if ( $result->isSuccessful() ) {
-				$this->target->recordInstalled( $deployment, $artifact, $this->executor->installedFacts( $deployment ) );
+			$result = $this->executor->execute_core( $deployment, $artifact->archive() );
+			if ( $result->is_successful() ) {
+				$this->target->record_installed( $deployment, $artifact, $this->executor->installed_facts( $deployment ) );
 			}
 			return $result;
 		}
 		try {
 			$this->executor->execute( $deployment, $artifact->archive() );
-			$this->target->recordInstalled( $deployment, $artifact, null );
+			$this->target->record_installed( $deployment, $artifact, null );
 			return CorePackageExecutionResult::succeeded();
 		} catch ( RuntimeException ) {
 			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::WORDPRESS_FAILED );

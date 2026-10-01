@@ -21,107 +21,111 @@ use WP_Error;
  */
 class WordPressCorePackageExecutor {
 	/** @var Closure(string, string, string, object|null): mixed|null */
-	private ?Closure $coreOperation;
-	private string $offerNamespace;
+	private ?Closure $core_operation;
+	private string $offer_namespace;
 
 	/** @param callable(string, string, string, object|null): mixed|null $coreOperation */
 	public function __construct( ?callable $coreOperation = null, string $offerNamespace = 'ran-branch-deployment' ) {
-		$this->coreOperation  = null === $coreOperation ? null : Closure::fromCallable( $coreOperation );
-		$this->offerNamespace = $offerNamespace;
+		$this->core_operation  = null === $coreOperation ? null : Closure::fromCallable( $coreOperation );
+		$this->offer_namespace = $offerNamespace;
 	}
 
+	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
 	public function installPlugin( PreparedPackageArtifact $artifact, string $packageSlug, ?string $subdirectory ): CorePackageExecutionResult {
-		return $this->executeInstall( 'plugin', $artifact, $packageSlug, $subdirectory );
+		return $this->execute_install( 'plugin', $artifact, $packageSlug, $subdirectory );
 	}
+	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
 	public function installTheme( PreparedPackageArtifact $artifact, string $packageSlug, ?string $subdirectory ): CorePackageExecutionResult {
-		return $this->executeInstall( 'theme', $artifact, $packageSlug, $subdirectory );
+		return $this->execute_install( 'theme', $artifact, $packageSlug, $subdirectory );
 	}
+	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
 	public function updatePlugin( PreparedPackageArtifact $artifact, string $packageSlug, ?string $subdirectory, string $pluginFile ): CorePackageExecutionResult {
-		return $this->executeUpdate( 'plugin', $artifact, $packageSlug, $subdirectory, $pluginFile );
+		return $this->execute_update( 'plugin', $artifact, $packageSlug, $subdirectory, $pluginFile );
 	}
+	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
 	public function updateTheme( PreparedPackageArtifact $artifact, string $packageSlug, ?string $subdirectory, string $stylesheet ): CorePackageExecutionResult {
-		return $this->executeUpdate( 'theme', $artifact, $packageSlug, $subdirectory, $stylesheet );
+		return $this->execute_update( 'theme', $artifact, $packageSlug, $subdirectory, $stylesheet );
 	}
 
-	private function executeInstall( string $type, PreparedPackageArtifact $artifact, string $packageSlug, ?string $subdirectory ): CorePackageExecutionResult {
-		$inputs = $this->validateInputs( $artifact, $packageSlug, $subdirectory );
+	private function execute_install( string $type, PreparedPackageArtifact $artifact, string $package_slug, ?string $subdirectory ): CorePackageExecutionResult {
+		$inputs = $this->validate_inputs( $artifact, $package_slug, $subdirectory );
 		if ( $inputs instanceof CorePackageExecutionResult ) {
 			return $inputs;
 		}
-		if ( 'theme' === $type && ! $this->themeParentIsAvailable( $artifact, $inputs['slug'], $inputs['subdirectory'] ) ) {
+		if ( 'theme' === $type && ! $this->theme_parent_is_available( $artifact, $inputs['slug'], $inputs['subdirectory'] ) ) {
 			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::INVALID_REQUEST );
 		}
-		$preDownload  = $this->preDownloadFilter( $type, 'install', $artifact, null );
-		$sourceFilter = $this->sourceSelectionFilter( $inputs['slug'], $inputs['subdirectory'], $type, 'install', null );
-		$completions  = array();
-		$complete     = $this->completionCollector( $completions );
-		add_filter( 'upgrader_pre_download', $preDownload, 10, 4 );
-		add_filter( 'upgrader_source_selection', $sourceFilter, 10, 4 );
+		$pre_download  = $this->pre_download_filter( $type, 'install', $artifact, null );
+		$source_filter = $this->source_selection_filter( $inputs['slug'], $inputs['subdirectory'], $type, 'install', null );
+		$completions   = array();
+		$complete      = $this->completion_collector( $completions );
+		add_filter( 'upgrader_pre_download', $pre_download, 10, 4 );
+		add_filter( 'upgrader_source_selection', $source_filter, 10, 4 );
 		add_action( 'upgrader_process_complete', $complete, 100, 2 );
 		try {
-			$result = $this->runCoreOperation( 'install', $type, $inputs['path'], null );
-			return $this->mapResult( $result, $type, 'install', null, $completions );
+			$result = $this->run_core_operation( 'install', $type, $inputs['path'], null );
+			return $this->map_result( $result, $type, 'install', null, $completions );
 		} catch ( Throwable ) {
 			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::WORDPRESS_UNCERTAIN );
 		} finally {
-			remove_filter( 'upgrader_pre_download', $preDownload, 10 );
-			remove_filter( 'upgrader_source_selection', $sourceFilter, 10 );
+			remove_filter( 'upgrader_pre_download', $pre_download, 10 );
+			remove_filter( 'upgrader_source_selection', $source_filter, 10 );
 			remove_action( 'upgrader_process_complete', $complete, 100 );
 		}
 	}
 
-	private function executeUpdate( string $type, PreparedPackageArtifact $artifact, string $packageSlug, ?string $subdirectory, string $installedIdentifier ): CorePackageExecutionResult {
-		$inputs = $this->validateInputs( $artifact, $packageSlug, $subdirectory, $installedIdentifier );
+	private function execute_update( string $type, PreparedPackageArtifact $artifact, string $package_slug, ?string $subdirectory, string $installed_identifier ): CorePackageExecutionResult {
+		$inputs = $this->validate_inputs( $artifact, $package_slug, $subdirectory, $installed_identifier );
 		if ( $inputs instanceof CorePackageExecutionResult ) {
 			return $inputs;
 		}
 		if ( ( 'plugin' === $type && dirname( $inputs['identifier'] ) !== $inputs['slug'] ) || ( 'theme' === $type && $inputs['identifier'] !== $inputs['slug'] ) ) {
 			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::INVALID_REQUEST );
 		}
-		$offer           = $this->updateOffer( $type, $artifact, $inputs['slug'], $inputs['identifier'] );
-		$transientHook   = 'pre_site_transient_update_' . ( 'plugin' === $type ? 'plugins' : 'themes' );
-		$transientFilter = $this->transientFilter( $type, $offer, $inputs['identifier'] );
-		$preDownload     = $this->preDownloadFilter( $type, 'update', $artifact, $inputs['identifier'] );
-		$sourceFilter    = $this->sourceSelectionFilter( $inputs['slug'], $inputs['subdirectory'], $type, 'update', $inputs['identifier'] );
-		$vcsFilter       = $this->vcsFilter( $type, $inputs['identifier'] );
-		$coreAutoUpdate  = has_action( 'wp_maybe_auto_update', 'wp_maybe_auto_update' );
-		$cronFilter      = static fn (): bool => true;
-		$completions     = array();
-		$complete        = $this->completionCollector( $completions );
-		if ( false !== $coreAutoUpdate && ! remove_action( 'wp_maybe_auto_update', 'wp_maybe_auto_update', $coreAutoUpdate ) ) {
+		$offer            = $this->update_offer( $type, $artifact, $inputs['slug'], $inputs['identifier'] );
+		$transient_hook   = 'pre_site_transient_update_' . ( 'plugin' === $type ? 'plugins' : 'themes' );
+		$transient_filter = $this->transient_filter( $type, $offer, $inputs['identifier'] );
+		$pre_download     = $this->pre_download_filter( $type, 'update', $artifact, $inputs['identifier'] );
+		$source_filter    = $this->source_selection_filter( $inputs['slug'], $inputs['subdirectory'], $type, 'update', $inputs['identifier'] );
+		$vcs_filter       = $this->vcs_filter( $type, $inputs['identifier'] );
+		$core_auto_update = has_action( 'wp_maybe_auto_update', 'wp_maybe_auto_update' );
+		$cron_filter      = static fn (): bool => true;
+		$completions      = array();
+		$complete         = $this->completion_collector( $completions );
+		if ( false !== $core_auto_update && ! remove_action( 'wp_maybe_auto_update', 'wp_maybe_auto_update', $core_auto_update ) ) {
 			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::WORDPRESS_UNCERTAIN );
 		}
-		add_filter( $transientHook, $transientFilter, 10, 1 );
-		add_filter( 'upgrader_pre_download', $preDownload, 10, 4 );
-		add_filter( 'upgrader_source_selection', $sourceFilter, 10, 4 );
-		add_filter( 'automatic_updates_is_vcs_checkout', $vcsFilter, 10, 2 );
-		add_filter( 'wp_doing_cron', $cronFilter, PHP_INT_MAX, 1 );
+		add_filter( $transient_hook, $transient_filter, 10, 1 );
+		add_filter( 'upgrader_pre_download', $pre_download, 10, 4 );
+		add_filter( 'upgrader_source_selection', $source_filter, 10, 4 );
+		add_filter( 'automatic_updates_is_vcs_checkout', $vcs_filter, 10, 2 );
+		add_filter( 'wp_doing_cron', $cron_filter, PHP_INT_MAX, 1 );
 		add_action( 'upgrader_process_complete', $complete, 100, 2 );
 		try {
-			$result = $this->runCoreOperation( 'update', $type, $inputs['path'], $offer );
-			return $this->mapResult( $result, $type, 'update', $inputs['identifier'], $completions );
+			$result = $this->run_core_operation( 'update', $type, $inputs['path'], $offer );
+			return $this->map_result( $result, $type, 'update', $inputs['identifier'], $completions );
 		} catch ( Throwable ) {
 			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::WORDPRESS_UNCERTAIN );
 		} finally {
-			remove_filter( $transientHook, $transientFilter, 10 );
-			remove_filter( 'upgrader_pre_download', $preDownload, 10 );
-			remove_filter( 'upgrader_source_selection', $sourceFilter, 10 );
-			remove_filter( 'automatic_updates_is_vcs_checkout', $vcsFilter, 10 );
-			remove_filter( 'wp_doing_cron', $cronFilter, PHP_INT_MAX );
+			remove_filter( $transient_hook, $transient_filter, 10 );
+			remove_filter( 'upgrader_pre_download', $pre_download, 10 );
+			remove_filter( 'upgrader_source_selection', $source_filter, 10 );
+			remove_filter( 'automatic_updates_is_vcs_checkout', $vcs_filter, 10 );
+			remove_filter( 'wp_doing_cron', $cron_filter, PHP_INT_MAX );
 			remove_action( 'upgrader_process_complete', $complete, 100 );
-			if ( false !== $coreAutoUpdate ) {
-				add_action( 'wp_maybe_auto_update', 'wp_maybe_auto_update', $coreAutoUpdate );
+			if ( false !== $core_auto_update ) {
+				add_action( 'wp_maybe_auto_update', 'wp_maybe_auto_update', $core_auto_update );
 			}
 		}
 	}
 
 	/** @return array{path:string,slug:string,subdirectory:string|null,identifier:string}|CorePackageExecutionResult */
-	private function validateInputs( PreparedPackageArtifact $artifact, string $packageSlug, ?string $subdirectory, string $installedIdentifier = '' ): array|CorePackageExecutionResult {
+	private function validate_inputs( PreparedPackageArtifact $artifact, string $package_slug, ?string $subdirectory, string $installed_identifier = '' ): array|CorePackageExecutionResult {
 		try {
 			$artifact->assertUnchanged();
-			$slug         = PackageSubdirectory::normalizeSlug( $packageSlug );
+			$slug         = PackageSubdirectory::normalize_slug( $package_slug );
 			$subdirectory = PackageSubdirectory::normalize( $subdirectory );
-			$identifier   = '' === $installedIdentifier ? '' : InstalledPackageIdentifier::normalize( $installedIdentifier );
+			$identifier   = '' === $installed_identifier ? '' : InstalledPackageIdentifier::normalize( $installed_identifier );
 		} catch ( Throwable ) {
 			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::INVALID_REQUEST );
 		}
@@ -133,9 +137,9 @@ class WordPressCorePackageExecutor {
 		);
 	}
 
-	private function updateOffer( string $type, PreparedPackageArtifact $artifact, string $slug, string $identifier ): object {
+	private function update_offer( string $type, PreparedPackageArtifact $artifact, string $slug, string $identifier ): object {
 		$offer          = array(
-			'id'           => $this->offerNamespace . '/' . $slug,
+			'id'           => $this->offer_namespace . '/' . $slug,
 			'slug'         => $slug,
 			'new_version'  => $artifact->getExpectedVersion(),
 			'package'      => $artifact->getPath(),
@@ -146,7 +150,7 @@ class WordPressCorePackageExecutor {
 		return (object) $offer;
 	}
 
-	private function transientFilter( string $type, object $offer, string $identifier ): Closure {
+	private function transient_filter( string $type, object $offer, string $identifier ): Closure {
 		return static function ( mixed $transient ) use ( $type, $offer, $identifier ): object {
 			if ( ! is_object( $transient ) ) {
 				$transient = new \stdClass();
@@ -159,80 +163,80 @@ class WordPressCorePackageExecutor {
 		};
 	}
 
-	private function preDownloadFilter( string $type, string $action, PreparedPackageArtifact $artifact, ?string $identifier ): Closure {
+	private function pre_download_filter( string $type, string $action, PreparedPackageArtifact $artifact, ?string $identifier ): Closure {
 		return static function ( mixed $reply, mixed $package, mixed $upgrader, array $extra ) use ( $type, $action, $artifact, $identifier ): mixed {
 			if ( false !== $reply ) {
 				return $reply;
 			}
-			$archivePath         = $artifact->getPath();
-			$operationIdentifier = null === $identifier || $identifier === ( $extra[ $type ] ?? null );
-			if ( is_string( $package ) && hash_equals( $archivePath, $package ) && $type === ( $extra['type'] ?? null ) && $action === ( $extra['action'] ?? null ) && $operationIdentifier ) {
+			$archive_path         = $artifact->getPath();
+			$operation_identifier = null === $identifier || $identifier === ( $extra[ $type ] ?? null );
+			if ( is_string( $package ) && hash_equals( $archive_path, $package ) && $type === ( $extra['type'] ?? null ) && $action === ( $extra['action'] ?? null ) && $operation_identifier ) {
 				$artifact->assertUnchanged();
-				return $archivePath;
+				return $archive_path;
 			}
 			return $reply;
 		};
 	}
 
-	private function vcsFilter( string $type, string $identifier ): Closure {
-		$allowedContext = WP_PLUGIN_DIR;
+	private function vcs_filter( string $type, string $identifier ): Closure {
+		$allowed_context = WP_PLUGIN_DIR;
 		if ( 'theme' === $type ) {
-			$themeRoot = realpath( get_theme_root( $identifier ) );
-			if ( false === $themeRoot || ! is_dir( $themeRoot ) ) {
+			$theme_root = realpath( get_theme_root( $identifier ) );
+			if ( false === $theme_root || ! is_dir( $theme_root ) ) {
 				return static fn ( bool $checkout, string $context ): bool => $checkout;
 			}
-			$allowedContext = $themeRoot;
+			$allowed_context = $theme_root;
 		}
-		return static function ( bool $checkout, string $context ) use ( $type, $allowedContext ): bool {
+		return static function ( bool $checkout, string $context ) use ( $type, $allowed_context ): bool {
 			if ( 'plugin' === $type ) {
 				return WP_PLUGIN_DIR === $context ? false : $checkout;
 			}
-			$canonicalContext = realpath( $context );
-			return false !== $canonicalContext && hash_equals( $allowedContext, $canonicalContext ) ? false : $checkout;
+			$canonical_context = realpath( $context );
+			return false !== $canonical_context && hash_equals( $allowed_context, $canonical_context ) ? false : $checkout;
 		};
 	}
 
-	private function sourceSelectionFilter( string $slug, ?string $subdirectory, string $type, string $action, ?string $identifier ): Closure {
-		return static function ( mixed $source, mixed $remoteSource, mixed $upgrader, array $extra ) use ( $slug, $subdirectory, $type, $action, $identifier ): mixed {
+	private function source_selection_filter( string $slug, ?string $subdirectory, string $type, string $action, ?string $identifier ): Closure {
+		return static function ( mixed $source, mixed $remote_source, mixed $upgrader, array $extra ) use ( $slug, $subdirectory, $type, $action, $identifier ): mixed {
 			if ( $type !== ( $extra['type'] ?? null ) || $action !== ( $extra['action'] ?? null ) || ( null !== $identifier && $identifier !== ( $extra[ $type ] ?? null ) ) ) {
 				return $source;
 			}
-			if ( ! is_string( $source ) || ! is_string( $remoteSource ) ) {
-				return self::invalidPackageSource();
+			if ( ! is_string( $source ) || ! is_string( $remote_source ) ) {
+				return self::invalid_package_source();
 			}
-			$sourceRoot = realpath( $source );
-			$remoteRoot = realpath( $remoteSource );
-			if ( false === $sourceRoot || false === $remoteRoot || ! is_dir( $sourceRoot ) || ! is_dir( $remoteRoot ) || ! self::isCanonicalChild( $sourceRoot, $remoteRoot ) ) {
-				return self::invalidPackageSource();
+			$source_root = realpath( $source );
+			$remote_root = realpath( $remote_source );
+			if ( false === $source_root || false === $remote_root || ! is_dir( $source_root ) || ! is_dir( $remote_root ) || ! self::is_canonical_child( $source_root, $remote_root ) ) {
+				return self::invalid_package_source();
 			}
-			$selectedSource = $sourceRoot;
+			$selected_source = $source_root;
 			if ( null !== $subdirectory ) {
-				$selectedSource = realpath( $sourceRoot . DIRECTORY_SEPARATOR . $subdirectory );
-				if ( false === $selectedSource || ! is_dir( $selectedSource ) || ! self::isCanonicalChild( $selectedSource, $sourceRoot ) ) {
-					return self::invalidPackageSource();
+				$selected_source = realpath( $source_root . DIRECTORY_SEPARATOR . $subdirectory );
+				if ( false === $selected_source || ! is_dir( $selected_source ) || ! self::is_canonical_child( $selected_source, $source_root ) ) {
+					return self::invalid_package_source();
 				}
 			}
-			$destination = $remoteRoot . DIRECTORY_SEPARATOR . $slug;
-			if ( hash_equals( $selectedSource, $destination ) ) {
-				return trailingslashit( $selectedSource );
+			$destination = $remote_root . DIRECTORY_SEPARATOR . $slug;
+			if ( hash_equals( $selected_source, $destination ) ) {
+				return trailingslashit( $selected_source );
 			}
 			if ( file_exists( $destination ) || is_link( $destination ) ) {
-				return self::invalidPackageSource();
+				return self::invalid_package_source();
 			}
 			global $wp_filesystem;
-			if ( ! is_object( $wp_filesystem ) || ! $wp_filesystem->move( $selectedSource, $destination, false ) ) {
-				return self::invalidPackageSource();
+			if ( ! is_object( $wp_filesystem ) || ! $wp_filesystem->move( $selected_source, $destination, false ) ) {
+				return self::invalid_package_source();
 			}
 			return trailingslashit( $destination );
 		};
 	}
 
-	private static function invalidPackageSource(): WP_Error {
+	private static function invalid_package_source(): WP_Error {
 		return new WP_Error( 'ran_branch_deployment_invalid_package_source' );
 	}
 
-	private function themeParentIsAvailable( PreparedPackageArtifact $artifact, string $slug, ?string $subdirectory ): bool {
-		$parent = $this->themeParentFromArchive( $artifact, $subdirectory );
+	private function theme_parent_is_available( PreparedPackageArtifact $artifact, string $slug, ?string $subdirectory ): bool {
+		$parent = $this->theme_parent_from_archive( $artifact, $subdirectory );
 		if ( false === $parent ) {
 			return false;
 		}
@@ -249,7 +253,7 @@ class WordPressCorePackageExecutor {
 		}
 	}
 
-	private function themeParentFromArchive( PreparedPackageArtifact $artifact, ?string $subdirectory ): string|null|false {
+	private function theme_parent_from_archive( PreparedPackageArtifact $artifact, ?string $subdirectory ): string|null|false {
 		if ( ! class_exists( \ZipArchive::class ) ) {
 			return false;
 		}
@@ -257,8 +261,8 @@ class WordPressCorePackageExecutor {
 		if ( true !== $zip->open( $artifact->getPath(), \ZipArchive::RDONLY ) ) {
 			return false;
 		}
-		$subdirectorySegments = null === $subdirectory ? array() : explode( '/', $subdirectory );
-		$candidates           = array();
+		$subdirectory_segments = null === $subdirectory ? array() : explode( '/', $subdirectory );
+		$candidates            = array();
 		try {
 			for ( $index = 0; $index < $zip->numFiles; ++$index ) {
 				$name = $zip->getNameIndex( $index );
@@ -266,7 +270,7 @@ class WordPressCorePackageExecutor {
 					continue;
 				}
 				$segments = explode( '/', trim( $name, '/' ) );
-				if ( count( $segments ) !== count( $subdirectorySegments ) + 2 || 'style.css' !== end( $segments ) || $subdirectorySegments !== array_slice( $segments, 1, -1 ) ) {
+				if ( count( $segments ) !== count( $subdirectory_segments ) + 2 || 'style.css' !== end( $segments ) || $subdirectory_segments !== array_slice( $segments, 1, -1 ) ) {
 					continue;
 				}
 				$candidates[] = $index;
@@ -285,35 +289,35 @@ class WordPressCorePackageExecutor {
 			return null;
 		}
 		try {
-			return PackageSubdirectory::normalizeSlug( trim( $match[1] ) );
+			return PackageSubdirectory::normalize_slug( trim( $match[1] ) );
 		} catch ( InvalidArgumentException ) {
 			return false;
 		}
 	}
 
-	private static function isCanonicalChild( string $path, string $parent ): bool {
+	private static function is_canonical_child( string $path, string $parent ): bool {
 		return $path !== $parent && str_starts_with( $path . DIRECTORY_SEPARATOR, $parent . DIRECTORY_SEPARATOR );
 	}
-	private function completionCollector( array &$completions ): Closure {
+	private function completion_collector( array &$completions ): Closure {
 		return static function ( object $upgrader, array $extra ) use ( &$completions ): void {
 			$completions[] = $extra;
 		};
 	}
-	private function mapResult( mixed $result, string $type, string $action, ?string $identifier, array $completions ): CorePackageExecutionResult {
-		$successfulInstallation = $this->isCanonicalInstallationResult( $result );
-		$requiresCompletion     = true === $result || $successfulInstallation || $this->isRestoredPluginFailure( $type, $result );
-		if ( array() !== $completions || $requiresCompletion ) {
-			if ( 1 !== count( $completions ) || ! $this->completionMatches( $completions[0], $type, $action, $identifier ) ) {
+	private function map_result( mixed $result, string $type, string $action, ?string $identifier, array $completions ): CorePackageExecutionResult {
+		$successful_installation = $this->is_canonical_installation_result( $result );
+		$requires_completion     = true === $result || $successful_installation || $this->is_restored_plugin_failure( $type, $result );
+		if ( array() !== $completions || $requires_completion ) {
+			if ( 1 !== count( $completions ) || ! $this->completion_matches( $completions[0], $type, $action, $identifier ) ) {
 				return CorePackageExecutionResult::failed( CorePackageExecutionFailure::OPERATION_MISMATCH );
 			}
 		}
-		if ( true === $result || $successfulInstallation ) {
+		if ( true === $result || $successful_installation ) {
 			return CorePackageExecutionResult::succeeded();
 		}
 		if ( false === $result ) {
 			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::WORDPRESS_REFUSED );
 		}
-		if ( $this->isRestoredPluginFailure( $type, $result ) ) {
+		if ( $this->is_restored_plugin_failure( $type, $result ) ) {
 			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::WORDPRESS_RESTORED );
 		}
 		if ( $result instanceof WP_Error ) {
@@ -321,38 +325,38 @@ class WordPressCorePackageExecutor {
 		}
 		return CorePackageExecutionResult::failed( CorePackageExecutionFailure::WORDPRESS_UNCERTAIN );
 	}
-	private function isCanonicalInstallationResult( mixed $result ): bool {
+	private function is_canonical_installation_result( mixed $result ): bool {
 		if ( ! is_array( $result ) || array_keys( $result ) !== array( 'source', 'source_files', 'destination', 'destination_name', 'local_destination', 'remote_destination', 'clear_destination' ) || ! is_string( $result['source'] ) || ! is_array( $result['source_files'] ) || ! array_is_list( $result['source_files'] ) || ! is_string( $result['destination'] ) || ! is_string( $result['destination_name'] ) || ! is_string( $result['local_destination'] ) || ! is_string( $result['remote_destination'] ) || ! is_bool( $result['clear_destination'] ) ) {
 			return false;
 		}
-		foreach ( $result['source_files'] as $sourceFile ) {
-			if ( ! is_string( $sourceFile ) ) {
+		foreach ( $result['source_files'] as $source_file ) {
+			if ( ! is_string( $source_file ) ) {
 				return false;
 			}
 		}
 		return true;
 	}
-	private function completionMatches( array $completion, string $type, string $action, ?string $identifier ): bool {
+	private function completion_matches( array $completion, string $type, string $action, ?string $identifier ): bool {
 		if ( $type !== ( $completion['type'] ?? null ) || $action !== ( $completion['action'] ?? null ) ) {
 			return false;
 		}
 		return null === $identifier || $identifier === ( $completion[ $type ] ?? null );
 	}
-	private function isRestoredPluginFailure( string $type, mixed $result ): bool {
+	private function is_restored_plugin_failure( string $type, mixed $result ): bool {
 		return 'plugin' === $type && $result instanceof WP_Error && 'plugin_update_fatal_error_rollback_successful' === $result->get_error_code();
 	}
-	private function runCoreOperation( string $action, string $type, string $archivePath, ?object $offer ): mixed {
-		if ( null !== $this->coreOperation ) {
-			return ( $this->coreOperation )( $action, $type, $archivePath, $offer );
+	private function run_core_operation( string $action, string $type, string $archive_path, ?object $offer ): mixed {
+		if ( null !== $this->core_operation ) {
+			return ( $this->core_operation )( $action, $type, $archive_path, $offer );
 		}
-		$this->loadWordPressUpgraders();
+		$this->load_word_press_upgraders();
 		if ( 'install' === $action ) {
 			$skin = new \Automatic_Upgrader_Skin();
-			return 'plugin' === $type ? ( new \Plugin_Upgrader( $skin ) )->install( $archivePath ) : ( new \Theme_Upgrader( $skin ) )->install( $archivePath );
+			return 'plugin' === $type ? ( new \Plugin_Upgrader( $skin ) )->install( $archive_path ) : ( new \Theme_Upgrader( $skin ) )->install( $archive_path );
 		}
 		return ( new \WP_Automatic_Updater() )->update( $type, $offer );
 	}
-	private function loadWordPressUpgraders(): void {
+	private function load_word_press_upgraders(): void {
 		if ( ! defined( 'ABSPATH' ) ) {
 			throw new \RuntimeException( 'WordPress is unavailable.' );
 		}

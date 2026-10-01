@@ -19,11 +19,12 @@ final class BranchUpdater {
 		private readonly BranchDeploymentDeclaration|false $admitted
 	) {}
 
-	public static function forStandalone( StandaloneBranchRunner $operation ): self {
+	public static function for_standalone( StandaloneBranchRunner $operation ): self {
 		return new self( $operation, false );
 	}
 
 	/** Create the single runner allowed to complete one already-admitted attempt. */
+	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
 	public static function forAdmittedAttempt(
 		BranchDeploymentDeclaration $deployment,
 		AdmittedAttemptJournal $journal,
@@ -46,10 +47,10 @@ final class BranchUpdater {
 		if ( null === $pluginFile && null === $packageSlug ) {
 			throw new \InvalidArgumentException( 'A plugin file or package slug is required.' );
 		}
-		if ( null !== $pluginFile && null !== $packageSlug && $this->pluginSlug( $pluginFile ) !== $packageSlug ) {
+		if ( null !== $pluginFile && null !== $packageSlug && $this->plugin_slug( $pluginFile ) !== $packageSlug ) {
 			throw new \InvalidArgumentException( 'The plugin file and package slug disagree.' );
 		}
-		$slug = $packageSlug ?? $this->pluginSlug( (string) $pluginFile );
+		$slug = $packageSlug ?? $this->plugin_slug( (string) $pluginFile );
 		return $this->pending( 'plugin', $repository, $repositoryId, $branch, $slug, $subdirectory, false === $this->admitted ? $pluginFile : ( $pluginFile ?? $this->admitted->installedIdentifier ) );
 	}
 
@@ -57,8 +58,8 @@ final class BranchUpdater {
 		return $this->pending( 'theme', $repository, $repositoryId, $branch, $stylesheet, $subdirectory, false === $this->admitted ? $stylesheet : $this->admitted->installedIdentifier );
 	}
 
-	private function pending( string $type, string $repository, string $repositoryId, string $branch, string $slug, ?string $subdirectory, ?string $installedIdentifier ): BranchDeployment {
-		if ( false === $this->admitted && 'plugin' === $type && null === $installedIdentifier ) {
+	private function pending( string $type, string $repository, string $repository_id, string $branch, string $slug, ?string $subdirectory, ?string $installed_identifier ): BranchDeployment {
+		if ( false === $this->admitted && 'plugin' === $type && null === $installed_identifier ) {
 			throw new \InvalidArgumentException( 'A standalone plugin deployment requires its installed plugin file.' );
 		}
 		$bound      = false !== $this->admitted;
@@ -67,12 +68,12 @@ final class BranchUpdater {
 			$type,
 			$slug,
 			$repository,
-			$repositoryId,
+			$repository_id,
 			$branch,
 			$bound ? $this->admitted->expectedHead : null,
 			$bound ? $this->admitted->operation : 'update',
 			PackageSubdirectory::normalize( $subdirectory ),
-			$installedIdentifier
+			$installed_identifier
 		);
 		if ( $bound && (array) $deployment !== (array) $this->admitted ) {
 			throw new \InvalidArgumentException( 'The admitted deployment declaration does not match.' );
@@ -80,22 +81,22 @@ final class BranchUpdater {
 		return new BranchDeployment( $this->runner, $deployment, $this->admitted );
 	}
 
-	private function pluginSlug( string $pluginFile ): string {
+	private function plugin_slug( string $plugin_file ): string {
 		try {
-			if ( trim( $pluginFile ) !== $pluginFile ) {
+			if ( trim( $plugin_file ) !== $plugin_file ) {
 				throw new \InvalidArgumentException( 'The plugin file is invalid.' );
 			}
-			$pluginFile = InstalledPackageIdentifier::normalize( $pluginFile );
+			$plugin_file = InstalledPackageIdentifier::normalize( $plugin_file );
 		} catch ( \InvalidArgumentException ) {
 			throw new \InvalidArgumentException( 'The plugin file is invalid.' );
 		}
-		if ( 1 !== substr_count( $pluginFile, '/' ) || preg_match( '/^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*\.php$/Di', $pluginFile ) !== 1 ) {
+		if ( 1 !== substr_count( $plugin_file, '/' ) || preg_match( '/^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*\.php$/Di', $plugin_file ) !== 1 ) {
 			throw new \InvalidArgumentException( 'The plugin file is invalid.' );
 		}
-		$slug = dirname( $pluginFile );
+		$slug = dirname( $plugin_file );
 		if ( '.' === $slug || str_contains( $slug, '/' ) ) {
 			throw new \InvalidArgumentException( 'The plugin file must be in its package directory.' );
 		}
-		return PackageSubdirectory::normalizeSlug( $slug );
+		return PackageSubdirectory::normalize_slug( $slug );
 	}
 }

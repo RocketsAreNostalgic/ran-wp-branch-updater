@@ -39,7 +39,7 @@ final class PackageSubdirectory {
 		return (string) end( $segments );
 	}
 
-	public static function normalizeSlug( mixed $value ): string {
+	public static function normalize_slug( mixed $value ): string {
 		$slug = self::normalize( $value );
 		if ( null === $slug
 			|| ! is_string( $value )
@@ -50,13 +50,13 @@ final class PackageSubdirectory {
 		return $slug;
 	}
 
-	public static function installationSlug( mixed $providerSlug, mixed $subdirectory ): string {
+	public static function installation_slug( mixed $provider_slug, mixed $subdirectory ): string {
 		$path = self::normalize( $subdirectory );
-		return null === $path ? self::normalizeSlug( $providerSlug ) : self::slug( $path );
+		return null === $path ? self::normalize_slug( $provider_slug ) : self::slug( $path );
 	}
 
-	public static function deploymentSlug( mixed $providerSlug, mixed $subdirectory ): string {
-		return strtolower( self::installationSlug( $providerSlug, $subdirectory ) );
+	public static function deployment_slug( mixed $provider_slug, mixed $subdirectory ): string {
+		return strtolower( self::installation_slug( $provider_slug, $subdirectory ) );
 	}
 
 	private static function invalid(): InvalidArgumentException {

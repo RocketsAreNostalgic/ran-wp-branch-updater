@@ -9,11 +9,11 @@ use RuntimeException;
 
 final readonly class ArchiveOffer {
 	/** @var Closure(string,int):void */
-	private Closure $copyTo;
+	private Closure $copy_to;
 
 	/**
 	 * $copyTo is a provider implementation boundary, not a generic network callback framework.
-	 * It must stop acquisition before writing more than $maximumArtifactBytes.
+	 * It must stop acquisition before writing more than $maximum_artifact_bytes.
 	 *
 	 * @param Closure(string,int):void $copyTo
 	 */
@@ -24,16 +24,17 @@ final readonly class ArchiveOffer {
 		Closure $copyTo,
 		private Closure $verifyHead
 	) {
-		$this->copyTo = $copyTo;
+		$this->copy_to = $copyTo;
 	}
 
-	public function acquire( string $destination, int $maximumArtifactBytes ): void {
-		if ( $maximumArtifactBytes < 1 ) {
+	public function acquire( string $destination, int $maximum_artifact_bytes ): void {
+		if ( $maximum_artifact_bytes < 1 ) {
 			throw new RuntimeException( 'Maximum artifact bytes is invalid.' );
 		}
-		( $this->copyTo )( $destination, $maximumArtifactBytes );
+		( $this->copy_to )( $destination, $maximum_artifact_bytes );
 	}
 
+	// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- #59 / Core #167: coordinated public contract migration pending.
 	public function verifyCurrentHead(): void {
 		( $this->verifyHead )();
 	}

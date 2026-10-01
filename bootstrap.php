@@ -20,7 +20,7 @@ return static function (
 	?MutationLock $lock = null,
 	mixed $maximumArtifactBytes = PreparedArchive::DEFAULT_MAXIMUM_ARTIFACT_BYTES
 ): BranchUpdater {
-	return BranchUpdater::forStandalone(
+	return BranchUpdater::for_standalone(
 		new StandaloneBranchRunner(
 			$provider,
 			$attempts,

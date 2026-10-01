@@ -67,3 +67,62 @@ Move code into `ran/updater-support` only when both updater packages implement t
 Add focused proof coverage when changing archive custody, mutation admission/fencing, recovery, persistence, provider head checks, or WordPress execution.
 
 Do not commit credentials, tokens, private repository/site information, ZIPs, temporary files, logs, `vendor`, `node_modules`, or dependency caches. Use ordinary issues for non-sensitive work; follow [SECURITY.md](SECURITY.md) for vulnerabilities and [SUPPORT.md](SUPPORT.md) for support. See [RELEASING.md](RELEASING.md) before changing release automation or preparing a release.
+
+
+## Naming migration boundary
+
+All shipped owned methods now enter `RANOwnedMethods`, including declarations
+upstream WPCS skips because of inheritance. The 32 remaining camelCase methods
+have individual, temporary `phpcs:ignore` annotations linked to #59 / Core #167.
+They are connected migration debt, not public-visibility exceptions. Variable
+naming is enforced on the 21 fully audited files listed in `.phpcs.xml`.
+`composer test:naming`, included in `composer test` and `composer check`, runs
+nine unchanged/injected pairs through the actual repository rules without
+rewriting tracked files. It covers private/public/protected and inherited owned
+methods plus variable regressions. Both check and fix retain identical scope.
+
+The completed package-local cohort includes all 40 previously camelCase private
+methods, 14 public/protected methods with no consumers in the audited Core,
+GitHub provider, Bitbucket, Release, Support and Migrator source trees, private
+members and local variables, plus their callers, reflection target and API guide.
+Public method replacements use snake_case with no coexistence aliases:
+`for_standalone`, `attempt_id`, `is_successful`, `was_restored_by_wordpress`,
+`get_failure`, `record_installed`, `execute_core`, `installed_facts`,
+`current_token`, `contention_failure`, `recover_stopped`, `normalize_slug`,
+`installation_slug`, and `deployment_slug`.
+
+Remaining connected methods:
+
+| Producer | Deferred declarations |
+| --- | --- |
+| `ArchiveOffer` | `verifyCurrentHead` |
+| `PreparedArchive` | `downloadAndValidate`, `getPath`, `getExpectedVersion`, `expandedBytes`, `assertUnchanged` |
+| `PreparedArchiveArtifact`, `AdmittedBranchArtifact` | `resolvedRef`, `expectedVersion`, `assertUnchanged` |
+| `AdmittedArchiveSource`, `ProviderArchiveSource` | `verifyCurrentHead` |
+| `AdmittedTargetFacts`, `StandaloneTargetFacts` | `assertMutationAllowed`, `frozenTarget`, `maintenanceActive`, `recheckManaged`, `baselineNow` |
+| `PreparedPackageArtifact` | `getPath`, `getExpectedVersion`, `assertUnchanged` |
+| `BranchUpdater` | `forAdmittedAttempt` |
+| `WordPressCorePackageExecutor` | `installPlugin`, `installTheme`, `updatePlugin`, `updateTheme` |
+
+The same boundary includes public declaration/offer properties, stage-failure
+`outcomeCode`, `ArchiveOffer` constructor parameters (including promoted
+`verifyHead`), archive preparation's public arguments, `frozenTarget`'s
+`deferExisting`, WordPress executor arguments, `BranchUpdater::plugin/theme`
+arguments and `BranchDeployment::deploy`'s `expectedCommit`. Bootstrap's
+`archiveDirectory` and `maximumArtifactBytes` named arguments remain an explicit
+standalone entry-point handoff. Internal users of those property spellings remain
+outside whole-file variable enforcement until the connected declarations move.
+
+Branch #59 owns the producer cohort; Core #167 owns host adapters, coordinator,
+overrides and test doubles. Agree ownership and integration order before editing
+that boundary; certify exact producer/consumer revisions together, then adopt a
+real reviewed released dependency tuple and root lock. The producer PR alone is
+not consumer adoption. Persisted keys, wire fields, protocol strings, external
+WordPress/PHP names, runtime behavior, support floors and dependency versions must
+remain intact. No camelCase declaration in this inventory is externally imposed.
+
+The separate condition, unused-parameter, overriding-method, reserved-parameter
+and exception-output suppressions in `.phpcs.xml` are not removed by naming work.
+Their retained compatibility/runtime reasons require an individual standards
+review under #59 before broader standards acceptance. UI/manual acceptance stays
+deferred; this source qualification does not substitute for it.

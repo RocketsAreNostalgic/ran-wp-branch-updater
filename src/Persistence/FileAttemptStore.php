@@ -35,7 +35,7 @@ final class FileAttemptStore {
 		if ( '' === $ref || trim( $ref ) !== $ref || strlen( $ref ) > 191 || preg_match( '/[[:cntrl:]]/', $ref ) === 1 ) {
 			throw new RuntimeException( 'Resolved revision is invalid.' );
 		}
-		$this->runningTransition(
+		$this->running_transition(
 			$id,
 			function ( array $record ) use ( $ref ): array {
 				if ( null !== $record['resolved_ref'] ) {
@@ -48,7 +48,7 @@ final class FileAttemptStore {
 	}
 
 	public function fence( string $id ): void {
-		$this->runningTransition(
+		$this->running_transition(
 			$id,
 			static function ( array $record ): array {
 				if ( null === $record['resolved_ref'] || null !== $record['mutation_started_at'] ) {
@@ -64,7 +64,7 @@ final class FileAttemptStore {
 		if ( ! in_array( $state, array( 'succeeded', 'failed', 'needs_attention' ), true ) || '' === $outcome ) {
 			throw new RuntimeException( 'Attempt finish state is invalid.' );
 		}
-		$this->runningTransition(
+		$this->running_transition(
 			$id,
 			static function ( array $record ) use ( $state, $outcome ): array {
 				if ( in_array( $state, array( 'succeeded', 'needs_attention' ), true ) && null === $record['mutation_started_at'] ) {
@@ -79,8 +79,8 @@ final class FileAttemptStore {
 	}
 
 	/** Stopped work before the fence failed safely; fenced work remains conservative. */
-	public function recoverStopped( string $id ): void {
-		$this->runningTransition(
+	public function recover_stopped( string $id ): void {
+		$this->running_transition(
 			$id,
 			static function ( array $record ): array {
 				$fenced                = null !== $record['mutation_started_at'];
@@ -105,7 +105,7 @@ final class FileAttemptStore {
 		);
 	}
 
-	private function runningTransition( string $id, callable $change ): void {
+	private function running_transition( string $id, callable $change ): void {
 		$this->mutate(
 			function ( array $records ) use ( $id, $change ): array {
 				if ( ! isset( $records[ $id ] ) || 'running' !== $records[ $id ]['state'] ) {
@@ -150,14 +150,14 @@ final class FileAttemptStore {
 			$this->fail( 'Journal is malformed.' );
 		}
 		foreach ( $records as $id => $record ) {
-			if ( ! is_string( $id ) || ! is_array( $record ) || ! $this->validRecord( $id, $record ) ) {
+			if ( ! is_string( $id ) || ! is_array( $record ) || ! $this->valid_record( $id, $record ) ) {
 				$this->fail( 'Journal is malformed.' );
 			}
 		}
 		return $records;
 	}
 
-	private function validRecord( string $id, array $r ): bool {
+	private function valid_record( string $id, array $r ): bool {
 		$keys = array( 'id', 'state', 'package_type', 'slug', 'repository', 'branch', 'expected_head', 'resolved_ref', 'mutation_started_at', 'outcome', 'finished_at' );
 		sort( $keys );
 		$actual = array_keys( $r );
@@ -225,7 +225,7 @@ final class FileAttemptStore {
 	}
 
 	private function locked( int $mode, callable $operation ): mixed {
-		$this->ensureParent();
+		$this->ensure_parent();
 		$handle = fopen( $this->path . '.lock', 'c+' );
 		if ( false === $handle || ! flock( $handle, $mode ) ) {
 			throw new BranchDeploymentJournalFailure( 'Journal lock is unavailable.' );
@@ -239,7 +239,7 @@ final class FileAttemptStore {
 		}
 	}
 
-	private function ensureParent(): void {
+	private function ensure_parent(): void {
 		$parent = dirname( $this->path );
 		if ( ! is_dir( $parent ) && ! mkdir( $parent, 0700, true ) ) {
 			$this->fail( 'Journal directory cannot be created.' );
