@@ -57,10 +57,10 @@ $standaloneLimit      = $fixtureBytes - 1;
 $standaloneResult     = $bootstrap(
 	provider: new GitHubFixtureProvider( $zip, 'abc123' ),
 	attempts: $standaloneLimitStore,
-	archiveDirectory: $root . '/archives',
+	archive_directory: $root . '/archives',
 	executor: new RecordingExecutor(),
 	lock: $lock,
-	maximumArtifactBytes: $standaloneLimit
+	maximum_artifact_bytes: $standaloneLimit
 )->plugin(
 	repository: 'acme/demo',
 	repositoryId: 'fixture-1',

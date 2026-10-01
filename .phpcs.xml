@@ -20,6 +20,7 @@
 	<rule ref="RANOwnedMethods"/>
 	<!-- Fully audited variable scopes. Connected parameter/property use remains in #59 / Core #167. -->
 	<rule ref="WordPress.NamingConventions.ValidVariableName">
+		<include-pattern>/bootstrap.php</include-pattern>
 		<include-pattern>/src/Archive/PackageSubdirectory.php</include-pattern>
 		<include-pattern>/src/Archive/PreparedArchiveArtifact.php</include-pattern>
 		<include-pattern>/src/Contract/AdmittedArchiveSource.php</include-pattern>

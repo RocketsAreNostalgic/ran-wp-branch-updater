@@ -15,19 +15,19 @@ use RAN\WPBranchUpdater\V1\WordPress\WordPressUpdaterLock;
 return static function (
 	BranchProvider $provider,
 	FileAttemptStore $attempts,
-	string $archiveDirectory,
+	string $archive_directory,
 	?PackageExecutor $executor = null,
 	?MutationLock $lock = null,
-	mixed $maximumArtifactBytes = PreparedArchive::DEFAULT_MAXIMUM_ARTIFACT_BYTES
+	mixed $maximum_artifact_bytes = PreparedArchive::DEFAULT_MAXIMUM_ARTIFACT_BYTES
 ): BranchUpdater {
 	return BranchUpdater::for_standalone(
 		new StandaloneBranchRunner(
 			$provider,
 			$attempts,
 			$executor ?? new WordPressPackageExecutor(),
-			$archiveDirectory,
+			$archive_directory,
 			$lock ?? new WordPressUpdaterLock(),
-			$maximumArtifactBytes
+			$maximum_artifact_bytes
 		)
 	);
 };

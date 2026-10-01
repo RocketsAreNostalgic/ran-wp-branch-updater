@@ -51,7 +51,7 @@ $configure = require '/path/to/consumer/vendor/ran/wp-branch-updater/bootstrap.p
 $branches = $configure(
     provider: $provider,
     attempts: new FileAttemptStore('/srv/private/branch-attempts.json'),
-    archiveDirectory: '/srv/private/branch-archives',
+    archive_directory: '/srv/private/branch-archives',
 );
 ```
 

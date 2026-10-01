@@ -6,6 +6,8 @@ $root = dirname(__DIR__);
 $method_code = 'RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase';
 $variable_code = 'WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase';
 $cases = [
+    ['bootstrap.php', '$archive_directory', '$archiveDirectory', $variable_code],
+    ['bootstrap.php', '$maximum_artifact_bytes', '$maximumArtifactBytes', $variable_code],
     ['src/Archive/ArchiveValidator.php', 'function verify_entry_contents(', 'function verifyEntryContents(', $method_code],
     ['src/Persistence/FileAttemptStore.php', 'function recover_stopped(', 'function recoverStopped(', $method_code],
     ['src/Runtime/CorePackageExecutionResult.php', 'function is_successful(', 'function isSuccessful(', $method_code],
