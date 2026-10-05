@@ -1,4 +1,5 @@
 <?php
+// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals -- This standalone CLI runner and its test doubles never load into WordPress global scope.
 
 declare(strict_types=1);
 
@@ -10,6 +11,7 @@ if ( 3 !== $argc ) {
 if ( ! is_dir( $package ) || is_link( $package ) ) {
 	throw new RuntimeException( 'Package root is unavailable or unsafe.' );
 }
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_mkdir -- Standalone CLI proof creates or cleans only its isolated local fixture files with native filesystem semantics.
 if ( ! is_dir( $consumer ) && ! mkdir( $consumer, 0700, true ) ) {
 	throw new RuntimeException( 'Consumer root could not be created.' );
 }
@@ -39,7 +41,9 @@ $manifest = array(
 	),
 );
 
+// phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- Standalone CLI fixture preserves explicit JSON flags and throws before writing its test manifest or journal.
 $json = json_encode( $manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR ) . "\n";
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Standalone CLI proof creates or cleans only its isolated local fixture files with native filesystem semantics.
 if ( false === file_put_contents( $consumer . '/composer.json', $json, LOCK_EX ) ) {
 	throw new RuntimeException( 'Consumer manifest could not be written.' );
 }

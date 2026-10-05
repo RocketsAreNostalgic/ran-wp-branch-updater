@@ -1,4 +1,5 @@
 <?php
+// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals -- This standalone CLI runner and its test doubles never load into WordPress global scope.
 
 declare(strict_types=1);
 
@@ -7,7 +8,7 @@ if ( ! is_string( $consumer ) || '' === $consumer ) {
 	throw new RuntimeException( 'BRANCH_UPDATER_CONSUMER_ROOT is required.' );
 }
 
-$autoload = $consumer . '/vendor/autoload.php';
+$autoload  = $consumer . '/vendor/autoload.php';
 $bootstrap = $consumer . '/vendor/ran/wp-branch-updater/bootstrap.php';
 if ( ! is_file( $autoload ) || ! is_file( $bootstrap ) ) {
 	throw new RuntimeException( 'Consumer installation is incomplete.' );
@@ -35,7 +36,8 @@ foreach ( array( RAN\WPBranchUpdater\V1\Runtime\BranchUpdater::class, RAN\Update
 		throw new RuntimeException( 'Composer did not load an installed regular package file.' );
 	}
 }
-if ( str_contains( (string) file_get_contents( $bootstrap ), "vendor/autoload" ) ) {
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Read only the local installed fixture or checked source bytes; no WordPress runtime is loaded.
+if ( str_contains( (string) file_get_contents( $bootstrap ), 'vendor/autoload' ) ) {
 	throw new RuntimeException( 'Installed bootstrap loads a package-private autoloader.' );
 }
 
@@ -44,47 +46,49 @@ if ( ! $configure instanceof Closure ) {
 	throw new RuntimeException( 'Installed bootstrap did not return its configuration closure.' );
 }
 
-$provider = new class implements RAN\WPBranchUpdater\V1\Contract\BranchProvider {
+$provider = new class() implements RAN\WPBranchUpdater\V1\Contract\BranchProvider {
+	// phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found -- The non-acquiring consumer stub retains the BranchProvider prepare signature.
 	public function prepare( RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration $deployment ): RAN\WPBranchUpdater\V1\Archive\ArchiveOffer {
 		throw new RuntimeException( 'The consumer smoke must not prepare an archive.' );
 	}
 };
-$private = $consumer . '/private';
+$private  = $consumer . '/private';
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_mkdir -- Standalone CLI proof creates or cleans only its isolated local fixture files with native filesystem semantics.
 if ( ! mkdir( $private, 0700 ) ) {
 	throw new RuntimeException( 'Consumer private state directory could not be created.' );
 }
-$state = $private . '/attempts.json';
+$state    = $private . '/attempts.json';
 $branches = $configure( $provider, new RAN\WPBranchUpdater\V1\Persistence\FileAttemptStore( $state ), $consumer . '/private/archives' );
 if ( ! $branches instanceof RAN\WPBranchUpdater\V1\Runtime\BranchUpdater ) {
 	throw new RuntimeException( 'Installed bootstrap did not configure the branch package.' );
 }
-$packageFacts = new ReflectionObject( $branches );
-$runner = $packageFacts->getProperty( 'runner' )->getValue( $branches );
+$package_facts = new ReflectionObject( $branches );
+$runner        = $package_facts->getProperty( 'runner' )->getValue( $branches );
 if ( ! $runner instanceof RAN\WPBranchUpdater\V1\Runtime\StandaloneBranchRunner ) {
 	throw new RuntimeException( 'Installed bootstrap did not configure the standalone runner.' );
 }
-$runnerFacts = new ReflectionObject( $runner );
+$runner_facts = new ReflectionObject( $runner );
 if (
-	! $runnerFacts->getProperty( 'executor' )->getValue( $runner ) instanceof RAN\WPBranchUpdater\V1\WordPress\WordPressPackageExecutor
-	|| ! $runnerFacts->getProperty( 'lock' )->getValue( $runner ) instanceof RAN\WPBranchUpdater\V1\WordPress\WordPressUpdaterLock
+	! $runner_facts->getProperty( 'executor' )->getValue( $runner ) instanceof RAN\WPBranchUpdater\V1\WordPress\WordPressPackageExecutor
+	|| ! $runner_facts->getProperty( 'lock' )->getValue( $runner ) instanceof RAN\WPBranchUpdater\V1\WordPress\WordPressUpdaterLock
 ) {
 	throw new RuntimeException( 'Installed bootstrap did not retain its default executor and lock.' );
 }
 
-$named = $configure(
+$named        = $configure(
 	provider: $provider,
 	attempts: new RAN\WPBranchUpdater\V1\Persistence\FileAttemptStore( $state ),
 	archive_directory: $private . '/named-archives',
 	maximum_artifact_bytes: 134217728
 );
-$namedRunner = ( new ReflectionObject( $named ) )->getProperty( 'runner' )->getValue( $named );
-if ( ! $namedRunner instanceof RAN\WPBranchUpdater\V1\Runtime\StandaloneBranchRunner ) {
+$named_runner = ( new ReflectionObject( $named ) )->getProperty( 'runner' )->getValue( $named );
+if ( ! $named_runner instanceof RAN\WPBranchUpdater\V1\Runtime\StandaloneBranchRunner ) {
 	throw new RuntimeException( 'Named configuration did not create a standalone runner.' );
 }
-$namedFacts = new ReflectionObject( $namedRunner );
+$named_facts = new ReflectionObject( $named_runner );
 if (
-	$private . '/named-archives' !== $namedFacts->getProperty( 'archive_directory' )->getValue( $namedRunner )
-	|| 134217728 !== $namedFacts->getProperty( 'maximum_artifact_bytes' )->getValue( $namedRunner )
+	$private . '/named-archives' !== $named_facts->getProperty( 'archive_directory' )->getValue( $named_runner )
+	|| 134217728 !== $named_facts->getProperty( 'maximum_artifact_bytes' )->getValue( $named_runner )
 ) {
 	throw new RuntimeException( 'Installed bootstrap did not forward its named arguments.' );
 }

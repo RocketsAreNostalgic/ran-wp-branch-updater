@@ -19,11 +19,11 @@ and diagnostic exceptions restricted to their annotated lines.
 
 Keep the package's actual contract local: PHP `^8.2`, the `RAN\WPBranchUpdater\V1` namespace, source paths, updater-specific tests, and justified runtime/security exceptions. Do not add a WordPress-version floor unless this package explicitly claims one, and do not copy shared rules back into local configuration.
 
-`composer check` is the ordinary deterministic PHP quality contract. It must retain strict Composer validation, shared PHPCS/PHPCompatibility checks, PHPStan, the existing architecture/archive/runner/journal/error-code and release workflow/classification tests, and the PHP syntax sweep. PHPCS governs the shipped `src/` plus `bootstrap.php` surface; test fixtures and maintenance scripts remain covered by syntax lint and their executable behavioral/contract tests rather than being reformatted as part of standards adoption. PHPStan directly covers `src/` and the installed `bootstrap.php`. The ordinary
+`composer check` is the ordinary deterministic PHP quality contract. It must retain strict Composer validation, shared PHPCS/PHPCompatibility checks, PHPStan, the existing architecture/archive/runner/journal/error-code and release workflow/classification tests, and the PHP syntax sweep. PHPCS governs all 51 tracked first-party PHP files, including the 13 test/fixture files and one maintenance script. The root ruleset discovers future PHP outside the earlier shipped roots; dependencies and generated proof output remain excluded. Standalone tests/scripts additionally use full PHPCompatibility through `.phpcs-cli-compat.xml`, without WordPress polyfill allowances. PHPStan directly covers `src/` and the installed `bootstrap.php`. The ordinary
 `test:analysis-bootstrap` regression exercises the real Composer analysis command
 with clean and deliberately invalid isolated bootstrap copies. PHPStan starts at level 5 so adoption adds semantic analysis without redefining the package's existing public array contracts; raising the level and adding array-shape/generic contracts is a separate reviewed API-quality change. The installed no-dev consumer proof remains a separate required CI lane.
 
-`composer lint:syntax` is the focused parser sweep; `composer standards` / `composer standards:fix` run PHPCS/PHPCBF; `composer analyze` retains blocking level 5; `composer test` aggregates the existing ordinary tests. No analysis or fixture scope changes are implied by these command names.
+`composer lint:syntax` is the focused parser sweep; `composer standards` / `composer standards:fix` run PHPCS/PHPCBF; `composer analyze` retains blocking level 5; `composer test` aggregates the existing ordinary tests. Analysis remains production-only; both standards commands apply the common and standalone-compatibility rulesets.
 
 Read [ARCHITECTURE.md](ARCHITECTURE.md) before changing production structure. Preserve the updater-family vocabulary by responsibility: Declaration, Provider, Adapter, Artifact, Runner, Coordinator, Journal, Store, State, Archive, Contract, Runtime, and WordPress. Do not create cosmetic symmetry with the release updater where runtime responsibilities differ.
 
@@ -38,6 +38,19 @@ Read [ARCHITECTURE.md](ARCHITECTURE.md) before changing production structure. Pr
 - Every PR needs independent review against its exact base and head SHAs.
 - Merging requires explicit owner authorization of the exact PR and merge method.
 - Keep credentials, local logs, vendor files, temporary transformation artifacts, and internal planning out of commits.
+
+## Development PHP profile
+
+Keep CLI fixtures under the common WordPress-derived formatting and owned naming
+rules. Source-local global-prefix exceptions apply only to standalone runners;
+precise operation/diagnostic exceptions preserve native fixture behavior. Fixture
+wire keys, embedded archive PHP, foreign reflection APIs and deliberate invalid
+source strings are contracts, not automatic rename targets. `test:naming` checks
+actual PHPCS discovery against tracked PHP, a new root-file control and its
+excluded negative, comment-only blanket/legacy suppression controls, and both
+standalone compatibility roots. Do not recreate syntax-only developer coverage.
+The separate native-operation exception proposal retains its own review; expanded
+file coverage alone does not adjudicate all production exceptions.
 
 ## Blacksmith AI prohibition
 

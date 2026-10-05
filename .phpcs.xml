@@ -4,9 +4,11 @@
 
 	<config name="testVersion" value="8.2-"/>
 
-	<!-- PHPCS governs the shipped library surface; syntax and contract tests cover fixtures/scripts separately. -->
-	<file>src</file>
-	<file>bootstrap.php</file>
+	<!-- Check every first-party PHP surface, including new roots; exclude dependencies and generated proof output. -->
+	<file>.</file>
+	<exclude-pattern>/vendor/</exclude-pattern>
+	<exclude-pattern>/node_modules/</exclude-pattern>
+	<exclude-pattern>/tests/build/</exclude-pattern>
 
 	<arg name="basepath" value="."/>
 	<arg name="colors"/>

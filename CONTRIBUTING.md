@@ -14,8 +14,8 @@ Focused commands use the shared PHP command contract:
 | Command | Scope |
 | --- | --- |
 | `composer lint:syntax` | Parser checks for `src/`, `tests/`, `scripts/` and `bootstrap.php` |
-| `composer standards` | PHPCS/WPCS/PHPCompatibility over shipped `src/` and `bootstrap.php` |
-| `composer standards:fix` | PHPCBF with the same rules and source paths |
+| `composer standards` | Common PHPCS/WPCS/PHPCompatibility over all first-party PHP; full PHPCompatibility additionally over standalone `tests/` and `scripts/` |
+| `composer standards:fix` | PHPCBF with both standards rulesets and their matching source paths |
 | `composer analyze` | Blocking PHPStan level 5 over `src/` and installed `bootstrap.php` |
 | `composer test` | All ordinary package and release-control contract tests |
 
@@ -82,7 +82,8 @@ across all 36 source files and `bootstrap.php`; three precise external
 unchanged/injected pairs through the actual repository rules without rewriting
 tracked files. It covers inherited owned methods, public properties/parameters,
 connected property uses and retained external exceptions. Check and fix use the
-same scope. Tests and maintenance scripts retain syntax/behavioral coverage.
+same scope. Tests and maintenance scripts also receive common standards and
+full standalone PHP compatibility checks.
 
 This is an intentional beta PHP API change, with no coexistence aliases.
 MIGRATING.md records the direct replacements. Core #167 accepted the exact
@@ -104,3 +105,33 @@ error contract. `composer test:naming` exercises the real PHPCS gate with clean
 source and deliberately regressed copies, including every newly enabled rule.
 UI/manual acceptance stays deferred; this source qualification does not
 substitute for it.
+
+## Standalone development PHP coverage
+
+Common standards now select all **51 tracked PHP files**, up from the former
+37 runtime files: 36 `src/` files, `bootstrap.php`, 13 test/fixture files and one
+consumer-fixture script. Root discovery includes future maintained PHP; vendor,
+node dependencies and generated `tests/build/` proof artifacts are excluded.
+The standalone compatibility ruleset selects tests/scripts at the same PHP 8.2
+floor with full PHPCompatibility, because these commands do not load WordPress
+polyfills. Both `standards` and `standards:fix` execute both rulesets; the fixer
+accepts PHPCBF's fixed-file exit status but propagates actual failures.
+
+Standalone runner global-prefix exceptions are file-local. Native file/pipe and
+process operations, CLI diagnostics, intentional empty rejection catches and
+multiple fault-injection doubles have exact-code explanations at their relevant
+lines. Ordinary owned helpers and fixture members use snake_case. Existing wire
+keys, archive payloads, external reflection names and negative-control strings
+remain unchanged; this is not another production/API migration.
+
+The existing naming test compares the real checker's file report with Git's
+tracked PHP population, including a temporary new root file. Excluding that
+probe must produce the expected missing-file result. Standalone selection must
+match all tracked tests/scripts; omitting the scripts root is a negative control.
+Token-based line/block/doc-comment checks
+reject blanket/legacy suppressions without mistaking fixture strings for active
+directives. An `array_find` probe must fail standalone compatibility in each CLI
+root while retaining the existing WordPress-profile distinction. Production
+PHPStan remains blocking level 5; installed consumer and all behavioral proofs
+remain required. This coverage pass does not claim acceptance of the separately
+reviewed production native-operation exceptions.

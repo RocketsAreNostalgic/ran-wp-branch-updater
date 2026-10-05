@@ -1,4 +1,5 @@
 <?php
+// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals -- This standalone CLI runner and its test doubles never load into WordPress global scope.
 
 declare(strict_types=1);
 
@@ -16,7 +17,8 @@ require dirname( __DIR__ ) . '/vendor/autoload.php';
 use RAN\WPBranchUpdater\V1\WordPress\WordPressCorePackageExecutor;
 
 $method = new ReflectionMethod( WordPressCorePackageExecutor::class, 'invalid_package_source' );
-$error  = $method->invoke( null );
+// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Standalone CLI fixture variable does not share WordPress runtime globals.
+$error = $method->invoke( null );
 if ( ! $error instanceof WP_Error || 'ran_branch_deployment_invalid_package_source' !== $error->get_error_code() ) {
 	throw new RuntimeException( 'Package source failures use the wrong error code.' );
 }

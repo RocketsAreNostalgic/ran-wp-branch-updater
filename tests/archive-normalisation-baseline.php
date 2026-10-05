@@ -1,5 +1,5 @@
 <?php
-// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals,WordPress.WP.AlternativeFunctions,WordPress.Security.EscapeOutput -- Standalone CLI fixture owns its isolated ZIP corpus and proof output.
+// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals -- This standalone CLI runner and its test doubles never load into WordPress global scope.
 declare(strict_types=1);
 
 require dirname( __DIR__ ) . '/vendor/autoload.php';
@@ -10,6 +10,7 @@ use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 
 $assert = static function ( bool $actual, string $message ): void {
 	if ( ! $actual ) {
+		// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- CLI assertion diagnostics are not HTML; preserve the actual failing fixture detail.
 		throw new RuntimeException( 'FAIL: ' . $message );
 	}
 };
@@ -28,7 +29,7 @@ $assert(
 	'shared bounded decode depth remains accepted at the supported boundary'
 );
 
-$invalidSubdirectories = array(
+$invalid_subdirectories = array(
 	'control only'             => "\n",
 	'raw control'              => "packages/demo\n",
 	'encoded drive prefix'     => 'C%3A/packages/demo',
@@ -36,7 +37,7 @@ $invalidSubdirectories = array(
 	'double encoded traversal' => 'packages/%252e%252e/demo',
 	'decode depth exceeded'    => 'packages/%' . str_repeat( '25', 8 ) . '41',
 );
-foreach ( $invalidSubdirectories as $label => $value ) {
+foreach ( $invalid_subdirectories as $label => $value ) {
 	try {
 		PackageSubdirectory::normalize( $value );
 		$assert( false, 'unsafe package subdirectory unexpectedly normalized: ' . $label );
@@ -56,11 +57,12 @@ try {
 }
 
 $root = __DIR__ . '/build/archive-normalisation-' . bin2hex( random_bytes( 4 ) );
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_mkdir -- Standalone CLI proof creates or cleans only its isolated local fixture files with native filesystem semantics.
 if ( ! mkdir( $root, 0700, true ) ) {
 	throw new RuntimeException( 'Cannot create archive baseline fixture directory.' );
 }
 $sequence = 0;
-$zip = static function ( array $entries ) use ( $root, &$sequence ): string {
+$zip      = static function ( array $entries ) use ( $root, &$sequence ): string {
 	$path = sprintf( '%s/fixture-%02d.zip', $root, ++$sequence );
 	$zip  = new ZipArchive();
 	if ( true !== $zip->open( $path, ZipArchive::CREATE | ZipArchive::OVERWRITE ) ) {
@@ -74,7 +76,8 @@ $zip = static function ( array $entries ) use ( $root, &$sequence ): string {
 	$zip->close();
 	return $path;
 };
-$plugin = static fn( string $headers = "Plugin Name: Demo\nVersion: 1.2.3" ): string => "<?php\n/*\n{$headers}\n*/\n";
+// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Standalone CLI fixture variable does not share WordPress runtime globals.
+$plugin     = static fn( string $headers = "Plugin Name: Demo\nVersion: 1.2.3" ): string => "<?php\n/*\n{$headers}\n*/\n";
 $deployment = static fn(
 	string $id,
 	string $operation = 'install',
@@ -93,61 +96,82 @@ $deployment = static fn(
 	$installed_identifier
 );
 $validator = new ArchiveValidator();
-$validate = static function ( string $path, BranchDeploymentDeclaration $deployment, ?string $installed = null, string $wordpressVersion = '6.5' ) use ( $validator ): array {
-	return $validator->validate( $path, $deployment, $installed, 10485760, 20971520, $wordpressVersion );
+$validate  = static function ( string $path, BranchDeploymentDeclaration $deployment, ?string $installed = null, string $wordpress_version = '6.5' ) use ( $validator ): array {
+	return $validator->validate( $path, $deployment, $installed, 10485760, 20971520, $wordpress_version );
 };
-$reject = static function ( int $code, string $path, BranchDeploymentDeclaration $deployment, ?string $installed = null, string $wordpressVersion = '6.5' ) use ( $validate, $assert ): void {
+$reject    = static function ( int $code, string $path, BranchDeploymentDeclaration $deployment, ?string $installed = null, string $wordpress_version = '6.5' ) use ( $validate, $assert ): void {
 	try {
-		$validate( $path, $deployment, $installed, $wordpressVersion );
+		$validate( $path, $deployment, $installed, $wordpress_version );
 		$assert( false, 'archive validation unexpectedly succeeded for code ' . $code );
 	} catch ( RuntimeException $expected ) {
 		$assert( $code === $expected->getCode(), 'archive validation code remains ' . $code . ', got ' . $expected->getCode() );
 	}
 };
 
-$valid = $zip( array( 'repository/demo/demo.php' => $plugin() ) );
+$valid      = $zip( array( 'repository/demo/demo.php' => $plugin() ) );
 $inspection = $validate( $valid, $deployment( 'valid' ) );
 $assert( '1.2.3' === $inspection['expected_version'], 'valid plugin version remains discoverable' );
 
-$unsafe = $zip( array( 'repository/demo/demo.php' => $plugin(), 'repository/../escape.php' => '<?php' ) );
+$unsafe = $zip(
+	array(
+		'repository/demo/demo.php' => $plugin(),
+		'repository/../escape.php' => '<?php',
+	)
+);
 $reject( ArchiveValidator::CODE_PATH_UNSAFE, $unsafe, $deployment( 'unsafe-path' ) );
 
-$fileParent = $zip( array( 'repository/demo' => 'not a directory', 'repository/demo/demo.php' => $plugin() ) );
-$reject( ArchiveValidator::CODE_FILE_PARENT_COLLISION, $fileParent, $deployment( 'file-parent' ) );
+$file_parent = $zip(
+	array(
+		'repository/demo'          => 'not a directory',
+		'repository/demo/demo.php' => $plugin(),
+	)
+);
+$reject( ArchiveValidator::CODE_FILE_PARENT_COLLISION, $file_parent, $deployment( 'file-parent' ) );
 
-$multipleRoots = $zip( array( 'repository/demo/demo.php' => $plugin(), 'other/readme.txt' => 'second root' ) );
-$reject( ArchiveValidator::CODE_MULTIPLE_ROOTS, $multipleRoots, $deployment( 'multiple-roots' ) );
+$multiple_roots = $zip(
+	array(
+		'repository/demo/demo.php' => $plugin(),
+		'other/readme.txt'         => 'second root',
+	)
+);
+$reject( ArchiveValidator::CODE_MULTIPLE_ROOTS, $multiple_roots, $deployment( 'multiple-roots' ) );
 
-$missingSubdirectory = $zip( array( 'repository/demo/demo.php' => $plugin() ) );
-$reject( ArchiveValidator::CODE_SUBDIRECTORY_MISSING, $missingSubdirectory, $deployment( 'missing-subdirectory', 'install', 'plugin' ) );
+$missing_subdirectory = $zip( array( 'repository/demo/demo.php' => $plugin() ) );
+$reject( ArchiveValidator::CODE_SUBDIRECTORY_MISSING, $missing_subdirectory, $deployment( 'missing-subdirectory', 'install', 'plugin' ) );
 
-$multiplePlugins = $zip( array(
-	'repository/demo/demo.php'   => $plugin(),
-	'repository/demo/second.php' => $plugin( "Plugin Name: Second\nVersion: 1.2.3" ),
-) );
-$reject( ArchiveValidator::CODE_MULTIPLE_PLUGINS, $multiplePlugins, $deployment( 'multiple-plugins' ) );
+$multiple_plugins = $zip(
+	array(
+		'repository/demo/demo.php'   => $plugin(),
+		'repository/demo/second.php' => $plugin( "Plugin Name: Second\nVersion: 1.2.3" ),
+	)
+);
+$reject( ArchiveValidator::CODE_MULTIPLE_PLUGINS, $multiple_plugins, $deployment( 'multiple-plugins' ) );
 
-$missingVersion = $zip( array( 'repository/demo/demo.php' => $plugin( 'Plugin Name: Demo' ) ) );
-$reject( ArchiveValidator::CODE_VERSION_MISSING, $missingVersion, $deployment( 'missing-version' ) );
+$missing_version = $zip( array( 'repository/demo/demo.php' => $plugin( 'Plugin Name: Demo' ) ) );
+$reject( ArchiveValidator::CODE_VERSION_MISSING, $missing_version, $deployment( 'missing-version' ) );
 
-$invalidVersion = $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3 beta!" ) ) );
-$reject( ArchiveValidator::CODE_VERSION_INVALID, $invalidVersion, $deployment( 'invalid-version' ) );
+$invalid_version = $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3 beta!" ) ) );
+$reject( ArchiveValidator::CODE_VERSION_INVALID, $invalid_version, $deployment( 'invalid-version' ) );
 
-$newerPhp = $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires PHP: 999.0" ) ) );
-$reject( ArchiveValidator::CODE_REQUIRES_NEWER_PHP, $newerPhp, $deployment( 'newer-php' ) );
+$newer_php = $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires PHP: 999.0" ) ) );
+$reject( ArchiveValidator::CODE_REQUIRES_NEWER_PHP, $newer_php, $deployment( 'newer-php' ) );
 
-$newerWordPress = $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires at least: 999.0" ) ) );
-$reject( ArchiveValidator::CODE_REQUIRES_NEWER_WP, $newerWordPress, $deployment( 'newer-wordpress' ), null, '6.5' );
+$newer_word_press = $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires at least: 999.0" ) ) );
+$reject( ArchiveValidator::CODE_REQUIRES_NEWER_WP, $newer_word_press, $deployment( 'newer-wordpress' ), null, '6.5' );
 
-$wrongIdentity = $zip( array( 'repository/demo/demo.php' => $plugin() ) );
-$reject( ArchiveValidator::CODE_PACKAGE_IDENTITY, $wrongIdentity, $deployment( 'wrong-identity', 'update', 'demo', 'other/other.php' ), 'other/other.php' );
+$wrong_identity = $zip( array( 'repository/demo/demo.php' => $plugin() ) );
+$reject( ArchiveValidator::CODE_PACKAGE_IDENTITY, $wrong_identity, $deployment( 'wrong-identity', 'update', 'demo', 'other/other.php' ), 'other/other.php' );
 
-$missingMain = $zip( array( 'repository/demo/demo.php' => $plugin() ) );
-$reject( ArchiveValidator::CODE_PLUGIN_MISSING, $missingMain, $deployment( 'missing-main', 'update', 'demo', 'demo/missing.php' ), 'demo/missing.php' );
+$missing_main = $zip( array( 'repository/demo/demo.php' => $plugin() ) );
+$reject( ArchiveValidator::CODE_PLUGIN_MISSING, $missing_main, $deployment( 'missing-main', 'update', 'demo', 'demo/missing.php' ), 'demo/missing.php' );
 
+// phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- glob returns an array or false; both no matches and failure retain the existing empty-corpus fallback.
+// phpcs:ignore Universal.Operators.DisallowShortTernary.Found,WordPress.WP.GlobalVariablesOverride.Prohibited -- Standalone CLI fixture variable does not share WordPress runtime globals.
 foreach ( glob( $root . '/*.zip' ) ?: array() as $path ) {
+	// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Standalone CLI proof creates or cleans only its isolated local fixture files with native filesystem semantics.
 	unlink( $path );
 }
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Standalone CLI proof creates or cleans only its isolated local fixture files with native filesystem semantics.
 rmdir( $root );
 
 echo "PASS archive safety, shared package-subdirectory policy, identity, header, and compatibility baseline\n";
