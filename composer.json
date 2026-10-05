@@ -44,8 +44,8 @@
     "test:journal": "@php tests/journal-invariants.php",
     "test:identifier": "@php tests/installed-package-identifier.php",
     "test:error-code": "@php tests/core-package-error-code.php",
-    "standards": "phpcs --standard=.phpcs.xml -s",
-    "standards:fix": "phpcbf --standard=.phpcs.xml --report=summary",
+    "standards": "phpcs --standard=.phpcs.xml -s && phpcs --standard=.phpcs-cli-compat.xml -s",
+    "standards:fix": "bash -c 'for ruleset in .phpcs.xml .phpcs-cli-compat.xml; do phpcbf --standard=\"$ruleset\" --report=summary; result=$?; if [ \"$result\" -gt 1 ]; then exit \"$result\"; fi; done'",
     "analyze": "phpstan analyse --configuration=phpstan.neon --no-progress --memory-limit=1G",
     "check": [
       "@validate:strict",

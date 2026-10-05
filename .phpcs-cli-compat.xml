@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<ruleset name="Branch standalone PHP compatibility">
+	<description>CLI runners and fixtures have no WordPress polyfills; retain the same PHP support floor.</description>
+	<config name="testVersion" value="8.2-"/>
+	<file>tests</file>
+	<file>scripts</file>
+	<exclude-pattern>/tests/build/</exclude-pattern>
+	<arg name="extensions" value="php"/>
+	<rule ref="PHPCompatibility"/>
+</ruleset>

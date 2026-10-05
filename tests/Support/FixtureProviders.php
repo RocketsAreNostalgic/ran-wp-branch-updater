@@ -1,5 +1,4 @@
 <?php
-// phpcs:disable Generic.Files.OneObjectStructurePerFile,WordPress.Security.EscapeOutput -- Local fake provider variants share one non-production transport contract.
 declare(strict_types=1);
 
 namespace RAN\WPBranchUpdater\V1;
@@ -13,11 +12,12 @@ use RuntimeException;
 abstract class FixtureProvider implements BranchProvider {
 	public function __construct( private readonly string $archive, private string $head, private readonly ?string $repository_id = null ) {}
 	abstract protected function name(): string;
-	public function moveHead( string $head ): void {
+	public function move_head( string $head ): void {
 		$this->head = $head;
 	}
 	public function prepare( BranchDeploymentDeclaration $d ): ArchiveOffer {
 		if ( null !== $d->expected_head && $d->expected_head !== $this->head ) {
+			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- CLI assertion diagnostics are not HTML; preserve the actual failing fixture detail.
 			throw new RuntimeException( $this->name() . ': expected head is stale.' );
 		}
 		$archive  = $this->archive;
@@ -44,11 +44,13 @@ abstract class FixtureProvider implements BranchProvider {
 		);
 	}
 }
+// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- These test-only fault-injection doubles share one standalone behavioral proof.
 final class GitHubFixtureProvider extends FixtureProvider {
 	protected function name(): string {
 		return 'github-fixture';
 	}
 }
+// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- These test-only fault-injection doubles share one standalone behavioral proof.
 final class BitbucketFixtureProvider extends FixtureProvider {
 	protected function name(): string {
 		return 'bitbucket-fixture';

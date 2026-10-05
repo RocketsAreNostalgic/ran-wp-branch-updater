@@ -1,12 +1,6 @@
 <?php
+// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals -- This standalone CLI runner and its test doubles never load into WordPress global scope.
 declare(strict_types=1);
-// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals -- Standalone CLI proof locals are never WordPress globals.
-// phpcs:disable WordPress.WP.GlobalVariablesOverride -- Standalone CLI proof locals do not override a WordPress runtime.
-// phpcs:disable WordPress.WP.AlternativeFunctions -- The proof retains exact local filesystem evidence.
-// phpcs:disable WordPress.PHP.DiscouragedPHPFunctions.system_calls_exec -- The proof requires fresh child processes.
-// phpcs:disable WordPress.PHP.DiscouragedPHPFunctions.system_calls_proc_open -- The proof requires exact child signal status.
-// phpcs:disable Universal.Operators.DisallowShortTernary.Found -- The empty glob fallback is deterministic proof code.
-// phpcs:disable WordPress.Security.EscapeOutput.OutputNotEscaped -- This is CLI-only evidence output.
 require dirname( __DIR__ ) . '/vendor/autoload.php';
 
 use RAN\WPBranchUpdater\V1\Archive\PreparedArchive;
@@ -31,6 +25,7 @@ final class RAN_BranchDeploymentHardStopExecutor implements PackageExecutor {
 	}
 }
 
+// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Standalone CLI fixture variable does not share WordPress runtime globals.
 $mode = $argv[1] ?? 'parent';
 if ( 'child' === $mode ) {
 	[$journal, $archive, $root] = array_slice( $argv, 2, 3 );
@@ -48,6 +43,7 @@ if ( 'recover' === $mode ) {
 }
 
 $root = $argv[1] ?? __DIR__ . '/build/branch-updater-proof/run-' . gmdate( 'Ymd-His' ) . '-' . bin2hex( random_bytes( 4 ) );
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_mkdir -- Standalone CLI proof creates or cleans only its isolated local fixture files with native filesystem semantics.
 if ( ! mkdir( $root, 0700, true ) ) {
 	throw new RuntimeException( 'Cannot create retained proof directory.' );
 }
@@ -60,7 +56,9 @@ $zip->addFromString( 'repository/main.php', "<?php\n/*\nPlugin Name: Hard Stop\n
 $zip->close();
 $journal = $root . '/journal/attempts.json';
 $php     = escapeshellarg( PHP_BINARY );
-$self    = escapeshellarg( __FILE__ );
+// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Standalone CLI fixture variable does not share WordPress runtime globals.
+$self = escapeshellarg( __FILE__ );
+// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.system_calls_proc_open -- The standalone proof must launch a real checker or fresh worker and observe its process status.
 $child = proc_open(
 	array( PHP_BINARY, __FILE__, 'child', $journal, $archive, $root ),
 	array(
@@ -73,31 +71,36 @@ $child = proc_open(
 if ( ! is_resource( $child ) ) {
 	throw new RuntimeException( 'Cannot start hard-stop child.' );
 }
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Standalone checker/child-process proof uses the exact native pipe descriptor.
 fclose( $pipes[0] );
 do {
-	$childStatus = proc_get_status( $child );
-	if ( $childStatus['running'] ) {
+	$child_status = proc_get_status( $child );
+	if ( $child_status['running'] ) {
 		usleep( 10000 );
 	}
-} while ( $childStatus['running'] );
+} while ( $child_status['running'] );
 stream_get_contents( $pipes[1] );
 stream_get_contents( $pipes[2] );
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Standalone checker/child-process proof uses the exact native pipe descriptor.
 fclose( $pipes[1] );
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Standalone checker/child-process proof uses the exact native pipe descriptor.
 fclose( $pipes[2] );
 proc_close( $child );
-$normalisedStatus = $childStatus['signaled'] ? 128 + $childStatus['termsig'] : $childStatus['exitcode'];
-if ( 137 !== $normalisedStatus || ! $childStatus['signaled'] || SIGKILL !== $childStatus['termsig'] ) {
+$normalised_status = $child_status['signaled'] ? 128 + $child_status['termsig'] : $child_status['exitcode'];
+if ( 137 !== $normalised_status || ! $child_status['signaled'] || SIGKILL !== $child_status['termsig'] ) {
 	throw new RuntimeException( 'Child did not terminate by SIGKILL.' );
 }
-$beforeRecovery = ( new FileAttemptStore( $journal ) )->get( 'hard-stop' );
-if ( 'running' !== $beforeRecovery['state'] || null === $beforeRecovery['mutation_started_at'] ) {
+$before_recovery = ( new FileAttemptStore( $journal ) )->get( 'hard-stop' );
+if ( 'running' !== $before_recovery['state'] || null === $before_recovery['mutation_started_at'] ) {
 	throw new RuntimeException( 'Hard stop did not retain the durable mutation fence.' );
 }
+// phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- glob returns an array or false; both no matches and failure retain the existing empty-corpus fallback.
 if ( 1 !== count( glob( $root . '/archives/*' ) ?: array() ) ) {
 	throw new RuntimeException( 'Hard stop did not retain the prepared archive.' );
 }
-exec( $php . ' ' . $self . ' recover ' . escapeshellarg( $journal ), $ignored, $recoverStatus );
-if ( 0 !== $recoverStatus ) {
+// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.system_calls_exec -- The standalone proof must launch a real checker or fresh worker and observe its process status.
+exec( $php . ' ' . $self . ' recover ' . escapeshellarg( $journal ), $ignored, $recover_status );
+if ( 0 !== $recover_status ) {
 	throw new RuntimeException( 'Fresh-process recovery failed.' );
 }
 $store = new FileAttemptStore( $journal );
@@ -109,4 +112,5 @@ try {
 		throw $expected;
 	}
 }
+// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- CLI-only proof output includes its retained local evidence path, not HTML.
 echo "PASS coordinator SIGKILL, fresh recovery, and retained target block: $root\n";
