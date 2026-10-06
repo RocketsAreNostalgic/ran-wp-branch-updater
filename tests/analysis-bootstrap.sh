@@ -86,10 +86,14 @@ printf '<?php\n' > "$fixture/NewContract.PHP"
 if php "$root/tests/analysis-coverage.php" "$fixture" > "$fixture/guard.log" 2>&1; then exit 1; fi
 grep -q 'Unsupported PHP extension' "$fixture/guard.log"
 rm "$fixture/NewContract.PHP"
-printf '#!/usr/bin/env php\n<?php\n' > "$fixture/contract-tool"
-if php "$root/tests/analysis-coverage.php" "$fixture" > "$fixture/guard.log" 2>&1; then exit 1; fi
-grep -q 'Extensionless PHP' "$fixture/guard.log"
-rm "$fixture/contract-tool"
+for header in '<?php' '<?PHP' '<?='; do
+    for path in contract-tool alternate-contract.inc; do
+        printf '#!/usr/bin/env php\n%s\n' "$header" > "$fixture/$path"
+        if php "$root/tests/analysis-coverage.php" "$fixture" > "$fixture/guard.log" 2>&1; then exit 1; fi
+        grep -q 'PHP outside lowercase .php' "$fixture/guard.log"
+        rm "$fixture/$path"
+    done
+done
 # Explicit role exemptions exclude only repository-root development directories.
 mkdir "$fixture/tests" "$fixture/scripts"
 printf '<?php\n' > "$fixture/tests/development.php"

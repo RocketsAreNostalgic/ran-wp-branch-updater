@@ -37,11 +37,11 @@ foreach ( new RecursiveIteratorIterator( $iterator ) as $entry ) {
 			throw new RuntimeException( 'Unsupported PHP extension must not evade analysis.' );
 		}
 		$expected[] = $entry->getPathname();
-	} elseif ( '' === $entry->getExtension() ) {
-		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Inspect only the local extensionless file header, never execute it.
+	} else {
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Inspect only the bounded local non-PHP-extension file header, never execute it.
 		$header = file_get_contents( $entry->getPathname(), false, null, 0, 256 );
-		if ( preg_match( '/^(?:#![^\n]*\n)?\s*<\?php\b/', $header ) ) {
-			throw new RuntimeException( 'Extensionless PHP needs an explicit reviewed analysis decision.' );
+		if ( preg_match( '/^(?:#![^\n]*\n)?\s*<\?(?:php\b|=)/i', $header ) ) {
+			throw new RuntimeException( 'PHP outside lowercase .php needs an explicit reviewed analysis decision.' );
 		}
 	}
 }

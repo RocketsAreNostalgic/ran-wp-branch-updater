@@ -163,8 +163,7 @@ repository metadata are distinct roles, not an inventory of product files.
 A production `src/tests/` directory remains included. The independent filesystem
 inventory is compared with locked PHPStan's effective file finder. The existing
 bootstrap regression also proves that new untracked root/nested/split contracts
-produce real analysis diagnostics. Uppercase extensions and extensionless PHP
-entrypoints fail for an explicit scope decision rather than disappearing.
+produce real analysis diagnostics. Uppercase extensions and PHP entrypoints outside lowercase `.php` fail for an explicit scope decision rather than disappearing.
 The 37 current production PHP files remain clean at required level 5.
 
 The comment-token guard rejects standards/categories/sniffs, unexplained ignores,
@@ -188,3 +187,6 @@ and `sniffs` arguments can otherwise hide required diagnostics.
 
 Effective analysis coverage mirrors PHPStan's post-discovery stub-file filtering;
 reclassifying maintained production PHP as a stub fails the coverage gate.
+
+The bounded header check recognizes ordinary/uppercase PHP open tags and short
+echo tags, with optional shebang, including alternate extensions such as `.inc`.
