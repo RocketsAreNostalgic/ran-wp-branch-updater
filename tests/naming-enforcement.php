@@ -187,6 +187,9 @@ function ran_wp_branch_updater_has_unreviewed_arguments( string $source, bool $s
 	}
 	$arguments = array();
 	foreach ( ( new DOMXPath( $xml ) )->query( '//arg' ) as $node ) {
+		if ( ! $node instanceof DOMElement ) {
+			return true;
+		}
 		$arguments[] = array( $node->getAttribute( 'name' ), $node->getAttribute( 'value' ) );
 	}
 	$expected = $standalone ? array( array( 'extensions', 'php' ) ) : array( array( 'basepath', '.' ), array( 'colors', '' ), array( 'extensions', 'php' ), array( 'parallel', '4' ), array( '', 'sp' ) );

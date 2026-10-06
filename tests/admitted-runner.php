@@ -78,7 +78,7 @@ final class RAN_WP_Branch_Updater_RunnerFixtureTarget implements AdmittedTargetF
 			'version'    => '1.2.3',
 			'active'     => $this->installed_active,
 		); }
-	public function baseline_now( BranchDeploymentDeclaration $deployment, array $baseline ): ?array {
+	public function baseline_now( BranchDeploymentDeclaration $deployment, array $baseline ): array {
 		return $baseline; }
 	public function adopt( BranchDeploymentDeclaration $deployment ): bool {
 		return true; }

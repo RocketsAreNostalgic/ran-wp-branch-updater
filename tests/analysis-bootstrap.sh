@@ -3,16 +3,17 @@ set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 php "$root/tests/analysis-coverage.php"
+php "$root/tests/analysis-coverage.php" "$root" --maintained
 fixture="$(mktemp -d)"
 trap 'rm -rf "$fixture"' EXIT
 
 # Keep configuration paths relative to an isolated copy; never mutate runtime PHP.
-cp "$root/composer.json" "$root/composer.lock" "$root/phpstan.neon" "$root/bootstrap.php" "$fixture/"
+cp "$root/composer.json" "$root/composer.lock" "$root/phpstan.neon" "$root/phpstan-maintained.neon" "$root/bootstrap.php" "$fixture/"
 ln -s "$root/vendor" "$fixture/vendor"
 cp -R "$root/src" "$fixture/src"
 
 analyze() {
-    composer --no-plugins --no-interaction --working-dir="$fixture" analyze -- --error-format=json
+    composer --no-plugins --no-interaction --working-dir="$fixture" "${analysis_command:-analyze:production}" -- --error-format=json
 }
 
 if ! analyze > "$fixture/clean.json" 2> "$fixture/clean.log"; then
@@ -106,3 +107,51 @@ fi
 grep -q 'Effective PHPStan selection differs' "$fixture/guard.log"
 cp "$root/phpstan.neon" "$fixture/phpstan.neon"
 echo 'Inclusive production analysis, untracked split-file, anchored-role and unsupported-extension controls passed.'
+
+# Maintained analysis must cover future development files as well as product roots.
+analysis_command=analyze:maintained
+cp -R "$root/tests/." "$fixture/tests/"
+cp -R "$root/scripts/." "$fixture/scripts/"
+php "$root/tests/analysis-coverage.php" "$fixture" --maintained
+analyze > "$fixture/maintained-clean.json" 2> "$fixture/maintained-clean.log" || {
+    cat "$fixture/maintained-clean.log" "$fixture/maintained-clean.json" >&2; exit 1;
+}
+for path in tests/new-contract.php scripts/new-tool.php root-contract.php; do
+    printf '<?php\nran_branch_maintained_probe_missing();\n' > "$fixture/$path"
+    php "$root/tests/analysis-coverage.php" "$fixture" --maintained
+    status=0
+    analyze > "$fixture/maintained-invalid.json" 2> "$fixture/maintained-invalid.log" || status=$?
+    test "$status" -eq 1
+    php -r '$r=json_decode(file_get_contents($argv[1]),true,512,JSON_THROW_ON_ERROR);foreach($r["files"][realpath($argv[2])]["messages"]??[] as $m){if(($m["identifier"]??"")==="function.notFound"&&str_contains($m["message"],"ran_branch_maintained_probe_missing")){exit(0);}}exit(1);' "$fixture/maintained-invalid.json" "$fixture/$path"
+    rm "$fixture/$path"
+done
+# The locked internal-tool exception must not cover a neighbouring API call.
+printf '<?php\n(new PHPStan\\DependencyInjection\\NeonAdapter(array()))->load("missing");\n' > "$fixture/tests/outside-exception.php"
+status=0
+analyze > "$fixture/outside.json" 2> "$fixture/outside.log" || status=$?
+test "$status" -eq 1
+php -r '$r=json_decode(file_get_contents($argv[1]),true,512,JSON_THROW_ON_ERROR);foreach($r["files"][realpath($argv[2])]["messages"]??[] as $m){if(($m["identifier"]??"")==="phpstanApi.constructor"){exit(0);}}exit(1);' "$fixture/outside.json" "$fixture/tests/outside-exception.php"
+rm "$fixture/tests/outside-exception.php"
+for directive in '@phpstan-ignore-next-line' '@PHPSTAN-IGNORE phpstanApi.constructor'; do
+    printf '<?php\n// %s\n' "$directive" > "$fixture/tests/unreviewed.php"
+    if php "$root/tests/analysis-coverage.php" "$fixture" --maintained > "$fixture/guard.log" 2>&1; then exit 1; fi
+    grep -q 'Review new or changed analysis exemptions' "$fixture/guard.log"
+    rm "$fixture/tests/unreviewed.php"
+done
+# An unchanged reason cannot be moved onto another occurrence in the same file.
+cp "$fixture/tests/analysis-coverage.php" "$fixture/coverage-original.txt"
+php -r '$p=$argv[1];$s=file_get_contents($p);$s=str_replace("// @phpstan-ignore phpstanApi.method (Use the locked CLI exclusion predicate rather than an approximation.)\n", "// @phpstan-ignore phpstanApi.method (Use the locked CLI exclusion predicate rather than an approximation.)\n\t(new PHPStan\\DependencyInjection\\NeonAdapter(array()))->load(null);\n",$s);file_put_contents($p,$s);' "$fixture/tests/analysis-coverage.php"
+if php "$root/tests/analysis-coverage.php" "$fixture" --maintained > "$fixture/guard.log" 2>&1; then exit 1; fi
+grep -q 'Review new or changed analysis exemptions' "$fixture/guard.log"
+mv "$fixture/coverage-original.txt" "$fixture/tests/analysis-coverage.php"
+for change in level exclusion ignore; do
+    cp "$root/phpstan-maintained.neon" "$fixture/phpstan-maintained.neon"
+    case "$change" in
+        level) sed -i 's/level: 5/level: 4/' "$fixture/phpstan-maintained.neon" ;;
+        exclusion) printf '\t\t\t- tests/*\n' >> "$fixture/phpstan-maintained.neon" ;;
+        ignore) printf '\tignoreErrors: []\n' >> "$fixture/phpstan-maintained.neon" ;;
+    esac
+    if php "$root/tests/analysis-coverage.php" "$fixture" --maintained > "$fixture/guard.log" 2>&1; then exit 1; fi
+    grep -q 'Review inclusive analysis scope' "$fixture/guard.log"
+done
+echo 'Maintained root, test/script discovery, minimum level and exact internal-API exemption controls passed.'

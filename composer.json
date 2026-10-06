@@ -46,7 +46,10 @@
     "test:error-code": "@php tests/core-package-error-code.php",
     "standards": "phpcs --standard=.phpcs.xml -s && phpcs --standard=.phpcs-cli-compat.xml -s",
     "standards:fix": "bash -c 'for ruleset in .phpcs.xml .phpcs-cli-compat.xml; do phpcbf --standard=\"$ruleset\" --report=summary; result=$?; if [ \"$result\" -gt 1 ]; then exit \"$result\"; fi; done'",
-    "analyze": "phpstan analyse --configuration=phpstan.neon --no-progress --memory-limit=1G",
+    "analyze": [
+      "@analyze:production",
+      "@analyze:maintained"
+    ],
     "check": [
       "@validate:strict",
       "@standards",
@@ -71,7 +74,9 @@
       "@test:error-code",
       "@test:release-control"
     ],
-    "test:naming": "@php tests/naming-enforcement.php"
+    "test:naming": "@php tests/naming-enforcement.php",
+    "analyze:production": "phpstan analyse --configuration=phpstan.neon --no-progress --memory-limit=1G",
+    "analyze:maintained": "phpstan analyse --configuration=phpstan-maintained.neon --no-progress --memory-limit=1G"
   },
   "config": {
     "platform": {
