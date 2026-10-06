@@ -3,7 +3,7 @@
 
 declare(strict_types=1);
 
-if ( 3 !== $argc ) {
+if ( ! isset( $argc, $argv ) || 3 !== $argc ) {
 	throw new RuntimeException( 'Usage: prepare-consumer-fixture.php CONSUMER_ROOT PACKAGE_ROOT' );
 }
 

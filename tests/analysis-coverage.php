@@ -7,7 +7,7 @@ $root = dirname( __DIR__ );
 require $root . '/vendor/autoload.php';
 // The candidate fixture can provide its own root while retaining the real locked tool.
 $root          = $argv[1] ?? $root;
-$maintained    = in_array( '--maintained', $argv, true );
+$maintained    = in_array( '--maintained', $argv ?? array(), true );
 $configuration = $maintained ? 'phpstan-maintained.neon' : 'phpstan.neon';
 // @phpstan-ignore phpstanApi.constructor, phpstanApi.method (Locked NeonAdapter reads the exact configuration consumed by this coverage contract.)
 $config              = ( new PHPStan\DependencyInjection\NeonAdapter( array() ) )->load( $root . '/' . $configuration );
