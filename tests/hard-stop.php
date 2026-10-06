@@ -1,5 +1,5 @@
 <?php
-// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals -- This standalone CLI runner and its test doubles never load into WordPress global scope.
+// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound -- Standalone process-local variables never enter WordPress runtime; declarations remain checked.
 declare(strict_types=1);
 require dirname( __DIR__ ) . '/vendor/autoload.php';
 
@@ -11,7 +11,7 @@ use RAN\WPBranchUpdater\V1\Persistence\FileMutationLock;
 use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 use RAN\WPBranchUpdater\V1\Runtime\StandaloneBranchRunner;
 
-final class RAN_BranchDeploymentHardStopExecutor implements PackageExecutor {
+final class RAN_WP_Branch_Updater_RAN_BranchDeploymentHardStopExecutor implements PackageExecutor {
 	public function preflight( BranchDeploymentDeclaration $deployment, PreparedArchive $archive ): array {
 		$archive->assert_unchanged();
 		return array();
@@ -30,7 +30,7 @@ $mode = $argv[1] ?? 'parent';
 if ( 'child' === $mode ) {
 	[$journal, $archive, $root] = array_slice( $argv, 2, 3 );
 	$deployment                 = new BranchDeploymentDeclaration( 'hard-stop', 'plugin', 'hard-stop-target', 'fixture/one', 'fixture-id', 'main', 'head', 'install' );
-	( new StandaloneBranchRunner( new GitHubFixtureProvider( $archive, 'head' ), new FileAttemptStore( $journal ), new RAN_BranchDeploymentHardStopExecutor(), $root . '/archives', new FileMutationLock( $root . '/mutation.lock' ) ) )->execute( $deployment );
+	( new StandaloneBranchRunner( new GitHubFixtureProvider( $archive, 'head' ), new FileAttemptStore( $journal ), new RAN_WP_Branch_Updater_RAN_BranchDeploymentHardStopExecutor(), $root . '/archives', new FileMutationLock( $root . '/mutation.lock' ) ) )->execute( $deployment );
 	exit( 99 );
 }
 if ( 'recover' === $mode ) {

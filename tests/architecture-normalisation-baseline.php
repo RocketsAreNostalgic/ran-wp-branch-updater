@@ -1,5 +1,5 @@
 <?php
-// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals -- This standalone CLI runner and its test doubles never load into WordPress global scope.
+// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound -- Standalone process-local variables never enter WordPress runtime; declarations remain checked.
 declare(strict_types=1);
 
 require dirname( __DIR__ ) . '/vendor/autoload.php';
@@ -15,7 +15,7 @@ use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionFailure;
 use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionResult;
 
-final class ArchitectureBaselineTrace {
+final class RAN_WP_Branch_Updater_ArchitectureBaselineTrace {
 	/** @var list<string> */
 	public array $events = array();
 	public function add( string $event ): void {
@@ -24,8 +24,8 @@ final class ArchitectureBaselineTrace {
 }
 
 // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- These test-only fault-injection doubles share one standalone behavioral proof.
-final class ArchitectureBaselineJournal implements AdmittedAttemptJournal {
-	public function __construct( private ArchitectureBaselineTrace $trace ) {}
+final class RAN_WP_Branch_Updater_ArchitectureBaselineJournal implements AdmittedAttemptJournal {
+	public function __construct( private RAN_WP_Branch_Updater_ArchitectureBaselineTrace $trace ) {}
 	public function record_resolved_ref( string $ref ): void {
 		$this->trace->add( 'journal.resolved:' . $ref );
 	}
@@ -38,9 +38,9 @@ final class ArchitectureBaselineJournal implements AdmittedAttemptJournal {
 }
 
 // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- These test-only fault-injection doubles share one standalone behavioral proof.
-final class ArchitectureBaselineArtifact implements AdmittedBranchArtifact {
+final class RAN_WP_Branch_Updater_ArchitectureBaselineArtifact implements AdmittedBranchArtifact {
 	public function __construct(
-		private ArchitectureBaselineTrace $trace,
+		private RAN_WP_Branch_Updater_ArchitectureBaselineTrace $trace,
 		private string $version = '1.2.3',
 		private ?\Throwable $integrity_failure = null
 	) {}
@@ -64,10 +64,10 @@ final class ArchitectureBaselineArtifact implements AdmittedBranchArtifact {
 }
 
 // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- These test-only fault-injection doubles share one standalone behavioral proof.
-final class ArchitectureBaselineArchives implements AdmittedArchiveSource {
+final class RAN_WP_Branch_Updater_ArchitectureBaselineArchives implements AdmittedArchiveSource {
 	public function __construct(
-		private ArchitectureBaselineTrace $trace,
-		private ArchitectureBaselineArtifact $artifact,
+		private RAN_WP_Branch_Updater_ArchitectureBaselineTrace $trace,
+		private RAN_WP_Branch_Updater_ArchitectureBaselineArtifact $artifact,
 		private ?\Throwable $head_failure = null
 	) {}
 	public function prepare( BranchDeploymentDeclaration $deployment, ?array $baseline ): AdmittedBranchArtifact {
@@ -83,11 +83,11 @@ final class ArchitectureBaselineArchives implements AdmittedArchiveSource {
 }
 
 // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- These test-only fault-injection doubles share one standalone behavioral proof.
-final class ArchitectureBaselineTarget implements AdmittedTargetFacts {
+final class RAN_WP_Branch_Updater_ArchitectureBaselineTarget implements AdmittedTargetFacts {
 	private int $policy_calls      = 0;
 	private int $maintenance_calls = 0;
 	public function __construct(
-		private ArchitectureBaselineTrace $trace,
+		private RAN_WP_Branch_Updater_ArchitectureBaselineTrace $trace,
 		private ?array $initial_baseline = array(
 			'identifier' => 'demo/demo.php',
 			'version'    => '1.0.0',
@@ -151,10 +151,10 @@ final class ArchitectureBaselineTarget implements AdmittedTargetFacts {
 }
 
 // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- These test-only fault-injection doubles share one standalone behavioral proof.
-final class ArchitectureBaselineExecutor implements AdmittedPackageExecutor {
+final class RAN_WP_Branch_Updater_ArchitectureBaselineExecutor implements AdmittedPackageExecutor {
 	private int $preflight_calls = 0;
 	public function __construct(
-		private ArchitectureBaselineTrace $trace,
+		private RAN_WP_Branch_Updater_ArchitectureBaselineTrace $trace,
 		private CorePackageExecutionResult $result,
 		private ?\Throwable $first_preflight_failure = null,
 		private ?\Throwable $second_preflight_failure = null
@@ -175,8 +175,8 @@ final class ArchitectureBaselineExecutor implements AdmittedPackageExecutor {
 }
 
 // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- These test-only fault-injection doubles share one standalone behavioral proof.
-final class ArchitectureBaselineLock implements MutationLock {
-	public function __construct( private ArchitectureBaselineTrace $trace ) {}
+final class RAN_WP_Branch_Updater_ArchitectureBaselineLock implements MutationLock {
+	public function __construct( private RAN_WP_Branch_Updater_ArchitectureBaselineTrace $trace ) {}
 	public function run( callable $operation ): mixed {
 		$this->trace->add( 'lock.enter' );
 		try {
@@ -206,16 +206,16 @@ $deployment = static fn( string $id = 'architecture-baseline', string $operation
 	'demo/demo.php'
 );
 
-$trace    = new ArchitectureBaselineTrace();
-$target   = new ArchitectureBaselineTarget( $trace );
-$artifact = new ArchitectureBaselineArtifact( $trace );
-$executor = new ArchitectureBaselineExecutor( $trace, CorePackageExecutionResult::succeeded() );
+$trace    = new RAN_WP_Branch_Updater_ArchitectureBaselineTrace();
+$target   = new RAN_WP_Branch_Updater_ArchitectureBaselineTarget( $trace );
+$artifact = new RAN_WP_Branch_Updater_ArchitectureBaselineArtifact( $trace );
+$executor = new RAN_WP_Branch_Updater_ArchitectureBaselineExecutor( $trace, CorePackageExecutionResult::succeeded() );
 $runner   = new AdmittedBranchRunner(
-	new ArchitectureBaselineJournal( $trace ),
-	new ArchitectureBaselineArchives( $trace, $artifact ),
+	new RAN_WP_Branch_Updater_ArchitectureBaselineJournal( $trace ),
+	new RAN_WP_Branch_Updater_ArchitectureBaselineArchives( $trace, $artifact ),
 	$target,
 	$executor,
-	new ArchitectureBaselineLock( $trace )
+	new RAN_WP_Branch_Updater_ArchitectureBaselineLock( $trace )
 );
 $outcome  = $runner->run( $deployment() );
 $assert( 'deployed' === $outcome, 'successful update remains deployed' );
@@ -256,8 +256,8 @@ try {
 }
 
 $scenario = static function ( array $options ) use ( $assert ): string {
-	$trace    = new ArchitectureBaselineTrace();
-	$target   = new ArchitectureBaselineTarget(
+	$trace    = new RAN_WP_Branch_Updater_ArchitectureBaselineTrace();
+	$target   = new RAN_WP_Branch_Updater_ArchitectureBaselineTarget(
 		$trace,
 		array_key_exists( 'initialBaseline', $options ) ? $options['initialBaseline'] : array(
 			'identifier' => 'demo/demo.php',
@@ -284,19 +284,19 @@ $scenario = static function ( array $options ) use ( $assert ): string {
 		$options['initialPolicyFailure'] ?? null,
 		$options['lockedPolicyFailure'] ?? null
 	);
-	$artifact = new ArchitectureBaselineArtifact( $trace, $options['version'] ?? '1.2.3', $options['integrityFailure'] ?? null );
-	$executor = new ArchitectureBaselineExecutor(
+	$artifact = new RAN_WP_Branch_Updater_ArchitectureBaselineArtifact( $trace, $options['version'] ?? '1.2.3', $options['integrityFailure'] ?? null );
+	$executor = new RAN_WP_Branch_Updater_ArchitectureBaselineExecutor(
 		$trace,
 		$options['result'] ?? CorePackageExecutionResult::succeeded(),
 		$options['firstPreflightFailure'] ?? null,
 		$options['secondPreflightFailure'] ?? null
 	);
 	$runner   = new AdmittedBranchRunner(
-		new ArchitectureBaselineJournal( $trace ),
-		new ArchitectureBaselineArchives( $trace, $artifact, $options['headFailure'] ?? null ),
+		new RAN_WP_Branch_Updater_ArchitectureBaselineJournal( $trace ),
+		new RAN_WP_Branch_Updater_ArchitectureBaselineArchives( $trace, $artifact, $options['headFailure'] ?? null ),
 		$target,
 		$executor,
-		new ArchitectureBaselineLock( $trace )
+		new RAN_WP_Branch_Updater_ArchitectureBaselineLock( $trace )
 	);
 	$outcome  = $runner->run( new BranchDeploymentDeclaration( 'scenario-' . bin2hex( random_bytes( 4 ) ), 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', 'abc123', $options['operation'] ?? 'update', 'demo', 'demo/demo.php' ) );
 	$assert( end( $trace->events ) === 'journal.finish:' . $outcome, 'terminal outcome is journaled last for ' . $outcome );

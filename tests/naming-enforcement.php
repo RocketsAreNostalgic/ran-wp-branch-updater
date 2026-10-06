@@ -1,5 +1,5 @@
 <?php
-// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals -- This standalone CLI runner and its test doubles never load into WordPress global scope.
+// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound -- Standalone process-local variables never enter WordPress runtime; declarations remain checked.
 
 declare(strict_types=1);
 
@@ -7,6 +7,12 @@ $root          = dirname( __DIR__ );
 $method_code   = 'RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase';
 $variable_code = 'WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase';
 $cases         = array(
+	array( 'src/Archive/PreparedArchive.php', 'final class PreparedArchive implements PreparedPackageArtifact {', 'final class PreparedArchive implements PreparedPackageArtifact { public function silence_probe(): void { @strlen( "probe" ); }', 'WordPress.PHP.NoSilencedErrors.Discouraged' ),
+
+	array( 'src/Archive/ArchiveValidator.php', 'final class ArchiveValidator {', 'final class ArchiveValidator { public function native_operation_probe(): void { json_encode( array() ); }', 'WordPress.WP.AlternativeFunctions.json_encode_json_encode' ),
+	array( 'src/Archive/PreparedArchive.php', 'final class PreparedArchive implements PreparedPackageArtifact {', 'final class PreparedArchive implements PreparedPackageArtifact { public function native_operation_probe(): void { json_encode( array() ); }', 'WordPress.WP.AlternativeFunctions.json_encode_json_encode' ),
+	array( 'src/Persistence/FileAttemptStore.php', 'final class FileAttemptStore {', 'final class FileAttemptStore { public function native_operation_probe(): void { json_encode( array() ); }', 'WordPress.WP.AlternativeFunctions.json_encode_json_encode' ),
+	array( 'src/Persistence/FileMutationLock.php', 'final class FileMutationLock implements MutationLock {', 'final class FileMutationLock implements MutationLock { public function native_operation_probe(): void { json_encode( array() ); }', 'WordPress.WP.AlternativeFunctions.json_encode_json_encode' ),
 	array( 'src/Contract/AdmittedTargetFacts.php', 'function frozen_target(', 'function frozenTarget(', $method_code ),
 	array( 'src/Archive/PreparedArchive.php', 'function download_and_validate(', 'function downloadAndValidate(', $method_code ),
 	array( 'src/Runtime/BranchUpdater.php', 'function for_admitted_attempt(', 'function forAdmittedAttempt(', $method_code ),
@@ -43,7 +49,7 @@ $cases         = array(
 );
 
 /** Run the real repository rules against an in-memory source copy at its actual path. */
-function naming_report( string $root, string $path, ?string $source, string $standard = '.phpcs.xml', array $extra = array() ): array {
+function ran_wp_branch_updater_naming_report( string $root, string $path, ?string $source, string $standard = '.phpcs.xml', array $extra = array() ): array {
 	$command = array_merge( array( PHP_BINARY, $root . '/vendor/bin/phpcs', '--standard=' . $root . '/' . $standard, '--report=json', '-q', '--no-colors' ), $extra );
 	if ( null !== $source ) {
 		$command[] = '--stdin-path=' . $root . '/' . $path;
@@ -91,13 +97,13 @@ foreach ( $cases as [$path, $before, $after, $expected] ) {
 		throw new RuntimeException( 'Naming fixture anchor missing: ' . $path );
 	}
 	// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Standalone CLI fixture variable does not share WordPress runtime globals.
-	[$status, $report] = naming_report( $root, $path, $source );
+	[$status, $report] = ran_wp_branch_updater_naming_report( $root, $path, $source );
 	if ( 0 !== $status || 0 !== $report['totals']['errors'] || 0 !== $report['totals']['warnings'] ) {
 		// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- CLI assertion diagnostics are not HTML; preserve the actual failing fixture detail.
 		throw new RuntimeException( 'Unchanged source did not pass: ' . $path );
 	}
 	// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Standalone CLI fixture variable does not share WordPress runtime globals.
-	[$status, $report] = naming_report( $root, $path, str_replace( $before, $after, $source ) );
+	[$status, $report] = ran_wp_branch_updater_naming_report( $root, $path, str_replace( $before, $after, $source ) );
 	$caught            = false;
 	foreach ( $report['files'] as $file ) {
 		foreach ( $file['messages'] as $message ) {
@@ -113,19 +119,64 @@ foreach ( $cases as [$path, $before, $after, $expected] ) {
 echo 'PASS naming and standards enforcement: ' . count( $cases ) . " positive/negative pairs, including inherited owned methods\n";
 
 /** Inspect comments only: intentional malformed PHP strings remain inert test inputs. */
-function has_blanket_directive( string $source ): bool {
+function ran_wp_branch_updater_has_blanket_directive( string $source, string $path = '' ): bool {
 	foreach ( token_get_all( $source ) as $token ) {
-		if ( is_array( $token ) && in_array( $token[0], array( T_COMMENT, T_DOC_COMMENT ), true )
-			&& preg_match( '/phpcs:(?:ignoreFile|(?:disable|ignore)(?=\s*(?:--|\*\/|$)))|codingStandardsIgnore|@phpcs/im', $token[1] ) ) {
+		if ( ! is_array( $token ) || ! in_array( $token[0], array( T_COMMENT, T_DOC_COMMENT ), true ) ) {
+			continue;
+		}
+		if ( preg_match( '/@codingStandardsIgnore|@phpcs:/i', $token[1] ) ) {
 			return true;
+		}
+		preg_match_all( '/phpcs:(ignorefile\S*|disable\S*|ignore\S*|set\S*)([^\r\n]*)/i', $token[1], $directives, PREG_SET_ORDER );
+		foreach ( $directives as $directive ) {
+			$operation = strtolower( $directive[1] );
+			if ( ! in_array( $operation, array( 'ignore', 'disable' ), true ) ) {
+				return true;
+			}
+			$parts = explode( ' -- ', trim( $directive[2], ' 	*/' ), 2 );
+			if ( 2 !== count( $parts ) || '' === trim( $parts[1] ) ) {
+				return true;
+			}
+			foreach ( explode( ',', $parts[0] ) as $code ) {
+				if ( ! preg_match( '/^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*){3}$/D', trim( $code ) ) ) {
+					return true;
+				}
+			}
+			// Only standalone process variables retain a persistent exemption.
+			if ( 'disable' === $operation && ( 2 !== $token[2]
+				|| ! preg_match( '~^(?:tests|scripts)/~', $path )
+				|| 'WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound' !== trim( $parts[0] ) ) ) {
+				return true;
+			}
 		}
 	}
 	return false;
 }
 
-foreach ( array( 'phpcs:disable', 'phpcs:ignore -- blanket', 'phpcs:ignoreFile', '@codingStandardsIgnoreStart' ) as $directive ) {
-	if ( ! has_blanket_directive( "<?php /**\n * " . $directive . "\n * Reason\n */" ) || ! has_blanket_directive( "<?php\n// " . $directive . "\n" ) || ! has_blanket_directive( '<?php /* ' . $directive . ' */' ) || ! has_blanket_directive( '<?php /** ' . $directive . "\n */" ) || has_blanket_directive( "<?php\n\$literal = '" . $directive . "';\n" ) ) {
+foreach ( array( 'phpcs:disable', 'phpcs:ignore -- blanket', 'phpcs:ignoreFile', 'PHPCS:IGNOREfileXYZ', 'phpcs:ignore WordPress -- Too broad', 'phpcs:disable WordPress.WP.AlternativeFunctions -- Too broad', 'phpcs:ignore WordPress.PHP.YodaConditions.NotYoda', 'phpcs:set WordPress.PHP.YodaConditions check true', '@codingStandardsIgnoreStart' ) as $directive ) {
+	if ( ! ran_wp_branch_updater_has_blanket_directive( "<?php /**\n * " . $directive . "\n * Reason\n */" ) || ! ran_wp_branch_updater_has_blanket_directive( "<?php\n// " . $directive . "\n" ) || ! ran_wp_branch_updater_has_blanket_directive( '<?php /* ' . $directive . ' */' ) || ! ran_wp_branch_updater_has_blanket_directive( '<?php /** ' . $directive . "\n */" ) || ran_wp_branch_updater_has_blanket_directive( "<?php\n\$literal = '" . $directive . "';\n" ) ) {
 		throw new RuntimeException( 'Blanket-directive comment/string discrimination failed.' );
+	}
+}
+// Prove the locked checker honours each bypass which the separate guard rejects.
+foreach ( array( 'PHPCS:DISABLE', 'PHPCS:IGNOREfileXYZ', 'phpcs:ignore RANOwnedMethods -- Broad standard', 'phpcs:disable RANOwnedMethods.NamingConventions -- Broad category', 'phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName -- Broad sniff', 'phpcs:disable RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- Persistent waiver', 'phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase' ) as $directive ) {
+	$source     = "<?php\n// " . $directive . "\nclass NamingProbe { public function hiddenBadName() {} }\n";
+	[, $report] = ran_wp_branch_updater_naming_report( $root, 'tests/Probe.php', $source, '.phpcs.xml', array( '--sniffs=RANOwnedMethods.NamingConventions.ValidMethodName' ) );
+	if ( 0 !== $report['totals']['errors'] || ! ran_wp_branch_updater_has_blanket_directive( $source, 'tests/Probe.php' ) ) {
+		throw new RuntimeException( 'Real suppression bypass did not meet its rejection contract.' );
+	}
+}
+$source     = "<?php\n// phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- Synthetic external signature.\nclass NamingProbe { public function hiddenBadName() {} }\nclass OtherNamingProbe { public function visibleBadName() {} }\n";
+[, $report] = ran_wp_branch_updater_naming_report( $root, 'tests/Probe.php', $source, '.phpcs.xml', array( '--sniffs=RANOwnedMethods.NamingConventions.ValidMethodName' ) );
+if ( 1 !== $report['totals']['errors'] || ran_wp_branch_updater_has_blanket_directive( $source, 'tests/Probe.php' ) ) {
+	throw new RuntimeException( 'Exact local annotation must preserve the adjacent diagnostic.' );
+}
+foreach ( array( 'tests/admitted-runner.php', 'tests/naming-enforcement.php' ) as $fixture_path ) {
+	// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Inspect the existing fixture in memory without executing or editing it.
+	$source     = file_get_contents( $root . '/' . $fixture_path ) . "\nfunction unprefixed_future_declaration() {}\n";
+	[, $report] = ran_wp_branch_updater_naming_report( $root, $fixture_path, $source, '.phpcs.xml', array( '--sniffs=WordPress.NamingConventions.PrefixAllGlobals' ) );
+	if ( 1 !== $report['totals']['errors'] ) {
+		throw new RuntimeException( 'Process-variable exemption must not cover future declarations.' );
 	}
 }
 // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.system_calls_shell_exec -- Read the Git-maintained PHP population using a fixed local command.
@@ -136,8 +187,9 @@ if ( ! is_string( $tracked_output ) || '' === $tracked_output ) {
 $tracked = array_filter( explode( "\0", $tracked_output ) );
 foreach ( $tracked as $tracked_path ) {
 	// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Inspect tracked source comments without executing fixture bytes.
-	if ( has_blanket_directive( (string) file_get_contents( $root . '/' . $tracked_path ) ) ) {
-		throw new RuntimeException( 'Tracked PHP contains a blanket or legacy suppression.' );
+	if ( ran_wp_branch_updater_has_blanket_directive( (string) file_get_contents( $root . '/' . $tracked_path ), $tracked_path ) ) {
+		// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- CLI failure identifies the exact local source path; this diagnostic is not rendered HTML.
+		throw new RuntimeException( 'Tracked PHP contains a broad or unexplained suppression: ' . $tracked_path );
 	}
 }
 $probe_path = 'standards-discovery-' . bin2hex( random_bytes( 8 ) ) . '.php';
@@ -147,7 +199,7 @@ try {
 		throw new RuntimeException( 'Could not create discovery probe.' );
 	}
 	foreach ( array( false, true ) as $exclude_probe ) {
-		[, $discovery] = naming_report( $root, '', null, '.phpcs.xml', $exclude_probe ? array( '--ignore=' . $probe_path ) : array() );
+		[, $discovery] = ran_wp_branch_updater_naming_report( $root, '', null, '.phpcs.xml', $exclude_probe ? array( '--ignore=' . $probe_path ) : array() );
 		$selected      = array_map( static fn( string $file ): string => str_replace( $root . '/', '', $file ), array_keys( $discovery['files'] ) );
 		$missing       = array_diff( array_merge( $tracked, array( $probe_path ) ), $selected );
 		if ( ( ! $exclude_probe && array() !== $missing ) || ( $exclude_probe && array( $probe_path ) !== array_values( $missing ) ) ) {
@@ -162,7 +214,7 @@ try {
 }
 $standalone = array_values( array_filter( $tracked, static fn( string $path ): bool => str_starts_with( $path, 'tests/' ) || str_starts_with( $path, 'scripts/' ) ) );
 foreach ( array( false, true ) as $exclude_scripts ) {
-	[, $discovery] = naming_report( $root, '', null, '.phpcs-cli-compat.xml', $exclude_scripts ? array( '--ignore=*/scripts/*' ) : array() );
+	[, $discovery] = ran_wp_branch_updater_naming_report( $root, '', null, '.phpcs-cli-compat.xml', $exclude_scripts ? array( '--ignore=*/scripts/*' ) : array() );
 	$selected      = array_map( static fn( string $file ): string => str_replace( $root . '/', '', $file ), array_keys( $discovery['files'] ) );
 	$expected      = $exclude_scripts ? array_filter( $standalone, static fn( string $path ): bool => ! str_starts_with( $path, 'scripts/' ) ) : $standalone;
 	if ( array() !== array_diff( $expected, $selected ) || array() !== array_diff( $selected, $expected ) || ( $exclude_scripts && count( $selected ) === count( $standalone ) ) ) {
@@ -171,7 +223,7 @@ foreach ( array( false, true ) as $exclude_scripts ) {
 }
 foreach ( array( 'tests/compatibility-probe.php', 'scripts/compatibility-probe.php' ) as $compatibility_path ) {
 	foreach ( array( '.phpcs.xml', '.phpcs-cli-compat.xml' ) as $compatibility_standard ) {
-		[, $compatibility_report] = naming_report( $root, $compatibility_path, "<?php\narray_find( array(), static fn() => true );\n", $compatibility_standard );
+		[, $compatibility_report] = ran_wp_branch_updater_naming_report( $root, $compatibility_path, "<?php\narray_find( array(), static fn() => true );\n", $compatibility_standard );
 		$diagnostics              = array_merge( ...array_column( array_values( $compatibility_report['files'] ), 'messages' ) );
 		$caught_compatibility     = in_array( 'PHPCompatibility.FunctionUse.NewFunctions.array_findFound', array_column( $diagnostics, 'source' ), true );
 		if ( ( '.phpcs-cli-compat.xml' === $compatibility_standard ) !== $caught_compatibility ) {

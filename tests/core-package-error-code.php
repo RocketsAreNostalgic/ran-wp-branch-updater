@@ -1,9 +1,10 @@
 <?php
-// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals -- This standalone CLI runner and its test doubles never load into WordPress global scope.
+// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound -- Standalone process-local variables never enter WordPress runtime; declarations remain checked.
 
 declare(strict_types=1);
 
 if ( ! class_exists( 'WP_Error' ) ) {
+	// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedClassFound -- This fixture exercises the exact foreign WordPress/Core contract name.
 	class WP_Error {
 		public function __construct( private readonly string $code ) {}
 		public function get_error_code(): string {

@@ -1,5 +1,5 @@
 <?php
-// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals -- This standalone CLI runner and its test doubles never load into WordPress global scope.
+// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound -- Standalone process-local variables never enter WordPress runtime; declarations remain checked.
 declare(strict_types=1);
 
 require dirname( __DIR__ ) . '/vendor/autoload.php';
@@ -16,7 +16,7 @@ use RAN\WPBranchUpdater\V1\Runtime\AdmittedBranchRunner;
 use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionResult;
 
-final class RunnerFixtureJournal implements AdmittedAttemptJournal {
+final class RAN_WP_Branch_Updater_RunnerFixtureJournal implements AdmittedAttemptJournal {
 	public int $finish_calls = 0;
 	public function __construct( private ?\Throwable $record_failure = null, private ?\Throwable $fence_failure = null ) {}
 	public function record_resolved_ref( string $ref ): void {
@@ -35,7 +35,7 @@ final class RunnerFixtureJournal implements AdmittedAttemptJournal {
 }
 
 // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- These test-only fault-injection doubles share one standalone behavioral proof.
-final class RunnerFixtureArtifact implements AdmittedBranchArtifact {
+final class RAN_WP_Branch_Updater_RunnerFixtureArtifact implements AdmittedBranchArtifact {
 	public int $cleanup_calls = 0;
 	public function __construct( private ?\Throwable $cleanup_failure = null ) {}
 	public function resolved_ref(): string {
@@ -52,15 +52,15 @@ final class RunnerFixtureArtifact implements AdmittedBranchArtifact {
 }
 
 // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- These test-only fault-injection doubles share one standalone behavioral proof.
-final class RunnerFixtureArchives implements AdmittedArchiveSource {
-	public function __construct( private RunnerFixtureArtifact $artifact ) {}
+final class RAN_WP_Branch_Updater_RunnerFixtureArchives implements AdmittedArchiveSource {
+	public function __construct( private RAN_WP_Branch_Updater_RunnerFixtureArtifact $artifact ) {}
 	public function prepare( BranchDeploymentDeclaration $deployment, ?array $baseline ): AdmittedBranchArtifact {
 		return $this->artifact; }
 	public function verify_current_head(): void {}
 }
 
 // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- These test-only fault-injection doubles share one standalone behavioral proof.
-final class RunnerFixtureTarget implements AdmittedTargetFacts {
+final class RAN_WP_Branch_Updater_RunnerFixtureTarget implements AdmittedTargetFacts {
 	public function __construct( private ?\Throwable $first_frozen_failure = null, private bool $installed_active = false ) {}
 	public function assert_mutation_allowed(): void {}
 	public function frozen_target( BranchDeploymentDeclaration $deployment, bool $defer_existing ): ?array {
@@ -85,7 +85,7 @@ final class RunnerFixtureTarget implements AdmittedTargetFacts {
 }
 
 // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- These test-only fault-injection doubles share one standalone behavioral proof.
-final class RunnerFixtureExecutor implements AdmittedPackageExecutor {
+final class RAN_WP_Branch_Updater_RunnerFixtureExecutor implements AdmittedPackageExecutor {
 	public function preflight( BranchDeploymentDeclaration $deployment, AdmittedBranchArtifact $artifact ): void {}
 	public function execute( BranchDeploymentDeclaration $deployment, ?array $baseline, AdmittedBranchArtifact $artifact ): CorePackageExecutionResult {
 		return CorePackageExecutionResult::succeeded();
@@ -93,7 +93,7 @@ final class RunnerFixtureExecutor implements AdmittedPackageExecutor {
 }
 
 // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- These test-only fault-injection doubles share one standalone behavioral proof.
-final class RunnerFixtureLock implements MutationLock {
+final class RAN_WP_Branch_Updater_RunnerFixtureLock implements MutationLock {
 	public function __construct( private ?\Throwable $failure = null ) {}
 	public function run( callable $operation ): mixed {
 		if ( null !== $this->failure ) {
@@ -110,15 +110,15 @@ $assert        = static function ( bool $actual, string $message ): void {
 	}
 };
 $deployment    = new BranchDeploymentDeclaration( 'focused-runner', 'plugin', 'demo', 'acme/demo', 'fixture-1', 'main', 'abc123', 'update', 'demo', 'demo/demo.php' );
-$runner        = static fn( RunnerFixtureJournal $journal, RunnerFixtureArtifact $artifact, RunnerFixtureTarget $target, RunnerFixtureLock $lock ): AdmittedBranchRunner => new AdmittedBranchRunner( $journal, new RunnerFixtureArchives( $artifact ), $target, new RunnerFixtureExecutor(), $lock );
+$runner        = static fn( RAN_WP_Branch_Updater_RunnerFixtureJournal $journal, RAN_WP_Branch_Updater_RunnerFixtureArtifact $artifact, RAN_WP_Branch_Updater_RunnerFixtureTarget $target, RAN_WP_Branch_Updater_RunnerFixtureLock $lock ): AdmittedBranchRunner => new AdmittedBranchRunner( $journal, new RAN_WP_Branch_Updater_RunnerFixtureArchives( $artifact ), $target, new RAN_WP_Branch_Updater_RunnerFixtureExecutor(), $lock );
 $accepted_slug = 'package.' . str_repeat( 'a', 183 );
 $accepted      = new BranchDeploymentDeclaration( 'accepted-dotted-slug', 'plugin', $accepted_slug, 'acme/demo', 'fixture-1', 'main', 'abc123' );
 $assert( $accepted_slug === $accepted->slug, 'admitted Core dotted package slugs remain accepted through 191 characters' );
 
-$journal  = new RunnerFixtureJournal( new BranchDeploymentJournalFailure( 'record unavailable' ) );
-$artifact = new RunnerFixtureArtifact();
+$journal  = new RAN_WP_Branch_Updater_RunnerFixtureJournal( new BranchDeploymentJournalFailure( 'record unavailable' ) );
+$artifact = new RAN_WP_Branch_Updater_RunnerFixtureArtifact();
 try {
-	$runner( $journal, $artifact, new RunnerFixtureTarget(), new RunnerFixtureLock() )->run( $deployment );
+	$runner( $journal, $artifact, new RAN_WP_Branch_Updater_RunnerFixtureTarget(), new RAN_WP_Branch_Updater_RunnerFixtureLock() )->run( $deployment );
 	$assert( false, 'journal record failure must escape' );
 // phpcs:ignore Generic.CodeAnalysis.EmptyStatement.DetectedCatch -- Reaching this catch proves the expected rejection; no mutation is needed.
 } catch ( BranchDeploymentJournalFailure ) { // Expected rejection is the assertion; execution continues only for this exception.
@@ -126,10 +126,10 @@ try {
 $assert( 1 === $artifact->cleanup_calls, 'journal record failure cleans the prepared artifact' );
 $assert( 0 === $journal->finish_calls, 'journal record failure never finishes the attempt' );
 
-$journal  = new RunnerFixtureJournal( null, new BranchDeploymentJournalFailure( 'fence unavailable' ) );
-$artifact = new RunnerFixtureArtifact( new \RuntimeException( 'cleanup unavailable' ) );
+$journal  = new RAN_WP_Branch_Updater_RunnerFixtureJournal( null, new BranchDeploymentJournalFailure( 'fence unavailable' ) );
+$artifact = new RAN_WP_Branch_Updater_RunnerFixtureArtifact( new \RuntimeException( 'cleanup unavailable' ) );
 try {
-	$runner( $journal, $artifact, new RunnerFixtureTarget(), new RunnerFixtureLock() )->run( $deployment );
+	$runner( $journal, $artifact, new RAN_WP_Branch_Updater_RunnerFixtureTarget(), new RAN_WP_Branch_Updater_RunnerFixtureLock() )->run( $deployment );
 	$assert( false, 'journal fence failure must escape' );
 // phpcs:ignore Generic.CodeAnalysis.EmptyStatement.DetectedCatch -- Reaching this catch proves the expected rejection; no mutation is needed.
 } catch ( BranchDeploymentJournalFailure ) { // Expected rejection is the assertion; execution continues only for this exception.
@@ -137,29 +137,29 @@ try {
 $assert( 1 === $artifact->cleanup_calls, 'journal fence failure attempts cleanup once' );
 $assert( 0 === $journal->finish_calls, 'journal fence failure never finishes the attempt' );
 
-$journal  = new RunnerFixtureJournal();
-$artifact = new RunnerFixtureArtifact();
-$outcome  = $runner( $journal, $artifact, new RunnerFixtureTarget(), new RunnerFixtureLock( new \RuntimeException( 'lock held' ) ) )->run( $deployment );
+$journal  = new RAN_WP_Branch_Updater_RunnerFixtureJournal();
+$artifact = new RAN_WP_Branch_Updater_RunnerFixtureArtifact();
+$outcome  = $runner( $journal, $artifact, new RAN_WP_Branch_Updater_RunnerFixtureTarget(), new RAN_WP_Branch_Updater_RunnerFixtureLock( new \RuntimeException( 'lock held' ) ) )->run( $deployment );
 $assert( 'lock_unavailable' === $outcome, 'generic pre-fence lock contention is lock_unavailable' );
 $assert( 1 === $journal->finish_calls, 'lock contention records its terminal outcome' );
 
-$journal  = new RunnerFixtureJournal();
-$artifact = new RunnerFixtureArtifact();
-$outcome  = $runner( $journal, $artifact, new RunnerFixtureTarget( new \RuntimeException( 'policy unavailable' ) ), new RunnerFixtureLock() )->run( $deployment );
+$journal  = new RAN_WP_Branch_Updater_RunnerFixtureJournal();
+$artifact = new RAN_WP_Branch_Updater_RunnerFixtureArtifact();
+$outcome  = $runner( $journal, $artifact, new RAN_WP_Branch_Updater_RunnerFixtureTarget( new \RuntimeException( 'policy unavailable' ) ), new RAN_WP_Branch_Updater_RunnerFixtureLock() )->run( $deployment );
 $assert( 'policy_blocked' === $outcome, 'generic pre-lock policy failure is policy_blocked' );
 $assert( 1 === $journal->finish_calls, 'policy failure records its terminal outcome' );
 
-$journal  = new RunnerFixtureJournal();
-$artifact = new RunnerFixtureArtifact( new \RuntimeException( 'cleanup unavailable' ) );
-$outcome  = $runner( $journal, $artifact, new RunnerFixtureTarget(), new RunnerFixtureLock( new \RuntimeException( 'lock held' ) ) )->run( $deployment );
+$journal  = new RAN_WP_Branch_Updater_RunnerFixtureJournal();
+$artifact = new RAN_WP_Branch_Updater_RunnerFixtureArtifact( new \RuntimeException( 'cleanup unavailable' ) );
+$outcome  = $runner( $journal, $artifact, new RAN_WP_Branch_Updater_RunnerFixtureTarget(), new RAN_WP_Branch_Updater_RunnerFixtureLock( new \RuntimeException( 'lock held' ) ) )->run( $deployment );
 $assert( 'archive_cleanup_failed' === $outcome, 'generic pre-fence cleanup failure is archive_cleanup_failed' );
 $assert( 1 === $artifact->cleanup_calls, 'cleanup failure is attempted once' );
 $assert( 1 === $journal->finish_calls, 'cleanup failure records its terminal outcome' );
 
-$journal  = new RunnerFixtureJournal();
-$artifact = new RunnerFixtureArtifact();
+$journal  = new RAN_WP_Branch_Updater_RunnerFixtureJournal();
+$artifact = new RAN_WP_Branch_Updater_RunnerFixtureArtifact();
 $install  = new BranchDeploymentDeclaration( 'focused-install', 'plugin', 'demo', 'acme/demo', 'fixture-1', 'main', 'abc123', 'install', 'demo', 'demo/demo.php' );
-$outcome  = $runner( $journal, $artifact, new RunnerFixtureTarget( null, true ), new RunnerFixtureLock() )->run( $install );
+$outcome  = $runner( $journal, $artifact, new RAN_WP_Branch_Updater_RunnerFixtureTarget( null, true ), new RAN_WP_Branch_Updater_RunnerFixtureLock() )->run( $install );
 $assert( 'activation_state_changed' === $outcome, 'an install unexpectedly activated by WordPress cannot succeed' );
 
 echo "PASS admitted branch runner fault-injection contracts\n";
