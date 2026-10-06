@@ -186,14 +186,18 @@ foreach ( array( 'tests/admitted-runner.php', 'tests/naming-enforcement.php' ) a
 		throw new RuntimeException( 'Process-variable exemption must not cover future declarations.' );
 	}
 }
-/** Check the reviewed ruleset arguments, which otherwise can silently disable sniffs. */
+/** Reject conditional or path-scoped rules and unreviewed checker arguments. */
 function ran_wp_branch_updater_has_unreviewed_arguments( string $source, bool $standalone ): bool {
 	$xml = new DOMDocument();
 	if ( ! $xml->loadXML( $source, LIBXML_NONET ) ) {
 		return true;
 	}
+	$xpath = new DOMXPath( $xml );
+	if ( 0 !== $xpath->query( '//include-pattern | //rule//exclude-pattern | //rule/exclude | //*[@phpcs-only or @phpcbf-only]' )->length ) {
+		return true;
+	}
 	$arguments = array();
-	foreach ( ( new DOMXPath( $xml ) )->query( '//arg' ) as $node ) {
+	foreach ( $xpath->query( '//arg' ) as $node ) {
 		if ( ! $node instanceof DOMElement ) {
 			return true;
 		}
@@ -202,13 +206,15 @@ function ran_wp_branch_updater_has_unreviewed_arguments( string $source, bool $s
 	$expected = $standalone ? array( array( 'extensions', 'php' ) ) : array( array( 'basepath', '.' ), array( 'colors', '' ), array( 'extensions', 'php' ), array( 'parallel', '4' ), array( '', 'sp' ) );
 	return $expected !== $arguments;
 }
+$profiles = array();
 foreach ( array(
 	'.phpcs.xml'            => false,
 	'.phpcs-cli-compat.xml' => true,
 ) as $ruleset => $is_standalone ) {
 	// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Inspect the reviewed local ruleset command arguments without executing it.
-	if ( ran_wp_branch_updater_has_unreviewed_arguments( file_get_contents( $root . '/' . $ruleset ), $is_standalone ) ) {
-		throw new RuntimeException( 'Review PHPCS command arguments before certifying standards.' );
+	$profiles[ $ruleset ] = file_get_contents( $root . '/' . $ruleset );
+	if ( ran_wp_branch_updater_has_unreviewed_arguments( $profiles[ $ruleset ], $is_standalone ) ) {
+		throw new RuntimeException( 'Review PHPCS conditional rules, path selectors and command arguments before certifying standards.' );
 	}
 }
 $argument_probe = 'standards-argument-' . bin2hex( random_bytes( 8 ) ) . '.xml';
@@ -220,6 +226,44 @@ try {
 		[, $report] = ran_wp_branch_updater_naming_report( $root, 'tests/ArgumentProbe.php', '<?php class Probe { public function badName() {} }', $argument_probe );
 		if ( 0 !== $report['totals']['errors'] || ! ran_wp_branch_updater_has_unreviewed_arguments( $xml, false ) || ! ran_wp_branch_updater_has_unreviewed_arguments( $xml, true ) ) {
 			throw new RuntimeException( 'Ruleset argument bypass escaped its independent guard.' );
+		}
+	}
+	$path_probe   = '<?php json_encode( array() );';
+	$json_code    = 'WordPress.WP.AlternativeFunctions.json_encode_json_encode';
+	[, $baseline] = ran_wp_branch_updater_naming_report( $root, 'src/unreviewed-future.php', $path_probe );
+	$has_json     = static function ( array $report ) use ( $json_code ): bool {
+		foreach ( $report['files'] as $file ) {
+			foreach ( $file['messages'] as $message ) {
+				if ( $json_code === $message['source'] ) {
+					return true;
+				}
+			}
+		}
+		return false;
+	};
+	if ( ! $has_json( $baseline ) ) {
+		throw new RuntimeException( 'A new source path must enforce the native JSON diagnostic.' );
+	}
+	foreach ( array(
+		'<rule ref="WordPress.WP.AlternativeFunctions.json_encode_json_encode"><include-pattern>^(?!*unreviewed-future[.]php)</include-pattern></rule>',
+		'<rule ref="WordPress.WP.AlternativeFunctions.json_encode_json_encode"><exclude-pattern>*/src/unreviewed-future.php</exclude-pattern></rule>',
+		'<rule ref="RANWordPressLibrary" phpcbf-only="true"/>',
+	) as $selector ) {
+		$xml = str_contains( $selector, 'phpcbf-only' )
+			? str_replace( '<rule ref="RANWordPressLibrary"/>', $selector, $profiles['.phpcs.xml'] )
+			: str_replace( '</ruleset>', $selector . '</ruleset>', $profiles['.phpcs.xml'] );
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Write the disposable selector mutant for the locked checker diagnostic proof.
+		file_put_contents( $root . '/' . $argument_probe, $xml );
+		[, $mutant]     = ran_wp_branch_updater_naming_report( $root, 'src/unreviewed-future.php', $path_probe, $argument_probe );
+		$standalone_xml = str_replace( '</ruleset>', $selector . '</ruleset>', $profiles['.phpcs-cli-compat.xml'] );
+		if ( $has_json( $mutant ) || ! ran_wp_branch_updater_has_unreviewed_arguments( $xml, false ) || ! ran_wp_branch_updater_has_unreviewed_arguments( $standalone_xml, true ) ) {
+			throw new RuntimeException( 'A diagnostic-hiding selector escaped the structural profile guard. ' . $selector );
+		}
+		if ( ! str_contains( $selector, 'phpcbf-only' ) ) {
+			[, $outside] = ran_wp_branch_updater_naming_report( $root, 'src/adjacent-future.php', $path_probe, $argument_probe );
+			if ( ! $has_json( $outside ) ) {
+				throw new RuntimeException( 'The targeted selector control must leave the adjacent path checked.' );
+			}
 		}
 	}
 } finally {
