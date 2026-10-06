@@ -179,17 +179,34 @@ foreach ( array( 'tests/admitted-runner.php', 'tests/naming-enforcement.php' ) a
 		throw new RuntimeException( 'Process-variable exemption must not cover future declarations.' );
 	}
 }
-// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.system_calls_shell_exec -- Read the Git-maintained PHP population using a fixed local command.
-$tracked_output = shell_exec( 'git ls-files -z -- "*.php"' );
-if ( ! is_string( $tracked_output ) || '' === $tracked_output ) {
-	throw new RuntimeException( 'Tracked PHP discovery failed.' );
+/** Discover maintained PHP independently, including untracked files and extension-case variants. */
+function ran_wp_branch_updater_maintained_php( string $root ): array {
+	$iterator = new RecursiveCallbackFilterIterator(
+		new RecursiveDirectoryIterator( $root, FilesystemIterator::SKIP_DOTS ),
+		static function ( SplFileInfo $entry ) use ( $root ): bool {
+			return ! $entry->isDir() || ! in_array( substr( $entry->getPathname(), strlen( $root ) + 1 ), array( '.git', 'vendor', 'node_modules', 'tests/build' ), true );
+		}
+	);
+	$paths    = array();
+	foreach ( new RecursiveIteratorIterator( $iterator ) as $entry ) {
+		if ( $entry->isFile() && 0 === strcasecmp( $entry->getExtension(), 'php' ) ) {
+			if ( 'php' !== $entry->getExtension() ) {
+				throw new RuntimeException( 'Unsupported maintained PHP extension must not evade standards.' );
+			}
+			$paths[] = substr( $entry->getPathname(), strlen( $root ) + 1 );
+		}
+	}
+	if ( array() === $paths ) {
+		throw new RuntimeException( 'Maintained PHP discovery found no files.' );
+	}
+	return $paths;
 }
-$tracked = array_filter( explode( "\0", $tracked_output ) );
+$tracked = ran_wp_branch_updater_maintained_php( $root );
 foreach ( $tracked as $tracked_path ) {
-	// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Inspect tracked source comments without executing fixture bytes.
+	// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Inspect maintained source comments without executing fixture bytes.
 	if ( ran_wp_branch_updater_has_blanket_directive( (string) file_get_contents( $root . '/' . $tracked_path ), $tracked_path ) ) {
 		// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- CLI failure identifies the exact local source path; this diagnostic is not rendered HTML.
-		throw new RuntimeException( 'Tracked PHP contains a broad or unexplained suppression: ' . $tracked_path );
+		throw new RuntimeException( 'Maintained PHP contains a broad or unexplained suppression: ' . $tracked_path );
 	}
 }
 $probe_path = 'standards-discovery-' . bin2hex( random_bytes( 8 ) ) . '.php';
@@ -212,6 +229,28 @@ try {
 		unlink( $root . '/' . $probe_path );
 	}
 }
+// The real checker omits uppercase development extensions; independent discovery must reject them.
+$case_probe = 'tests/standards-case-' . bin2hex( random_bytes( 8 ) ) . '.PHP';
+try {
+	// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Create only this uniquely named inert development-discovery control.
+	file_put_contents( $root . '/' . $case_probe, "<?php\n" );
+	[, $discovery] = ran_wp_branch_updater_naming_report( $root, '', null );
+	if ( isset( $discovery['files'][ $root . '/' . $case_probe ] ) ) {
+		throw new RuntimeException( 'Reassess the uppercase-extension control after checker selection changes.' );
+	}
+	$caught = false;
+	try {
+		ran_wp_branch_updater_maintained_php( $root );
+	} catch ( RuntimeException $error ) {
+		$caught = 'Unsupported maintained PHP extension must not evade standards.' === $error->getMessage();
+	}
+	if ( ! $caught ) {
+		throw new RuntimeException( 'Uppercase development PHP escaped independent discovery.' );
+	}
+} finally {
+	// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Remove only this uniquely named development-discovery control.
+	unlink( $root . '/' . $case_probe );
+}
 $standalone = array_values( array_filter( $tracked, static fn( string $path ): bool => str_starts_with( $path, 'tests/' ) || str_starts_with( $path, 'scripts/' ) ) );
 foreach ( array( false, true ) as $exclude_scripts ) {
 	[, $discovery] = ran_wp_branch_updater_naming_report( $root, '', null, '.phpcs-cli-compat.xml', $exclude_scripts ? array( '--ignore=*/scripts/*' ) : array() );
@@ -231,4 +270,4 @@ foreach ( array( 'tests/compatibility-probe.php', 'scripts/compatibility-probe.p
 		}
 	}
 }
-echo "PASS tracked PHP discovery, excluded-root control, comment-only suppression checks and standalone compatibility\n";
+echo "PASS maintained PHP discovery, excluded-root control, comment-only suppression checks and standalone compatibility\n";

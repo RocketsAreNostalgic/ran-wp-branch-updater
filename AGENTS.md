@@ -46,7 +46,7 @@ rules. Source-local global-prefix exceptions apply only to standalone runners;
 precise operation/diagnostic exceptions preserve native fixture behavior. Fixture
 wire keys, embedded archive PHP, foreign reflection APIs and deliberate invalid
 source strings are contracts, not automatic rename targets. `test:naming` checks
-actual PHPCS discovery against tracked PHP, a new root-file control and its
+actual PHPCS discovery against independently discovered maintained PHP, a new root-file control and its
 excluded negative, comment-only blanket/legacy suppression controls, and both
 standalone compatibility roots. Do not recreate syntax-only developer coverage.
 Native operation exemptions are exact-code and occurrence-local. Suppression selectors must name the full diagnostic with a reason. Persistent disables are limited to the process-variable prefix code at line 2 in root tests/scripts; owned declarations remain checked. Configuration changes and new reasons require review, not merely green checks.

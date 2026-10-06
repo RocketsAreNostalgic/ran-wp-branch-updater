@@ -124,8 +124,8 @@ lines. Ordinary owned helpers and fixture members use snake_case. Existing wire
 keys, archive payloads, external reflection names and negative-control strings
 remain unchanged; this is not another production/API migration.
 
-The existing naming test compares the real checker's file report with Git's
-tracked PHP population, including a temporary new root file. Excluding that
+The existing naming test compares the real checker's file report with independently discovered
+maintained PHP, including untracked files and extension-case rejection, including a temporary new root file. Excluding that
 probe must produce the expected missing-file result. Standalone selection must
 match all tracked tests/scripts; omitting the scripts root is a negative control.
 Token-based line/block/doc-comment checks
@@ -176,3 +176,8 @@ code at line 2; new functions/classes/constants remain checked. A foreign
 prove both the formerly accepted bypass and the adjacent unsuppressed diagnostic.
 These checks enforce scope, not human acceptance of an arbitrary new explanation:
 new exemptions still require independent review and accepted #65/#128 disposition.
+
+The standards inventory also discovers untracked PHP recursively and rejects
+uppercase development extensions which the locked checker otherwise omits.
+Its dependency/generated-role exemptions are rooted, so nested product paths
+cannot inherit them.
