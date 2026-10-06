@@ -179,6 +179,43 @@ foreach ( array( 'tests/admitted-runner.php', 'tests/naming-enforcement.php' ) a
 		throw new RuntimeException( 'Process-variable exemption must not cover future declarations.' );
 	}
 }
+/** Check the reviewed ruleset arguments, which otherwise can silently disable sniffs. */
+function ran_wp_branch_updater_has_unreviewed_arguments( string $source, bool $standalone ): bool {
+	$xml = new DOMDocument();
+	if ( ! $xml->loadXML( $source, LIBXML_NONET ) ) {
+		return true;
+	}
+	$arguments = array();
+	foreach ( ( new DOMXPath( $xml ) )->query( '//arg' ) as $node ) {
+		$arguments[] = array( $node->getAttribute( 'name' ), $node->getAttribute( 'value' ) );
+	}
+	$expected = $standalone ? array( array( 'extensions', 'php' ) ) : array( array( 'basepath', '.' ), array( 'colors', '' ), array( 'extensions', 'php' ), array( 'parallel', '4' ), array( '', 'sp' ) );
+	return $expected !== $arguments;
+}
+foreach ( array(
+	'.phpcs.xml'            => false,
+	'.phpcs-cli-compat.xml' => true,
+) as $ruleset => $is_standalone ) {
+	// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Inspect the reviewed local ruleset command arguments without executing it.
+	if ( ran_wp_branch_updater_has_unreviewed_arguments( file_get_contents( $root . '/' . $ruleset ), $is_standalone ) ) {
+		throw new RuntimeException( 'Review PHPCS command arguments before certifying standards.' );
+	}
+}
+$argument_probe = 'standards-argument-' . bin2hex( random_bytes( 8 ) ) . '.xml';
+try {
+	foreach ( array( '<arg name="exclude" value="RANOwnedMethods.NamingConventions.ValidMethodName"/>', '<arg name="sniffs" value="WordPress.PHP.YodaConditions"/>' ) as $argument ) {
+		$xml = '<ruleset><rule ref="RANOwnedMethods"/>' . $argument . '</ruleset>';
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Create only this unique inert ruleset to demonstrate the actual command-argument bypass.
+		file_put_contents( $root . '/' . $argument_probe, $xml );
+		[, $report] = ran_wp_branch_updater_naming_report( $root, 'tests/ArgumentProbe.php', '<?php class Probe { public function badName() {} }', $argument_probe );
+		if ( 0 !== $report['totals']['errors'] || ! ran_wp_branch_updater_has_unreviewed_arguments( $xml, false ) || ! ran_wp_branch_updater_has_unreviewed_arguments( $xml, true ) ) {
+			throw new RuntimeException( 'Ruleset argument bypass escaped its independent guard.' );
+		}
+	}
+} finally {
+	// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Remove only this unique ruleset-control file.
+	unlink( $root . '/' . $argument_probe );
+}
 /** Discover maintained PHP independently, including untracked files and extension-case variants. */
 function ran_wp_branch_updater_maintained_php( string $root ): array {
 	$iterator = new RecursiveCallbackFilterIterator(

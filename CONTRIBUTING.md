@@ -181,3 +181,10 @@ The standards inventory also discovers untracked PHP recursively and rejects
 uppercase development extensions which the locked checker otherwise omits.
 Its dependency/generated-role exemptions are rooted, so nested product paths
 cannot inherit them.
+
+Both standards rulesets retain their exact reviewed command arguments. Unknown
+arguments fail closed: locked-checker controls demonstrate that XML `exclude`
+and `sniffs` arguments can otherwise hide required diagnostics.
+
+Effective analysis coverage mirrors PHPStan's post-discovery stub-file filtering;
+reclassifying maintained production PHP as a stub fails the coverage gate.

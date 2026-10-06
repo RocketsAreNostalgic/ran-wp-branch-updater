@@ -95,4 +95,10 @@ mkdir "$fixture/tests" "$fixture/scripts"
 printf '<?php\n' > "$fixture/tests/development.php"
 printf '<?php\n' > "$fixture/scripts/development.php"
 php "$root/tests/analysis-coverage.php" "$fixture"
+printf '\tstubFiles:\n\t\t- bootstrap.php\n' >> "$fixture/phpstan.neon"
+if php "$root/tests/analysis-coverage.php" "$fixture" > "$fixture/guard.log" 2>&1; then
+    echo 'Production source reclassified as stub escaped effective selection.' >&2; exit 1
+fi
+grep -q 'Effective PHPStan selection differs' "$fixture/guard.log"
+cp "$root/phpstan.neon" "$fixture/phpstan.neon"
 echo 'Inclusive production analysis, untracked split-file, anchored-role and unsupported-extension controls passed.'

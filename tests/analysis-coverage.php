@@ -52,6 +52,9 @@ $temp = sys_get_temp_dir() . '/ran-branch-analysis-' . bin2hex( random_bytes( 12
 try {
 	$container = ( new PHPStan\DependencyInjection\ContainerFactory( $root ) )->create( $temp, array( $root . '/phpstan.neon' ), array() );
 	$actual    = $container->getService( 'fileFinderAnalyse' )->findFiles( $container->getParameter( 'paths' ) )->getFiles();
+	// CommandHelper removes configured stubs after FileFinder discovery.
+	$stub_excluder = new PHPStan\File\FileExcluder( new PHPStan\File\FileHelper( $root ), $container->getParameter( 'stubFiles' ) );
+	$actual        = array_values( array_filter( $actual, static fn( string $file ): bool => ! $stub_excluder->isExcludedFromAnalysing( $file ) ) );
 	if ( array() !== array_diff( $expected, $actual ) || array() !== array_diff( $actual, $expected ) ) {
 		throw new RuntimeException( 'Effective PHPStan selection differs from independently discovered production PHP.' );
 	}
