@@ -124,7 +124,7 @@ function ran_wp_branch_updater_has_blanket_directive( string $source, string $pa
 		if ( ! is_array( $token ) || ! in_array( $token[0], array( T_COMMENT, T_DOC_COMMENT ), true ) ) {
 			continue;
 		}
-		if ( preg_match( '/@codingStandardsIgnore|@phpcs:/i', $token[1] ) ) {
+		if ( preg_match( '/@codingStandards(?:Ignore|ChangeSetting)|@phpcs:/i', $token[1] ) ) {
 			return true;
 		}
 		preg_match_all( '/phpcs:(ignorefile\S*|disable\S*|ignore\S*|set\S*)([^\r\n]*)/i', $token[1], $directives, PREG_SET_ORDER );
@@ -153,10 +153,17 @@ function ran_wp_branch_updater_has_blanket_directive( string $source, string $pa
 	return false;
 }
 
-foreach ( array( 'phpcs:disable', 'phpcs:ignore -- blanket', 'phpcs:ignoreFile', 'PHPCS:IGNOREfileXYZ', 'phpcs:ignore WordPress -- Too broad', 'phpcs:disable WordPress.WP.AlternativeFunctions -- Too broad', 'phpcs:ignore WordPress.PHP.YodaConditions.NotYoda', 'phpcs:set WordPress.PHP.YodaConditions check true', '@codingStandardsIgnoreStart' ) as $directive ) {
+foreach ( array( 'phpcs:disable', 'phpcs:ignore -- blanket', 'phpcs:ignoreFile', 'PHPCS:IGNOREfileXYZ', 'phpcs:ignore WordPress -- Too broad', 'phpcs:disable WordPress.WP.AlternativeFunctions -- Too broad', 'phpcs:ignore WordPress.PHP.YodaConditions.NotYoda', 'phpcs:set WordPress.PHP.YodaConditions check true', '@codingStandardsIgnoreStart', '@codingStandardsChangeSetting WordPress.NamingConventions.PrefixAllGlobals prefixes rogue', '@CODINGSTANDARDSCHANGESETTING WordPress.NamingConventions.PrefixAllGlobals prefixes rogue' ) as $directive ) {
 	if ( ! ran_wp_branch_updater_has_blanket_directive( "<?php /**\n * " . $directive . "\n * Reason\n */" ) || ! ran_wp_branch_updater_has_blanket_directive( "<?php\n// " . $directive . "\n" ) || ! ran_wp_branch_updater_has_blanket_directive( '<?php /* ' . $directive . ' */' ) || ! ran_wp_branch_updater_has_blanket_directive( '<?php /** ' . $directive . "\n */" ) || ran_wp_branch_updater_has_blanket_directive( "<?php\n\$literal = '" . $directive . "';\n" ) ) {
 		throw new RuntimeException( 'Blanket-directive comment/string discrimination failed.' );
 	}
+}
+// The legacy setting directive must not replace the reviewed global prefixes.
+$legacy_prefix      = "<?php\n// @codingStandardsChangeSetting WordPress.NamingConventions.PrefixAllGlobals prefixes rogue\nfunction rogue_function() {}\n";
+[, $legacy_report]  = ran_wp_branch_updater_naming_report( $root, 'tests/LegacyPrefix.php', $legacy_prefix, '.phpcs.xml', array( '--sniffs=WordPress.NamingConventions.PrefixAllGlobals' ) );
+[, $outside_report] = ran_wp_branch_updater_naming_report( $root, 'tests/LegacyPrefix.php', "<?php\nfunction rogue_function() {}\n", '.phpcs.xml', array( '--sniffs=WordPress.NamingConventions.PrefixAllGlobals' ) );
+if ( 0 !== $legacy_report['totals']['errors'] || 1 !== $outside_report['totals']['errors'] || ! ran_wp_branch_updater_has_blanket_directive( $legacy_prefix, 'tests/LegacyPrefix.php' ) ) {
+	throw new RuntimeException( 'Legacy prefix setting bypass escaped its independent guard.' );
 }
 // Prove the locked checker honours each bypass which the separate guard rejects.
 foreach ( array( 'PHPCS:DISABLE', 'PHPCS:IGNOREfileXYZ', 'phpcs:ignore RANOwnedMethods -- Broad standard', 'phpcs:disable RANOwnedMethods.NamingConventions -- Broad category', 'phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName -- Broad sniff', 'phpcs:disable RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- Persistent waiver', 'phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase' ) as $directive ) {
