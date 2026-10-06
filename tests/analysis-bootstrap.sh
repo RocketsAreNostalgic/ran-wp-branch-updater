@@ -129,8 +129,8 @@ done
 printf '<?php\n(new PHPStan\\DependencyInjection\\NeonAdapter(array()))->load("missing");\n' > "$fixture/tests/outside-exception.php"
 status=0
 analyze > "$fixture/outside.json" 2> "$fixture/outside.log" || status=$?
-test "$status" -eq 1
-php -r '$r=json_decode(file_get_contents($argv[1]),true,512,JSON_THROW_ON_ERROR);foreach($r["files"][realpath($argv[2])]["messages"]??[] as $m){if(($m["identifier"]??"")==="phpstanApi.constructor"){exit(0);}}exit(1);' "$fixture/outside.json" "$fixture/tests/outside-exception.php"
+if [[ "$status" -ne 1 ]]; then cat "$fixture/outside.log" "$fixture/outside.json" >&2; exit 1; fi
+php -r '$r=json_decode(file_get_contents($argv[1]),true,512,JSON_THROW_ON_ERROR);foreach($r["files"][realpath($argv[2])]["messages"]??[] as $m){if(($m["identifier"]??"")==="phpstanApi.constructor"){exit(0);}}exit(1);' "$fixture/outside.json" "$fixture/tests/outside-exception.php" || { cat "$fixture/outside.log" "$fixture/outside.json" >&2; exit 1; }
 rm "$fixture/tests/outside-exception.php"
 for directive in '@phpstan-ignore-next-line' '@PHPSTAN-IGNORE phpstanApi.constructor'; do
     printf '<?php\n// %s\n' "$directive" > "$fixture/tests/unreviewed.php"
@@ -139,11 +139,11 @@ for directive in '@phpstan-ignore-next-line' '@PHPSTAN-IGNORE phpstanApi.constru
     rm "$fixture/tests/unreviewed.php"
 done
 # An unchanged reason cannot be moved onto another occurrence in the same file.
-cp "$fixture/tests/analysis-coverage.php" "$fixture/coverage-original.txt"
+coverage_original="$(cat "$fixture/tests/analysis-coverage.php")"
 php -r '$p=$argv[1];$s=file_get_contents($p);$s=str_replace("// @phpstan-ignore phpstanApi.method (Use the locked CLI exclusion predicate rather than an approximation.)\n", "// @phpstan-ignore phpstanApi.method (Use the locked CLI exclusion predicate rather than an approximation.)\n\t(new PHPStan\\DependencyInjection\\NeonAdapter(array()))->load(null);\n",$s);file_put_contents($p,$s);' "$fixture/tests/analysis-coverage.php"
 if php "$root/tests/analysis-coverage.php" "$fixture" --maintained > "$fixture/guard.log" 2>&1; then exit 1; fi
 grep -q 'Review new or changed analysis exemptions' "$fixture/guard.log"
-mv "$fixture/coverage-original.txt" "$fixture/tests/analysis-coverage.php"
+printf '%s\n' "$coverage_original" > "$fixture/tests/analysis-coverage.php"
 for change in level exclusion ignore; do
     cp "$root/phpstan-maintained.neon" "$fixture/phpstan-maintained.neon"
     case "$change" in
