@@ -90,6 +90,11 @@ final class FileAttemptStore {
 		);
 	}
 
+	/**
+	 * Read mutable journal state from disk on every call.
+	 *
+	 * @phpstan-impure
+	 */
 	public function get( string $id ): array {
 		return $this->locked(
 			LOCK_SH,

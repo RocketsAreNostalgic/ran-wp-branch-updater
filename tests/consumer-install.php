@@ -75,11 +75,14 @@ if (
 	throw new RuntimeException( 'Installed bootstrap did not retain its default executor and lock.' );
 }
 
-$named        = $configure(
-	provider: $provider,
-	attempts: new RAN\WPBranchUpdater\V1\Persistence\FileAttemptStore( $state ),
-	archive_directory: $private . '/named-archives',
-	maximum_artifact_bytes: 134217728
+// Reflection retains named argument binding for the installed, dynamically loaded closure.
+$named        = ( new ReflectionFunction( $configure ) )->invokeArgs(
+	array(
+		'provider'               => $provider,
+		'attempts'               => new RAN\WPBranchUpdater\V1\Persistence\FileAttemptStore( $state ),
+		'archive_directory'      => $private . '/named-archives',
+		'maximum_artifact_bytes' => 134217728,
+	)
 );
 $named_runner = ( new ReflectionObject( $named ) )->getProperty( 'runner' )->getValue( $named );
 if ( ! $named_runner instanceof RAN\WPBranchUpdater\V1\Runtime\StandaloneBranchRunner ) {

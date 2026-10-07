@@ -27,13 +27,13 @@ final class RAN_WP_Branch_Updater_RAN_BranchDeploymentHardStopExecutor implement
 
 // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Standalone CLI fixture variable does not share WordPress runtime globals.
 $mode = $argv[1] ?? 'parent';
-if ( 'child' === $mode ) {
+if ( isset( $argv ) && 'child' === $mode ) {
 	[$journal, $archive, $root] = array_slice( $argv, 2, 3 );
 	$deployment                 = new BranchDeploymentDeclaration( 'hard-stop', 'plugin', 'hard-stop-target', 'fixture/one', 'fixture-id', 'main', 'head', 'install' );
 	( new StandaloneBranchRunner( new GitHubFixtureProvider( $archive, 'head' ), new FileAttemptStore( $journal ), new RAN_WP_Branch_Updater_RAN_BranchDeploymentHardStopExecutor(), $root . '/archives', new FileMutationLock( $root . '/mutation.lock' ) ) )->execute( $deployment );
 	exit( 99 );
 }
-if ( 'recover' === $mode ) {
+if ( isset( $argv ) && 'recover' === $mode ) {
 	$store = new FileAttemptStore( $argv[2] );
 	$store->recover_stopped( 'hard-stop' );
 	if ( 'needs_attention' !== $store->get( 'hard-stop' )['state'] ) {

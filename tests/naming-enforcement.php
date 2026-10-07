@@ -124,7 +124,7 @@ function ran_wp_branch_updater_has_blanket_directive( string $source, string $pa
 		if ( ! is_array( $token ) || ! in_array( $token[0], array( T_COMMENT, T_DOC_COMMENT ), true ) ) {
 			continue;
 		}
-		if ( preg_match( '/@codingStandardsIgnore|@phpcs:/i', $token[1] ) ) {
+		if ( preg_match( '/@codingStandards(?:Ignore|ChangeSetting)|@phpcs:/i', $token[1] ) ) {
 			return true;
 		}
 		preg_match_all( '/phpcs:(ignorefile\S*|disable\S*|ignore\S*|set\S*)([^\r\n]*)/i', $token[1], $directives, PREG_SET_ORDER );
@@ -153,10 +153,17 @@ function ran_wp_branch_updater_has_blanket_directive( string $source, string $pa
 	return false;
 }
 
-foreach ( array( 'phpcs:disable', 'phpcs:ignore -- blanket', 'phpcs:ignoreFile', 'PHPCS:IGNOREfileXYZ', 'phpcs:ignore WordPress -- Too broad', 'phpcs:disable WordPress.WP.AlternativeFunctions -- Too broad', 'phpcs:ignore WordPress.PHP.YodaConditions.NotYoda', 'phpcs:set WordPress.PHP.YodaConditions check true', '@codingStandardsIgnoreStart' ) as $directive ) {
+foreach ( array( 'phpcs:disable', 'phpcs:ignore -- blanket', 'phpcs:ignoreFile', 'PHPCS:IGNOREfileXYZ', 'phpcs:ignore WordPress -- Too broad', 'phpcs:disable WordPress.WP.AlternativeFunctions -- Too broad', 'phpcs:ignore WordPress.PHP.YodaConditions.NotYoda', 'phpcs:set WordPress.PHP.YodaConditions check true', '@codingStandardsIgnoreStart', '@codingStandardsChangeSetting WordPress.NamingConventions.PrefixAllGlobals prefixes rogue', '@CODINGSTANDARDSCHANGESETTING WordPress.NamingConventions.PrefixAllGlobals prefixes rogue' ) as $directive ) {
 	if ( ! ran_wp_branch_updater_has_blanket_directive( "<?php /**\n * " . $directive . "\n * Reason\n */" ) || ! ran_wp_branch_updater_has_blanket_directive( "<?php\n// " . $directive . "\n" ) || ! ran_wp_branch_updater_has_blanket_directive( '<?php /* ' . $directive . ' */' ) || ! ran_wp_branch_updater_has_blanket_directive( '<?php /** ' . $directive . "\n */" ) || ran_wp_branch_updater_has_blanket_directive( "<?php\n\$literal = '" . $directive . "';\n" ) ) {
 		throw new RuntimeException( 'Blanket-directive comment/string discrimination failed.' );
 	}
+}
+// The legacy setting directive must not replace the reviewed global prefixes.
+$legacy_prefix      = "<?php\n// @codingStandardsChangeSetting WordPress.NamingConventions.PrefixAllGlobals prefixes rogue\nfunction rogue_function() {}\n";
+[, $legacy_report]  = ran_wp_branch_updater_naming_report( $root, 'tests/LegacyPrefix.php', $legacy_prefix, '.phpcs.xml', array( '--sniffs=WordPress.NamingConventions.PrefixAllGlobals' ) );
+[, $outside_report] = ran_wp_branch_updater_naming_report( $root, 'tests/LegacyPrefix.php', "<?php\nfunction rogue_function() {}\n", '.phpcs.xml', array( '--sniffs=WordPress.NamingConventions.PrefixAllGlobals' ) );
+if ( 0 !== $legacy_report['totals']['errors'] || 1 !== $outside_report['totals']['errors'] || ! ran_wp_branch_updater_has_blanket_directive( $legacy_prefix, 'tests/LegacyPrefix.php' ) ) {
+	throw new RuntimeException( 'Legacy prefix setting bypass escaped its independent guard.' );
 }
 // Prove the locked checker honours each bypass which the separate guard rejects.
 foreach ( array( 'PHPCS:DISABLE', 'PHPCS:IGNOREfileXYZ', 'phpcs:ignore RANOwnedMethods -- Broad standard', 'phpcs:disable RANOwnedMethods.NamingConventions -- Broad category', 'phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName -- Broad sniff', 'phpcs:disable RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase -- Persistent waiver', 'phpcs:ignore RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase' ) as $directive ) {
@@ -179,26 +186,46 @@ foreach ( array( 'tests/admitted-runner.php', 'tests/naming-enforcement.php' ) a
 		throw new RuntimeException( 'Process-variable exemption must not cover future declarations.' );
 	}
 }
-/** Check the reviewed ruleset arguments, which otherwise can silently disable sniffs. */
+/** Reject conditional or path-scoped rules and unreviewed checker arguments. */
 function ran_wp_branch_updater_has_unreviewed_arguments( string $source, bool $standalone ): bool {
 	$xml = new DOMDocument();
 	if ( ! $xml->loadXML( $source, LIBXML_NONET ) ) {
 		return true;
 	}
+	$xpath = new DOMXPath( $xml );
+	if ( 0 !== $xpath->query( '//include-pattern | //rule//exclude-pattern | //rule/exclude | //*[@phpcs-only or @phpcbf-only]' )->length ) {
+		return true;
+	}
+	$exclusions = array();
+	foreach ( $xpath->query( '/ruleset/exclude-pattern' ) as $node ) {
+		if ( ! $node instanceof DOMElement || $node->hasAttributes() ) {
+			return true;
+		}
+		$exclusions[] = trim( (string) $xpath->evaluate( 'string(.)', $node ) );
+	}
+	$expected_exclusions = $standalone ? array( '/tests/build/' ) : array( '/vendor/', '/node_modules/', '/tests/build/' );
+	if ( $expected_exclusions !== $exclusions ) {
+		return true;
+	}
 	$arguments = array();
-	foreach ( ( new DOMXPath( $xml ) )->query( '//arg' ) as $node ) {
+	foreach ( $xpath->query( '//arg' ) as $node ) {
+		if ( ! $node instanceof DOMElement ) {
+			return true;
+		}
 		$arguments[] = array( $node->getAttribute( 'name' ), $node->getAttribute( 'value' ) );
 	}
 	$expected = $standalone ? array( array( 'extensions', 'php' ) ) : array( array( 'basepath', '.' ), array( 'colors', '' ), array( 'extensions', 'php' ), array( 'parallel', '4' ), array( '', 'sp' ) );
 	return $expected !== $arguments;
 }
+$profiles = array();
 foreach ( array(
 	'.phpcs.xml'            => false,
 	'.phpcs-cli-compat.xml' => true,
 ) as $ruleset => $is_standalone ) {
 	// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Inspect the reviewed local ruleset command arguments without executing it.
-	if ( ran_wp_branch_updater_has_unreviewed_arguments( file_get_contents( $root . '/' . $ruleset ), $is_standalone ) ) {
-		throw new RuntimeException( 'Review PHPCS command arguments before certifying standards.' );
+	$profiles[ $ruleset ] = file_get_contents( $root . '/' . $ruleset );
+	if ( ran_wp_branch_updater_has_unreviewed_arguments( $profiles[ $ruleset ], $is_standalone ) ) {
+		throw new RuntimeException( 'Review PHPCS conditional rules, path selectors and command arguments before certifying standards.' );
 	}
 }
 $argument_probe = 'standards-argument-' . bin2hex( random_bytes( 8 ) ) . '.xml';
@@ -210,6 +237,45 @@ try {
 		[, $report] = ran_wp_branch_updater_naming_report( $root, 'tests/ArgumentProbe.php', '<?php class Probe { public function badName() {} }', $argument_probe );
 		if ( 0 !== $report['totals']['errors'] || ! ran_wp_branch_updater_has_unreviewed_arguments( $xml, false ) || ! ran_wp_branch_updater_has_unreviewed_arguments( $xml, true ) ) {
 			throw new RuntimeException( 'Ruleset argument bypass escaped its independent guard.' );
+		}
+	}
+	$path_probe   = '<?php json_encode( array() );';
+	$json_code    = 'WordPress.WP.AlternativeFunctions.json_encode_json_encode';
+	[, $baseline] = ran_wp_branch_updater_naming_report( $root, 'src/unreviewed-future.php', $path_probe );
+	$has_json     = static function ( array $report ) use ( $json_code ): bool {
+		foreach ( $report['files'] as $file ) {
+			foreach ( $file['messages'] as $message ) {
+				if ( $json_code === $message['source'] ) {
+					return true;
+				}
+			}
+		}
+		return false;
+	};
+	if ( ! $has_json( $baseline ) ) {
+		throw new RuntimeException( 'A new source path must enforce the native JSON diagnostic.' );
+	}
+	foreach ( array(
+		'<exclude-pattern>*/src/unreviewed-future.php</exclude-pattern>',
+		'<rule ref="WordPress.WP.AlternativeFunctions.json_encode_json_encode"><include-pattern>^(?!*unreviewed-future[.]php)</include-pattern></rule>',
+		'<rule ref="WordPress.WP.AlternativeFunctions.json_encode_json_encode"><exclude-pattern>*/src/unreviewed-future.php</exclude-pattern></rule>',
+		'<rule ref="RANWordPressLibrary" phpcbf-only="true"/>',
+	) as $selector ) {
+		$xml = str_contains( $selector, 'phpcbf-only' )
+			? str_replace( '<rule ref="RANWordPressLibrary"/>', $selector, $profiles['.phpcs.xml'] )
+			: str_replace( '</ruleset>', $selector . '</ruleset>', $profiles['.phpcs.xml'] );
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Write the disposable selector mutant for the locked checker diagnostic proof.
+		file_put_contents( $root . '/' . $argument_probe, $xml );
+		[, $mutant]     = ran_wp_branch_updater_naming_report( $root, 'src/unreviewed-future.php', $path_probe, $argument_probe );
+		$standalone_xml = str_replace( '</ruleset>', $selector . '</ruleset>', $profiles['.phpcs-cli-compat.xml'] );
+		if ( $has_json( $mutant ) || ! ran_wp_branch_updater_has_unreviewed_arguments( $xml, false ) || ! ran_wp_branch_updater_has_unreviewed_arguments( $standalone_xml, true ) ) {
+			throw new RuntimeException( 'A diagnostic-hiding selector escaped the structural profile guard. ' . $selector );
+		}
+		if ( ! str_contains( $selector, 'phpcbf-only' ) ) {
+			[, $outside] = ran_wp_branch_updater_naming_report( $root, 'src/adjacent-future.php', $path_probe, $argument_probe );
+			if ( ! $has_json( $outside ) ) {
+				throw new RuntimeException( 'The targeted selector control must leave the adjacent path checked.' );
+			}
 		}
 	}
 } finally {
