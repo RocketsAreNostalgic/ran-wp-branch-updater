@@ -16,7 +16,7 @@ Focused commands use the shared PHP command contract:
 | `composer lint:syntax` | Parser checks for `src/`, `tests/`, `scripts/` and `bootstrap.php` |
 | `composer standards` | Common PHPCS/WPCS/PHPCompatibility over all first-party PHP; full PHPCompatibility additionally over standalone `tests/` and `scripts/` |
 | `composer standards:fix` | PHPCBF with both standards rulesets and their matching source paths |
-| `composer analyze` | Blocking PHPStan level 5 over automatically discovered production PHP |
+| `composer analyze` | Blocking PHPStan level 5 over both isolated production and all-maintained PHP profiles |
 | `composer test` | All ordinary package and release-control contract tests |
 
 `composer check` retains syntax, standards, analysis and test checks, plus strict
@@ -156,15 +156,20 @@ operations, error suppression and failure ordering are unchanged.
 
 ## Inclusive analysis and suppression boundaries
 
-Production PHP is included by default from the repository root. The only analysis
-exemptions are root `tests/`, `scripts/`, `vendor/`, `node_modules/` and Git metadata:
+Production PHP is included by default from the repository root. Its isolated
+profile exempts root `tests/`, `scripts/`, `vendor/`, `node_modules/` and Git metadata:
 development fixtures, maintenance tooling, external dependencies and generated
 repository metadata are distinct roles, not an inventory of product files.
 A production `src/tests/` directory remains included. The independent filesystem
 inventory is compared with locked PHPStan's effective file finder. The existing
 bootstrap regression also proves that new untracked root/nested/split contracts
 produce real analysis diagnostics. Uppercase extensions and PHP entrypoints outside lowercase `.php` fail for an explicit scope decision rather than disappearing.
-The 37 current production PHP files remain clean at required level 5.
+The 37 current production PHP files remain clean at required level 5. The second,
+all-maintained profile also includes tests and scripts automatically, covering all
+52 maintained PHP files at level 5. Its only exclusions are root `vendor/`,
+`node_modules/` and Git metadata. Both profiles run through `composer analyze`;
+the maintained controls additionally prove diagnostics in new root, test and
+script PHP files and protect the reviewed analysis-exemption inventory.
 
 The comment-token guard rejects standards/categories/sniffs, unexplained ignores,
 case variants, file-ignore prefixes, legacy directives and inline configuration
