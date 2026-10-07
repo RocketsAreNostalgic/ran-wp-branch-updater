@@ -1,5 +1,4 @@
 <?php
-// phpcs:disable WordPress.WP.AlternativeFunctions,WordPress.PHP.NoSilencedErrors -- Archive custody requires atomic local-file identity operations.
 declare(strict_types=1);
 
 namespace RAN\WPBranchUpdater\V1\Archive;
@@ -36,15 +35,18 @@ final class PreparedArchive implements PreparedPackageArtifact {
 		if ( ( file_exists( $directory ) || is_link( $directory ) ) && ( is_link( $directory ) || ! is_dir( $directory ) ) ) {
 			throw new RuntimeException( 'Archive directory is unsafe.' );
 		}
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_mkdir -- Create the private native archive directory before acquiring provider bytes.
 		if ( ! is_dir( $directory ) && ! mkdir( $directory, 0700, true ) ) {
 			throw new RuntimeException( 'Cannot create private archive directory.' );
 		}
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_chmod -- Set native private-directory permissions before the custody recheck.
 		chmod( $directory, 0700 );
 		// @phpstan-ignore booleanOr.leftAlwaysFalse (retain symlink recheck at the custody boundary)
 		if ( is_link( $directory ) || ( fileperms( $directory ) & 0777 ) !== 0700 ) {
 			throw new RuntimeException( 'Archive directory is not private.' );
 		}
 		$path = tempnam( $directory, 'ran-branch-' );
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_chmod -- Make the newly created native archive file private before acquisition.
 		if ( false === $path || ! chmod( $path, 0600 ) ) {
 			throw new RuntimeException( 'Cannot create private archive file.' );
 		}
@@ -81,6 +83,7 @@ final class PreparedArchive implements PreparedPackageArtifact {
 			if ( null !== $created ) {
 				$current = self::identity( $path );
 				if ( null !== $current && $current['dev'] === $created['dev'] && $current['ino'] === $created['ino'] ) {
+					// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Delete only the rejected archive whose device and inode still match the created file.
 					if ( ! unlink( $path ) ) {
 						// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Preserve the previous Throwable for internal custody diagnostics; this is not rendered output.
 						throw new RuntimeException( 'Rejected archive could not be cleaned safely.', 0, $e );
@@ -123,6 +126,7 @@ final class PreparedArchive implements PreparedPackageArtifact {
 			return;
 		}
 		$this->assert_unchanged();
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Delete only the archive after the exact custody identity and digest recheck.
 		if ( ! unlink( $this->path ) ) {
 			throw new RuntimeException( 'Cannot safely remove archive.' );
 		}
@@ -147,6 +151,7 @@ final class PreparedArchive implements PreparedPackageArtifact {
 
 	private static function identity( string $path ): ?array {
 		clearstatcache( true, $path );
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Missing or replaced paths fail the identity check; suppress only the native missing-path warning.
 		$s = @lstat( $path );
 		if ( ! is_array( $s ) || is_link( $path ) || ! is_file( $path ) || ( ( $s['mode'] & 0170000 ) !== 0100000 ) || ( ( $s['mode'] & 0777 ) !== 0600 ) || 1 !== $s['nlink'] ) {
 			return null;

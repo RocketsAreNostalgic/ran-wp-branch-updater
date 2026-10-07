@@ -1,5 +1,4 @@
 <?php
-// phpcs:disable WordPress.WP.AlternativeFunctions -- ZIP stream validation needs direct bounded reads.
 declare(strict_types=1);
 
 namespace RAN\WPBranchUpdater\V1\Archive;
@@ -188,6 +187,7 @@ final class ArchiveValidator {
 		$hash = hash_init( 'crc32b' );
 		try {
 			while ( ! feof( $stream ) ) {
+				// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fread -- Bounded ZIP-entry stream reads preserve expanded-byte and CRC verification.
 				$chunk = fread( $stream, 65536 );
 				if ( false === $chunk || ( '' === $chunk && ! feof( $stream ) ) ) {
 					$this->fail( self::CODE_ARCHIVE_INTEGRITY, 'The archive contains unreadable entry data.' );
@@ -199,6 +199,7 @@ final class ArchiveValidator {
 				hash_update( $hash, $chunk );
 			}
 		} finally {
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Release the exact ZipArchive entry stream in the validation finally block.
 			fclose( $stream );
 		}
 		if ( $read !== $expected_size || ! hash_equals( sprintf( '%08x', $expected_crc ), hash_final( $hash ) ) ) {

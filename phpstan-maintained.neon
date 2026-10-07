@@ -9,11 +9,9 @@ parameters:
 	treatPhpDocTypesAsCertain: false
 	paths:
 		- .
-	# Repository-root development and dependency roles only; never match nested product directories.
+	# Repository-root dependency roles only; never match nested product directories.
 	excludePaths:
 		analyseAndScan:
-			- tests/*
-			- scripts/*
 			- vendor/*
 			- node_modules/*
 			- .git/*

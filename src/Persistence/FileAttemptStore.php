@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-// phpcs:disable WordPress.WP.AlternativeFunctions -- Atomic local journal custody requires direct filesystem calls.
 namespace RAN\WPBranchUpdater\V1\Persistence;
 
 use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
@@ -91,6 +90,11 @@ final class FileAttemptStore {
 		);
 	}
 
+	/**
+	 * Read mutable journal state from disk on every call.
+	 *
+	 * @phpstan-impure
+	 */
 	public function get( string $id ): array {
 		return $this->locked(
 			LOCK_SH,
@@ -141,6 +145,7 @@ final class FileAttemptStore {
 			$this->fail( 'Journal path is unsafe.' );
 		}
 		try {
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Read the native journal under its descriptor lock before validating every record.
 			$records = json_decode( (string) file_get_contents( $this->path ), true, 512, JSON_THROW_ON_ERROR );
 		} catch ( Throwable $e ) {
 			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Preserve the previous Throwable for internal journal diagnostics; this is not rendered output.
@@ -210,12 +215,14 @@ final class FileAttemptStore {
 
 	private function write( array $records ): void {
 		try {
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- Preserve JSON_THROW_ON_ERROR and exact journal serialization before atomic replacement and readback.
 			$json = json_encode( $records, JSON_THROW_ON_ERROR );
 		} catch ( Throwable $e ) {
 			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Preserve the previous Throwable for internal journal diagnostics; this is not rendered output.
 			throw new BranchDeploymentJournalFailure( 'Journal cannot be encoded.', 0, $e );
 		}
 		$tmp = $this->path . '.new';
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents,WordPress.WP.AlternativeFunctions.rename_rename -- Write the locked sibling file and atomically replace the native journal before readback.
 		if ( false === file_put_contents( $tmp, $json, LOCK_EX ) || ! rename( $tmp, $this->path ) ) {
 			$this->fail( 'Journal replacement failed.' );
 		}
@@ -227,6 +234,7 @@ final class FileAttemptStore {
 
 	private function locked( int $mode, callable $operation ): mixed {
 		$this->ensure_parent();
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- flock requires the native journal lock descriptor across the complete read or mutation.
 		$handle = fopen( $this->path . '.lock', 'c+' );
 		if ( false === $handle || ! flock( $handle, $mode ) ) {
 			throw new BranchDeploymentJournalFailure( 'Journal lock is unavailable.' );
@@ -234,6 +242,7 @@ final class FileAttemptStore {
 		try {
 			return $operation();
 		} finally {
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Close the same journal descriptor after unlocking and preserve failure reporting.
 			if ( ! flock( $handle, LOCK_UN ) || ! fclose( $handle ) ) {
 				throw new BranchDeploymentJournalFailure( 'Journal lock release failed.' );
 			}
@@ -242,9 +251,11 @@ final class FileAttemptStore {
 
 	private function ensure_parent(): void {
 		$parent = dirname( $this->path );
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_mkdir -- Create the native private journal directory before opening the lock descriptor.
 		if ( ! is_dir( $parent ) && ! mkdir( $parent, 0700, true ) ) {
 			$this->fail( 'Journal directory cannot be created.' );
 		}
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_chmod -- Require a real private native journal directory before accessing persistent state.
 		if ( ! is_dir( $parent ) || is_link( $parent ) || ! chmod( $parent, 0700 ) ) {
 			$this->fail( 'Journal directory is unsafe.' );
 		}

@@ -1,9 +1,9 @@
 <?php
-// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals -- This standalone CLI runner and its test doubles never load into WordPress global scope.
+// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound -- Standalone process-local variables never enter WordPress runtime; declarations remain checked.
 
 declare(strict_types=1);
 
-if ( 3 !== $argc ) {
+if ( ! isset( $argc, $argv ) || 3 !== $argc ) {
 	throw new RuntimeException( 'Usage: prepare-consumer-fixture.php CONSUMER_ROOT PACKAGE_ROOT' );
 }
 

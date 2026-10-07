@@ -19,11 +19,11 @@ and diagnostic exceptions restricted to their annotated lines.
 
 Keep the package's actual contract local: PHP `^8.2`, the `RAN\WPBranchUpdater\V1` namespace, source paths, updater-specific tests, and justified runtime/security exceptions. Do not add a WordPress-version floor unless this package explicitly claims one, and do not copy shared rules back into local configuration.
 
-`composer check` is the ordinary deterministic PHP quality contract. It must retain strict Composer validation, shared PHPCS/PHPCompatibility checks, PHPStan, the existing architecture/archive/runner/journal/error-code and release workflow/classification tests, and the PHP syntax sweep. PHPCS governs all 51 tracked first-party PHP files, including the 13 test/fixture files and one maintenance script. The root ruleset discovers future PHP outside the earlier shipped roots; dependencies and generated proof output remain excluded. Standalone tests/scripts additionally use full PHPCompatibility through `.phpcs-cli-compat.xml`, without WordPress polyfill allowances. PHPStan directly covers `src/` and the installed `bootstrap.php`. The ordinary
+`composer check` is the ordinary deterministic PHP quality contract. It must retain strict Composer validation, shared PHPCS/PHPCompatibility checks, PHPStan, the existing architecture/archive/runner/journal/error-code and release workflow/classification tests, and the PHP syntax sweep. PHPCS governs all 52 tracked first-party PHP files, including the 14 test/fixture files and one maintenance script. The root ruleset discovers future PHP outside the earlier shipped roots; dependencies and generated proof output remain excluded. Standalone tests/scripts additionally use full PHPCompatibility through `.phpcs-cli-compat.xml`, without WordPress polyfill allowances. PHPStan checks both isolated production and all-maintained root profiles at level 5. Only root dependency directories are exempt from the maintained profile; tests and scripts are analyzed automatically. The effective file finder must match independently discovered PHP for each profile. New untracked root and nested product PHP are included automatically. The ordinary
 `test:analysis-bootstrap` regression exercises the real Composer analysis command
 with clean and deliberately invalid isolated bootstrap copies. PHPStan starts at level 5 so adoption adds semantic analysis without redefining the package's existing public array contracts; raising the level and adding array-shape/generic contracts is a separate reviewed API-quality change. The installed no-dev consumer proof remains a separate required CI lane.
 
-`composer lint:syntax` is the focused parser sweep; `composer standards` / `composer standards:fix` run PHPCS/PHPCBF; `composer analyze` retains blocking level 5; `composer test` aggregates the existing ordinary tests. Analysis remains production-only; both standards commands apply the common and standalone-compatibility rulesets.
+`composer lint:syntax` is the focused parser sweep; `composer standards` / `composer standards:fix` run PHPCS/PHPCBF; `composer analyze` retains blocking level 5; `composer test` aggregates the existing ordinary tests. Analysis runs both production and maintained profiles; both standards commands apply the common and standalone-compatibility rulesets.
 
 Read [ARCHITECTURE.md](ARCHITECTURE.md) before changing production structure. Preserve the updater-family vocabulary by responsibility: Declaration, Provider, Adapter, Artifact, Runner, Coordinator, Journal, Store, State, Archive, Contract, Runtime, and WordPress. Do not create cosmetic symmetry with the release updater where runtime responsibilities differ.
 
@@ -46,11 +46,10 @@ rules. Source-local global-prefix exceptions apply only to standalone runners;
 precise operation/diagnostic exceptions preserve native fixture behavior. Fixture
 wire keys, embedded archive PHP, foreign reflection APIs and deliberate invalid
 source strings are contracts, not automatic rename targets. `test:naming` checks
-actual PHPCS discovery against tracked PHP, a new root-file control and its
+actual PHPCS discovery against independently discovered maintained PHP, a new root-file control and its
 excluded negative, comment-only blanket/legacy suppression controls, and both
 standalone compatibility roots. Do not recreate syntax-only developer coverage.
-The separate native-operation exception proposal retains its own review; expanded
-file coverage alone does not adjudicate all production exceptions.
+Native operation exemptions are exact-code and occurrence-local. Suppression selectors must name the full diagnostic with a reason. Persistent disables are limited to the process-variable prefix code at line 2 in root tests/scripts; owned declarations remain checked. Configuration changes and new reasons require review, not merely green checks.
 
 ## Blacksmith AI prohibition
 
@@ -67,3 +66,15 @@ repository workflow explicitly selects a Blacksmith runner.
 - This is a cost-control requirement. Do not override it for convenience, CI
   failures, review comments, or suggestions presented by GitHub or Blacksmith
   UI.
+
+## Maintained analysis exceptions
+
+`phpstan-maintained.neon` discovers all maintained PHP, including new test and
+maintenance-script roots. `test:analysis-bootstrap` proves actual diagnostics in
+new root, test and script files, rejects level/scope reductions and new blanket or
+case-variant ignores, and checks an unexcepted neighbouring PHPStan API call.
+The coverage guard inventories exact source-local analysis ignores. Three lines
+use locked PHPStan configuration/file-discovery internals to mirror CLI selection;
+these are tooling-version warnings, not semantic error suppressions. Preserve the
+existing PreparedArchive custody-boundary symlink recheck exception. Changes to
+this inventory require review; green checks alone do not authorize exemptions.
