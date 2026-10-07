@@ -96,7 +96,7 @@ for header in '<?php' '<?PHP' '<?='; do
     done
 done
 # Unknown extensions are executable candidates too; inert formats are explicit, not an open-ended exemption.
-for path in template.phtml template.inc template.html template.htm template.tpl template; do
+for path in template.phtml template.inc template.html template.htm template.tpl template template.json template.lock template.neon template.xml template.yml template.mjs; do
     for preamble in html bom long echo; do
         php -r '$prefix=match($argv[2]){"bom"=>"\xEF\xBB\xBF<div>Preview</div>","long"=>str_repeat(" ",1024)."<div>Preview</div>",default=>"<div>Preview</div>"};file_put_contents($argv[1],$prefix.($argv[2]==="echo"?"<?= 1;":"<?php function ran_branch_template_probe(): int { return \"invalid\"; }"));' "$fixture/$path" "$preamble"
         if php "$root/tests/analysis-coverage.php" "$fixture" > "$fixture/guard.log" 2>&1; then exit 1; fi
@@ -107,6 +107,17 @@ done
 printf 'Example: <div>Preview</div><?php echo 1;\n' > "$fixture/example.md"
 php "$root/tests/analysis-coverage.php" "$fixture"
 rm "$fixture/example.md"
+# The actual Bash declaration makes embedded fixture text inert; the suffix alone cannot do so.
+printf '#!/usr/bin/env bash\nprintf "<div><?php echo 1;"\n' > "$fixture/example.sh"
+php "$root/tests/analysis-coverage.php" "$fixture"
+sed -i '1d' "$fixture/example.sh"
+if php "$root/tests/analysis-coverage.php" "$fixture" > "$fixture/guard.log" 2>&1; then exit 1; fi
+grep -q 'PHP outside lowercase .php' "$fixture/guard.log"
+printf '#!/usr/bin/env bash\n<?php echo 1;\n' > "$fixture/example.sh"
+if php "$root/tests/analysis-coverage.php" "$fixture" > "$fixture/guard.log" 2>&1; then exit 1; fi
+grep -q 'PHP outside lowercase .php' "$fixture/guard.log"
+rm "$fixture/example.sh"
+
 # Raising the target hides a real PHP 8.3 function from PHPStan; the independent guard must reject it.
 printf '<?php\nfunction ran_branch_floor_probe(string $json): bool { return json_validate($json); }\n' > "$fixture/floor-probe.php"
 for profile in phpstan.neon phpstan-maintained.neon; do
@@ -151,7 +162,7 @@ printf 'PK\003\004<div><?php function ran_branch_fake_archive(): int { return "i
 if php "$root/tests/analysis-coverage.php" "$fixture" --maintained > "$fixture/guard.log" 2>&1; then exit 1; fi
 grep -q 'PHP outside lowercase .php' "$fixture/guard.log"
 rm "$fixture/tests/build/fake-archive.tpl"
-for path in tests/preview.tpl scripts/preview tests/build-neighbour/preview.tpl tests/build/preview.tpl; do
+for path in tests/preview.tpl scripts/preview tests/build-neighbour/preview.tpl tests/build/preview.tpl tests/preview.sh; do
     mkdir -p "$(dirname "$fixture/$path")"
     printf '<div>Preview</div><?php function ran_branch_template_probe(): int { return "invalid"; }' > "$fixture/$path"
     if php "$root/tests/analysis-coverage.php" "$fixture" --maintained > "$fixture/guard.log" 2>&1; then exit 1; fi

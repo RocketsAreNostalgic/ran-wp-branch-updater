@@ -88,14 +88,15 @@ foreach ( new RecursiveIteratorIterator( $iterator ) as $entry ) {
 			}
 		}
 	} else {
-		// Documentation, shell/JS tests and configuration contain inert PHP examples. Unknown formats fail closed.
-		$inert = in_array( strtolower( $entry->getExtension() ), array( 'md', 'sh', 'mjs', 'json', 'lock', 'neon', 'xml', 'yml' ), true );
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Inspect local maintained content without executing it; inert formats retain a leading-tag check.
 		$header = file_get_contents( $entry->getPathname() );
 		if ( false === $header ) {
 			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Standalone coverage failure is not HTML output.
 			throw new RuntimeException( 'Cannot inspect a maintained file header.' );
 		}
+		// Markdown examples and declared Bash test drivers are inert; a shell suffix alone is not evidence.
+		$inert = 'md' === strtolower( $entry->getExtension() )
+			|| ( 'sh' === strtolower( $entry->getExtension() ) && 1 === preg_match( '~\A#!(?:/usr/bin/env[ \t]+bash|/bin/bash)(?:[ \t][^\r\n]*)?\r?\n~', $header ) );
 		// Generated archive proofs contain PHP payloads in ZIP bytes; do not exempt other source in this directory.
 		if ( str_starts_with( substr( $entry->getPathname(), strlen( $root ) + 1 ), 'tests/build/' ) && str_starts_with( $header, "PK\x03\x04" ) ) {
 			$archive = new ZipArchive();
