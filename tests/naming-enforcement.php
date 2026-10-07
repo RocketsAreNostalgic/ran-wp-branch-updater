@@ -196,6 +196,17 @@ function ran_wp_branch_updater_has_unreviewed_arguments( string $source, bool $s
 	if ( 0 !== $xpath->query( '//include-pattern | //rule//exclude-pattern | //rule/exclude | //*[@phpcs-only or @phpcbf-only]' )->length ) {
 		return true;
 	}
+	$exclusions = array();
+	foreach ( $xpath->query( '/ruleset/exclude-pattern' ) as $node ) {
+		if ( ! $node instanceof DOMElement || $node->hasAttributes() ) {
+			return true;
+		}
+		$exclusions[] = trim( (string) $xpath->evaluate( 'string(.)', $node ) );
+	}
+	$expected_exclusions = $standalone ? array( '/tests/build/' ) : array( '/vendor/', '/node_modules/', '/tests/build/' );
+	if ( $expected_exclusions !== $exclusions ) {
+		return true;
+	}
 	$arguments = array();
 	foreach ( $xpath->query( '//arg' ) as $node ) {
 		if ( ! $node instanceof DOMElement ) {
@@ -245,6 +256,7 @@ try {
 		throw new RuntimeException( 'A new source path must enforce the native JSON diagnostic.' );
 	}
 	foreach ( array(
+		'<exclude-pattern>*/src/unreviewed-future.php</exclude-pattern>',
 		'<rule ref="WordPress.WP.AlternativeFunctions.json_encode_json_encode"><include-pattern>^(?!*unreviewed-future[.]php)</include-pattern></rule>',
 		'<rule ref="WordPress.WP.AlternativeFunctions.json_encode_json_encode"><exclude-pattern>*/src/unreviewed-future.php</exclude-pattern></rule>',
 		'<rule ref="RANWordPressLibrary" phpcbf-only="true"/>',
