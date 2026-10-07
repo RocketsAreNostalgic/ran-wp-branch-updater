@@ -104,6 +104,26 @@ for path in template.phtml template.inc template.html template.htm template.tpl 
         rm "$fixture/$path"
     done
 done
+# PHP short tags execute when enabled, so discovery must not depend on the invoking ini.
+printf '<? echo "ran-short-tag-executed"; ?>' > "$fixture/short-tag.phtml"
+test "$(php -d short_open_tag=1 "$fixture/short-tag.phtml")" = ran-short-tag-executed
+rm "$fixture/short-tag.phtml"
+for path in short-tag.phtml short-tag.inc short-tag; do
+    printf '<div>Preview</div><? echo "ran-short-tag-executed"; ?>' > "$fixture/$path"
+    for setting in 0 1; do
+        if php -d "short_open_tag=$setting" "$root/tests/analysis-coverage.php" "$fixture" > "$fixture/guard.log" 2>&1; then exit 1; fi
+        grep -q 'PHP outside lowercase .php' "$fixture/guard.log"
+    done
+    rm "$fixture/$path"
+done
+printf '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><example/>' > "$fixture/declaration.xml"
+php "$root/tests/analysis-coverage.php" "$fixture"
+for source in '<?xmlfoo echo "invalid"; ?>' '<?xml version="1.0"?><example/><? echo "invalid"; ?>'; do
+    printf '%s' "$source" > "$fixture/declaration.xml"
+    if php "$root/tests/analysis-coverage.php" "$fixture" > "$fixture/guard.log" 2>&1; then exit 1; fi
+    grep -q 'PHP outside lowercase .php' "$fixture/guard.log"
+done
+rm "$fixture/declaration.xml"
 printf 'Example: <div>Preview</div><?php echo 1;\n' > "$fixture/example.md"
 php "$root/tests/analysis-coverage.php" "$fixture"
 rm "$fixture/example.md"
@@ -162,6 +182,10 @@ printf 'PK\003\004<div><?php function ran_branch_fake_archive(): int { return "i
 if php "$root/tests/analysis-coverage.php" "$fixture" --maintained > "$fixture/guard.log" 2>&1; then exit 1; fi
 grep -q 'PHP outside lowercase .php' "$fixture/guard.log"
 rm "$fixture/tests/build/fake-archive.tpl"
+printf '<div><? echo "invalid"; ?>' > "$fixture/tests/short-tag.tpl"
+if php "$root/tests/analysis-coverage.php" "$fixture" --maintained > "$fixture/guard.log" 2>&1; then exit 1; fi
+grep -q 'PHP outside lowercase .php' "$fixture/guard.log"
+rm "$fixture/tests/short-tag.tpl"
 for path in tests/preview.tpl scripts/preview tests/build-neighbour/preview.tpl tests/build/preview.tpl tests/preview.sh; do
     mkdir -p "$(dirname "$fixture/$path")"
     printf '<div>Preview</div><?php function ran_branch_template_probe(): int { return "invalid"; }' > "$fixture/$path"

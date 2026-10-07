@@ -105,7 +105,10 @@ foreach ( new RecursiveIteratorIterator( $iterator ) as $entry ) {
 				continue;
 			}
 		}
-		if ( preg_match( $inert ? '/^(?:\xEF\xBB\xBF)?(?:#![^\n]*\n)?\s*<\?(?:php\b|=)/i' : '/<\?(?:php\b|=)/i', $header ) ) {
+		// A genuine leading XML declaration is data, not a short PHP opening tag.
+		$xml_declaration = '~\A(?:\xEF\xBB\xBF)?<\?xml[ \t\r\n]+version[ \t\r\n]*=[ \t\r\n]*(?:"1\.[01]"|\'1\.[01]\')(?:[ \t\r\n]+encoding[ \t\r\n]*=[ \t\r\n]*(?:"[A-Za-z][A-Za-z0-9._-]*"|\'[A-Za-z][A-Za-z0-9._-]*\'))?(?:[ \t\r\n]+standalone[ \t\r\n]*=[ \t\r\n]*(?:"(?:yes|no)"|\'(?:yes|no)\'))?[ \t\r\n]*\?>~';
+		$header          = preg_replace( $xml_declaration, '', $header ) ?? $header;
+		if ( preg_match( $inert ? '/^(?:\xEF\xBB\xBF)?(?:#![^\n]*\n)?\s*<\?/' : '/<\?/', $header ) ) {
 			throw new RuntimeException( 'PHP outside lowercase .php needs an explicit reviewed analysis decision.' );
 		}
 	}
