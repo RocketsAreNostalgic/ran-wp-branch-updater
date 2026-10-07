@@ -98,7 +98,11 @@ foreach ( new RecursiveIteratorIterator( $iterator ) as $entry ) {
 		}
 		// Generated archive proofs contain PHP payloads in ZIP bytes; do not exempt other source in this directory.
 		if ( str_starts_with( substr( $entry->getPathname(), strlen( $root ) + 1 ), 'tests/build/' ) && str_starts_with( $header, "PK\x03\x04" ) ) {
-			continue;
+			$archive = new ZipArchive();
+			if ( true === $archive->open( $entry->getPathname(), ZipArchive::RDONLY ) ) {
+				$archive->close();
+				continue;
+			}
 		}
 		if ( preg_match( $inert ? '/^(?:\xEF\xBB\xBF)?(?:#![^\n]*\n)?\s*<\?(?:php\b|=)/i' : '/<\?(?:php\b|=)/i', $header ) ) {
 			throw new RuntimeException( 'PHP outside lowercase .php needs an explicit reviewed analysis decision.' );

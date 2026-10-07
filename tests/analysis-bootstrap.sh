@@ -147,6 +147,10 @@ mv "$fixture/tests/build/archive-proof" "$fixture/archive-outside"
 if php "$root/tests/analysis-coverage.php" "$fixture" --maintained > "$fixture/guard.log" 2>&1; then exit 1; fi
 grep -q 'PHP outside lowercase .php' "$fixture/guard.log"
 rm "$fixture/archive-outside"
+printf 'PK\003\004<div><?php function ran_branch_fake_archive(): int { return "invalid"; }' > "$fixture/tests/build/fake-archive.tpl"
+if php "$root/tests/analysis-coverage.php" "$fixture" --maintained > "$fixture/guard.log" 2>&1; then exit 1; fi
+grep -q 'PHP outside lowercase .php' "$fixture/guard.log"
+rm "$fixture/tests/build/fake-archive.tpl"
 for path in tests/preview.tpl scripts/preview tests/build-neighbour/preview.tpl tests/build/preview.tpl; do
     mkdir -p "$(dirname "$fixture/$path")"
     printf '<div>Preview</div><?php function ran_branch_template_probe(): int { return "invalid"; }' > "$fixture/$path"
