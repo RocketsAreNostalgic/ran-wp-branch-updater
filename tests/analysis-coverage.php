@@ -18,7 +18,8 @@ if ( 5 !== ( $config['parameters']['level'] ?? null )
 	|| array( 'analyseAndScan' => $expected_exclusions ) !== ( $config['parameters']['excludePaths'] ?? null )
 	|| array( 'vendor/szepeviktor/phpstan-wordpress/extension.neon' ) !== ( $config['includes'] ?? null )
 	|| isset( $config['parameters']['fileExtensions'] )
-	|| isset( $config['parameters']['ignoreErrors'] ) ) {
+	|| isset( $config['parameters']['ignoreErrors'] )
+	|| 80200 !== ( $config['parameters']['phpVersion'] ?? null ) ) {
 	throw new RuntimeException( 'Review inclusive analysis scope and its explicit role exemptions.' );
 }
 // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Read the local canonical command, never runtime or remote state.
@@ -87,13 +88,27 @@ foreach ( new RecursiveIteratorIterator( $iterator ) as $entry ) {
 			}
 		}
 	} else {
-		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Inspect only the local nonstandard-extension file header, never execute it.
-		$header = file_get_contents( $entry->getPathname(), false, null, 0, 512 );
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Inspect local maintained content without executing it; inert formats retain a leading-tag check.
+		$header = file_get_contents( $entry->getPathname() );
 		if ( false === $header ) {
 			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Standalone coverage failure is not HTML output.
 			throw new RuntimeException( 'Cannot inspect a maintained file header.' );
 		}
-		if ( preg_match( '/^(?:#![^\n]*\n)?\s*<\?(?:php\b|=)/i', $header ) ) {
+		// Markdown examples and declared Bash test drivers are inert; a shell suffix alone is not evidence.
+		$inert = 'md' === strtolower( $entry->getExtension() )
+			|| ( 'sh' === strtolower( $entry->getExtension() ) && 1 === preg_match( '~\A#!(?:/usr/bin/env[ \t]+bash|/bin/bash)(?:[ \t][^\r\n]*)?\r?\n~', $header ) );
+		// Generated archive proofs contain PHP payloads in ZIP bytes; do not exempt other source in this directory.
+		if ( str_starts_with( substr( $entry->getPathname(), strlen( $root ) + 1 ), 'tests/build/' ) && str_starts_with( $header, "PK\x03\x04" ) ) {
+			$archive = new ZipArchive();
+			if ( true === $archive->open( $entry->getPathname(), ZipArchive::RDONLY ) ) {
+				$archive->close();
+				continue;
+			}
+		}
+		// A genuine leading XML declaration is data, not a short PHP opening tag.
+		$xml_declaration = '~\A(?:\xEF\xBB\xBF)?<\?xml[ \t\r\n]+version[ \t\r\n]*=[ \t\r\n]*(?:"1\.[01]"|\'1\.[01]\')(?:[ \t\r\n]+encoding[ \t\r\n]*=[ \t\r\n]*(?:"[A-Za-z][A-Za-z0-9._-]*"|\'[A-Za-z][A-Za-z0-9._-]*\'))?(?:[ \t\r\n]+standalone[ \t\r\n]*=[ \t\r\n]*(?:"(?:yes|no)"|\'(?:yes|no)\'))?[ \t\r\n]*\?>~';
+		$header          = preg_replace( $xml_declaration, '', $header ) ?? $header;
+		if ( preg_match( $inert ? '/^(?:\xEF\xBB\xBF)?(?:#![^\n]*\n)?\s*<\?/' : '/<\?/', $header ) ) {
 			throw new RuntimeException( 'PHP outside lowercase .php needs an explicit reviewed analysis decision.' );
 		}
 	}

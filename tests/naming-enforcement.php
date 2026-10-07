@@ -196,6 +196,14 @@ function ran_wp_branch_updater_has_unreviewed_arguments( string $source, bool $s
 	if ( 0 !== $xpath->query( '//include-pattern | //rule//exclude-pattern | //rule/exclude | //*[@phpcs-only or @phpcbf-only]' )->length ) {
 		return true;
 	}
+	$configurations = $xpath->query( '//config' );
+	if ( 1 !== $configurations->length ) {
+		return true;
+	}
+	$config = $configurations->item( 0 );
+	if ( ! $config instanceof DOMElement || 'testVersion' !== $config->getAttribute( 'name' ) || '8.2-' !== $config->getAttribute( 'value' ) || 2 !== $config->attributes->length ) {
+		return true;
+	}
 	$exclusions = array();
 	foreach ( $xpath->query( '/ruleset/exclude-pattern' ) as $node ) {
 		if ( ! $node instanceof DOMElement || $node->hasAttributes() ) {
@@ -226,6 +234,22 @@ foreach ( array(
 	$profiles[ $ruleset ] = file_get_contents( $root . '/' . $ruleset );
 	if ( ran_wp_branch_updater_has_unreviewed_arguments( $profiles[ $ruleset ], $is_standalone ) ) {
 		throw new RuntimeException( 'Review PHPCS conditional rules, path selectors and command arguments before certifying standards.' );
+	}
+}
+// Both the WordPress and standalone profiles must retain the actual PHP 8.2 diagnostic.
+foreach ( $profiles as $ruleset => $profile ) {
+	[, $floor_report]  = ran_wp_branch_updater_naming_report( $root, 'tests/FloorProbe.php', '<?php json_validate( "{}" );', $ruleset, array( '--sniffs=PHPCompatibility.FunctionUse.NewFunctions' ) );
+	[, $raised_report] = ran_wp_branch_updater_naming_report( $root, 'tests/FloorProbe.php', '<?php json_validate( "{}" );', $ruleset, array( '--sniffs=PHPCompatibility.FunctionUse.NewFunctions', '--runtime-set', 'testVersion', '8.3-' ) );
+	if ( 0 !== $raised_report['totals']['errors'] || 1 !== $floor_report['totals']['errors'] ) {
+		throw new RuntimeException( 'PHP 8.3 JSON validation must remain incompatible with the supported PHP 8.2 floor.' );
+	}
+	foreach ( array( '8.3-', '', '8.2-" phpcs-only="true' ) as $target ) {
+		if ( ! ran_wp_branch_updater_has_unreviewed_arguments( str_replace( 'value="8.2-"', 'value="' . $target . '"', $profile ), '.phpcs-cli-compat.xml' === $ruleset ) ) {
+			throw new RuntimeException( 'Changed compatibility target escaped the profile guard.' );
+		}
+	}
+	if ( ! ran_wp_branch_updater_has_unreviewed_arguments( str_replace( '</ruleset>', '<config name="testVersion" value="8.3-"/></ruleset>', $profile ), '.phpcs-cli-compat.xml' === $ruleset ) ) {
+		throw new RuntimeException( 'Duplicate compatibility target escaped the profile guard.' );
 	}
 }
 $argument_probe = 'standards-argument-' . bin2hex( random_bytes( 8 ) ) . '.xml';

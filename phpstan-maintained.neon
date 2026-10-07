@@ -6,6 +6,7 @@ parameters:
 	# existing public array contracts merely to satisfy missing iterable-value
 	# annotations. Raising this baseline should be a separate typed-contract change.
 	level: 5
+	phpVersion: 80200
 	treatPhpDocTypesAsCertain: false
 	paths:
 		- .
