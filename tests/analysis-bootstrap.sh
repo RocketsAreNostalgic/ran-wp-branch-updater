@@ -95,6 +95,33 @@ for header in '<?php' '<?PHP' '<?='; do
         rm "$fixture/$path"
     done
 done
+# Unknown extensions are executable candidates too; inert formats are explicit, not an open-ended exemption.
+for path in template.phtml template.inc template.html template.htm template.tpl template; do
+    for preamble in html bom long echo; do
+        php -r '$prefix=match($argv[2]){"bom"=>"\xEF\xBB\xBF<div>Preview</div>","long"=>str_repeat(" ",1024)."<div>Preview</div>",default=>"<div>Preview</div>"};file_put_contents($argv[1],$prefix.($argv[2]==="echo"?"<?= 1;":"<?php function ran_branch_template_probe(): int { return \"invalid\"; }"));' "$fixture/$path" "$preamble"
+        if php "$root/tests/analysis-coverage.php" "$fixture" > "$fixture/guard.log" 2>&1; then exit 1; fi
+        grep -q 'PHP outside lowercase .php' "$fixture/guard.log"
+        rm "$fixture/$path"
+    done
+done
+printf 'Example: <div>Preview</div><?php echo 1;\n' > "$fixture/example.md"
+php "$root/tests/analysis-coverage.php" "$fixture"
+rm "$fixture/example.md"
+# Raising the target hides a real PHP 8.3 function from PHPStan; the independent guard must reject it.
+printf '<?php\nfunction ran_branch_floor_probe(string $json): bool { return json_validate($json); }\n' > "$fixture/floor-probe.php"
+for profile in phpstan.neon phpstan-maintained.neon; do
+    [[ "$profile" == phpstan.neon ]] && analysis_command=analyze:production || analysis_command=analyze:maintained
+    if analyze > "$fixture/floor.json" 2> "$fixture/floor.log"; then exit 1; fi
+    grep -q 'function.notFound' "$fixture/floor.json"
+    sed -i 's/phpVersion: 80200/phpVersion: 80300/' "$fixture/$profile"
+    analyze > "$fixture/floor-raised.json" 2> "$fixture/floor-raised.log"
+    args=(); [[ "$profile" == phpstan-maintained.neon ]] && args=(--maintained)
+    if php "$root/tests/analysis-coverage.php" "$fixture" "${args[@]}" > "$fixture/guard.log" 2>&1; then exit 1; fi
+    grep -q 'Review inclusive analysis scope' "$fixture/guard.log"
+    cp "$root/$profile" "$fixture/$profile"
+done
+analysis_command=analyze:production
+rm "$fixture/floor-probe.php"
 # Explicit role exemptions exclude only repository-root development directories.
 mkdir "$fixture/tests" "$fixture/scripts"
 printf '<?php\n' > "$fixture/tests/development.php"
@@ -113,10 +140,24 @@ analysis_command=analyze:maintained
 cp -R "$root/tests/." "$fixture/tests/"
 cp -R "$root/scripts/." "$fixture/scripts/"
 php "$root/tests/analysis-coverage.php" "$fixture" --maintained
+mkdir -p "$fixture/tests/build"
+php -r '$zip=new ZipArchive();$zip->open($argv[1],ZipArchive::CREATE);$zip->addFromString("plugin.php","<?php echo 1;");$zip->close();' "$fixture/tests/build/archive-proof"
+php "$root/tests/analysis-coverage.php" "$fixture" --maintained
+mv "$fixture/tests/build/archive-proof" "$fixture/archive-outside"
+if php "$root/tests/analysis-coverage.php" "$fixture" --maintained > "$fixture/guard.log" 2>&1; then exit 1; fi
+grep -q 'PHP outside lowercase .php' "$fixture/guard.log"
+rm "$fixture/archive-outside"
+for path in tests/preview.tpl scripts/preview tests/build-neighbour/preview.tpl tests/build/preview.tpl; do
+    mkdir -p "$(dirname "$fixture/$path")"
+    printf '<div>Preview</div><?php function ran_branch_template_probe(): int { return "invalid"; }' > "$fixture/$path"
+    if php "$root/tests/analysis-coverage.php" "$fixture" --maintained > "$fixture/guard.log" 2>&1; then exit 1; fi
+    grep -q 'PHP outside lowercase .php' "$fixture/guard.log"
+    rm "$fixture/$path"
+done
 analyze > "$fixture/maintained-clean.json" 2> "$fixture/maintained-clean.log" || {
     cat "$fixture/maintained-clean.log" "$fixture/maintained-clean.json" >&2; exit 1;
 }
-for path in tests/new-contract.php scripts/new-tool.php root-contract.php; do
+for path in tests/new-contract.php scripts/new-tool.php root-contract.php tests/build/new-contract.php; do
     printf '<?php\nran_branch_maintained_probe_missing();\n' > "$fixture/$path"
     php "$root/tests/analysis-coverage.php" "$fixture" --maintained
     status=0

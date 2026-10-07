@@ -18,7 +18,8 @@ if ( 5 !== ( $config['parameters']['level'] ?? null )
 	|| array( 'analyseAndScan' => $expected_exclusions ) !== ( $config['parameters']['excludePaths'] ?? null )
 	|| array( 'vendor/szepeviktor/phpstan-wordpress/extension.neon' ) !== ( $config['includes'] ?? null )
 	|| isset( $config['parameters']['fileExtensions'] )
-	|| isset( $config['parameters']['ignoreErrors'] ) ) {
+	|| isset( $config['parameters']['ignoreErrors'] )
+	|| 80200 !== ( $config['parameters']['phpVersion'] ?? null ) ) {
 	throw new RuntimeException( 'Review inclusive analysis scope and its explicit role exemptions.' );
 }
 // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Read the local canonical command, never runtime or remote state.
@@ -87,13 +88,19 @@ foreach ( new RecursiveIteratorIterator( $iterator ) as $entry ) {
 			}
 		}
 	} else {
-		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Inspect only the local nonstandard-extension file header, never execute it.
-		$header = file_get_contents( $entry->getPathname(), false, null, 0, 512 );
+		// Documentation, shell/JS tests and configuration contain inert PHP examples. Unknown formats fail closed.
+		$inert = in_array( strtolower( $entry->getExtension() ), array( 'md', 'sh', 'mjs', 'json', 'lock', 'neon', 'xml', 'yml' ), true );
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Inspect local maintained content without executing it; inert formats retain a leading-tag check.
+		$header = file_get_contents( $entry->getPathname() );
 		if ( false === $header ) {
 			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Standalone coverage failure is not HTML output.
 			throw new RuntimeException( 'Cannot inspect a maintained file header.' );
 		}
-		if ( preg_match( '/^(?:#![^\n]*\n)?\s*<\?(?:php\b|=)/i', $header ) ) {
+		// Generated archive proofs contain PHP payloads in ZIP bytes; do not exempt other source in this directory.
+		if ( str_starts_with( substr( $entry->getPathname(), strlen( $root ) + 1 ), 'tests/build/' ) && str_starts_with( $header, "PK\x03\x04" ) ) {
+			continue;
+		}
+		if ( preg_match( $inert ? '/^(?:\xEF\xBB\xBF)?(?:#![^\n]*\n)?\s*<\?(?:php\b|=)/i' : '/<\?(?:php\b|=)/i', $header ) ) {
 			throw new RuntimeException( 'PHP outside lowercase .php needs an explicit reviewed analysis decision.' );
 		}
 	}
