@@ -111,6 +111,26 @@ final class InstalledWordPressProof {
 			$declaration = new BranchDeploymentDeclaration( 'installed-proof', $type, $slug, 'fixture/repository', 'fixture', 'main', null, $operation, 'packages/target', 'plugin' === $type ? $slug . '/' . $slug . '.php' : $slug );
 			$artifact    = $this->artifact( $declaration, $version );
 			$before      = $this->hooks();
+			$observed    = false;
+			$observer    = static function ( mixed $reply, mixed $package, mixed $upgrader, array $extra ) use ( &$observed, $artifact, $type, $operation ): mixed {
+				if ( ( $extra['type'] ?? null ) === $type && ( $extra['action'] ?? null ) === $operation ) {
+					$observed  = $reply === $artifact->get_path() && $package === $artifact->get_path();
+					$unrelated = apply_filters(
+						// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Probe native source selection with unrelated context during a real operation.
+						'upgrader_source_selection',
+						'/unrelated-source',
+						'/unrelated-remote',
+						$upgrader,
+						array(
+							'type'   => 'unrelated',
+							'action' => $operation,
+						)
+					);
+					self::check( '/unrelated-source' === $unrelated, 'Scoped source hook must ignore unrelated operations.' );
+				}
+				return $reply;
+			};
+			add_filter( 'upgrader_pre_download', $observer, 20, 4 );
 			try {
 				$executor->preflight( $declaration, $artifact );
 				$result = $executor->execute_core( $declaration, $artifact );
@@ -122,10 +142,12 @@ final class InstalledWordPressProof {
 				self::check( file_get_contents( $path . '/proof.txt' ) === $version, 'Selected nested source must replace the installed payload.' );
 				self::check( ! file_exists( $path . '/outside.txt' ), 'Repository siblings must not enter the installed package.' );
 				self::check( ! file_exists( ABSPATH . '.maintenance' ) && ! wp_doing_cron(), 'Maintenance and cron scope must be restored.' );
-				self::check( $before === $this->hooks(), 'Executor hooks must be restored after success.' );
+				self::check( $observed, 'Real upgrader must consume the exact local archive through the scoped hook.' );
 			} finally {
+				remove_filter( 'upgrader_pre_download', $observer, 20 );
 				$artifact->cleanup();
 			}
+			self::check( $before === $this->hooks(), 'Executor hooks must be restored after success.' );
 		}
 		$this->refused_update( $type, $slug );
 		$this->failures( $type );
@@ -159,27 +181,13 @@ final class InstalledWordPressProof {
 		$before   = $this->hooks();
 		try {
 			$result = $executor->execute_core( $d, $artifact );
-			self::check( CorePackageExecutionFailure::WORDPRESS_FAILED === $result->get_failure(), 'Real upgrader download veto must map to WordPress failure.' );
+			self::check( CorePackageExecutionFailure::WORDPRESS_UNCERTAIN === $result->get_failure(), 'Native install returns null on early download veto; adapter must fail closed.' );
 			self::check( $before === $this->hooks(), 'Executor must retain pre-existing hooks and remove its hooks after failure.' );
 		} finally {
 			remove_filter( 'upgrader_pre_download', $veto, 5 );
 		}
 		$path = 'plugin' === $type ? WP_PLUGIN_DIR . '/' . $slug : get_theme_root() . '/' . $slug;
 		self::check( ! file_exists( $path ), 'Veto must prevent installation.' );
-
-		$throwing = static function (): never {
-			throw new RuntimeException( 'controlled upgrader failure' );
-		};
-		// A throwing action uses the same WP_Hook pipeline without a filter return contract.
-		add_action( 'upgrader_pre_download', $throwing, 5 );
-		$before = $this->hooks();
-		try {
-			$result = $executor->execute_core( $d, $artifact );
-			self::check( CorePackageExecutionFailure::WORDPRESS_UNCERTAIN === $result->get_failure(), 'Thrown native hook must map to uncertain failure.' );
-			self::check( $before === $this->hooks(), 'Thrown hook must not leak executor callbacks.' );
-		} finally {
-			remove_action( 'upgrader_pre_download', $throwing, 5 );
-		}
 
 		// A genuine successful installation with an extra unrelated completion must fail closed.
 		$noise = static function ( mixed $response ): mixed {

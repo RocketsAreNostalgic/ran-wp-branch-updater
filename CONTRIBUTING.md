@@ -195,3 +195,38 @@ reclassifying maintained production PHP as a stub fails the coverage gate.
 
 The bounded header check recognizes ordinary/uppercase PHP open tags and short
 echo tags, with optional shebang, including alternate extensions such as `.inc`.
+
+### Installed Branch adapter proofs
+
+CI runs `RAN_BRANCH_DISPOSABLE=1 RAN_BRANCH_WORDPRESS_PATH=/path/to/site php tests/installed-wordpress.php`
+against disposable single-site WordPress installations with the direct filesystem
+method. The site must contain `.ran-branch-disposable` with the exact text
+`RAN Branch disposable site`. Use a fresh site/database for each run; the proof
+intentionally leaves its installed fixture packages for inspection. Never point
+it at a maintained site. Keep the site outside this repository so generated
+WordPress files do not enter maintained-source discovery.
+
+The proof loads this checkout's Composer autoloader and constructs Branch's
+`WordPressPackageExecutor` without an injected executor. Controlled local ZIPs
+exercise plugin and theme installation and updating, nested source selection,
+installed version/payload checks, native download vetoes,
+foreign completion rejection, automatic-update refusal and hook/cron restoration.
+It uses Branch's `WordPressUpdaterLock` against the installed options table for
+insertion, contention, exact-token release, stale takeover, cache invalidation,
+operation exceptions and real SQL failure. It does not certify Core's adapters.
+
+The selected WordPress 7.0 and 7.0.3 points follow the consumer contract in
+[Core's readme at 42ff73f](https://github.com/RocketsAreNostalgic/ran-booster/blob/42ff73f8cb15ee6e39ab0130c384d5e5e35fefcc/readme.txt).
+Branch declares PHP `^8.2`, single-site operation and direct filesystem access,
+but no independent WordPress floor or Windows promise. These tested points do
+not introduce either promise. Native proofs use PHP 8.2 and MySQL 8.0; the existing
+PHP 8.5 quality and installed no-dev Composer lanes remain required.
+
+The bounded proof does not cover active-plugin loopback rollback, concurrent
+worker races, persistent external object caches, multisite or every database
+engine. Token ownership assertions concern distinct stored tokens: the existing
+WordPress-compatible lock uses second-resolution timestamps, so rapid
+release/reacquire can reuse a token. It does not provide a unique acquisition
+identity; an old repeated release with that same token cannot be distinguished
+from the new owner. This proof does not claim to resolve that pre-existing
+limitation or qualify the entire deployment/recovery lifecycle.
