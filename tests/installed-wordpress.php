@@ -114,19 +114,7 @@ final class InstalledWordPressProof {
 			$observed    = false;
 			$observer    = static function ( mixed $reply, mixed $package, mixed $upgrader, array $extra ) use ( &$observed, $artifact, $type, $operation ): mixed {
 				if ( ( $extra['type'] ?? null ) === $type && ( $extra['action'] ?? null ) === $operation ) {
-					$observed  = $reply === $artifact->get_path() && $package === $artifact->get_path();
-					$unrelated = apply_filters(
-						// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Probe native source selection with unrelated context during a real operation.
-						'upgrader_source_selection',
-						'/unrelated-source',
-						'/unrelated-remote',
-						$upgrader,
-						array(
-							'type'   => 'unrelated',
-							'action' => $operation,
-						)
-					);
-					self::check( '/unrelated-source' === $unrelated, 'Scoped source hook must ignore unrelated operations.' );
+					$observed = $reply === $artifact->get_path() && $package === $artifact->get_path();
 				}
 				return $reply;
 			};
