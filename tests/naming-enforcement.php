@@ -48,7 +48,12 @@ $cases         = array(
 	array( 'src/Persistence/FileAttemptJournal.php', '$attempt_id', '$attemptId', $variable_code ),
 );
 
-/** Run the real repository rules against an in-memory source copy at its actual path. */
+/**
+ * Run the real repository rules against an in-memory source copy at its actual path.
+ *
+ * @param list<string> $extra
+ * @return array{int,array{totals:array<string,int>,files:array<string,array{errors:int,warnings:int,messages:list<array<string,mixed>>}>}}
+ */
 function ran_wp_branch_updater_naming_report( string $root, string $path, ?string $source, string $standard = '.phpcs.xml', array $extra = array() ): array {
 	$command = array_merge( array( PHP_BINARY, $root . '/vendor/bin/phpcs', '--standard=' . $root . '/' . $standard, '--report=json', '-q', '--no-colors' ), $extra );
 	if ( null !== $source ) {
@@ -306,7 +311,11 @@ try {
 	// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Remove only this unique ruleset-control file.
 	unlink( $root . '/' . $argument_probe );
 }
-/** Discover maintained PHP independently, including untracked files and extension-case variants. */
+/**
+ * Discover maintained PHP independently, including untracked files and extension-case variants.
+ *
+ * @return non-empty-list<string>
+ */
 function ran_wp_branch_updater_maintained_php( string $root ): array {
 	$iterator = new RecursiveCallbackFilterIterator(
 		new RecursiveDirectoryIterator( $root, FilesystemIterator::SKIP_DOTS ),

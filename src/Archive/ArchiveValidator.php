@@ -253,7 +253,7 @@ final class ArchiveValidator {
 		$this->assert_compatibility( $headers, $wordpress_version );
 		return $this->version( $headers );
 	}
-	/** @return array<string,string>|null */
+	/** @return ($required_file is true ? array<string,string> : array<string,string>|null) */
 	private function read_headers( ZipArchive $zip, int $index, string $required, bool $required_file = true ): ?array {
 		$contents = $zip->getFromIndex( $index, 8192, ZipArchive::FL_UNCHANGED );
 		if ( false === $contents ) {

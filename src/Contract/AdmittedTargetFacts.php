@@ -18,7 +18,10 @@ interface AdmittedTargetFacts {
 	public function recheck_managed( BranchDeploymentDeclaration $deployment ): void;
 	/** @return array{identifier:string,version:string,active:bool} */
 	public function installed( BranchDeploymentDeclaration $deployment ): array;
-	/** @param array{identifier:string,version:string,active:bool} $baseline @return array{identifier:string,version:string,active:bool}|null */
+	/**
+	 * @param array{identifier:string,version:string,active:bool} $baseline
+	 * @return array{identifier:string,version:string,active:bool}|null
+	 */
 
 	public function baseline_now( BranchDeploymentDeclaration $deployment, array $baseline ): ?array;
 	public function adopt( BranchDeploymentDeclaration $deployment ): bool;

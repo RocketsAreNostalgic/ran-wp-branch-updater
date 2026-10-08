@@ -15,6 +15,9 @@ final class PreparedArchive implements PreparedPackageArtifact {
 
 	private bool $cleaned = false;
 
+	/**
+	 * @param array{dev:int,ino:int,size:int,mode:int,nlink:int} $identity
+	 */
 	private function __construct(
 		private string $path,
 		public readonly string $resolved_ref,
@@ -149,6 +152,9 @@ final class PreparedArchive implements PreparedPackageArtifact {
 		return $maximum_artifact_bytes * self::EXPANDED_RATIO;
 	}
 
+	/**
+	 * @return array{dev:int,ino:int,size:int,mode:int,nlink:int}|null
+	 */
 	private static function identity( string $path ): ?array {
 		clearstatcache( true, $path );
 		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Missing or replaced paths fail the identity check; suppress only the native missing-path warning.

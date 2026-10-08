@@ -296,11 +296,18 @@ class WordPressCorePackageExecutor {
 	private static function is_canonical_child( string $path, string $parent_path ): bool {
 		return $path !== $parent_path && str_starts_with( $path . DIRECTORY_SEPARATOR, $parent_path . DIRECTORY_SEPARATOR );
 	}
+	/**
+	 * @param list<array<array-key,mixed>> $completions
+	 * @return Closure(object,array<array-key,mixed>):void
+	 */
 	private function completion_collector( array &$completions ): Closure {
 		return static function ( object $upgrader, array $extra ) use ( &$completions ): void {
 			$completions[] = $extra;
 		};
 	}
+	/**
+	 * @param list<array<array-key,mixed>> $completions
+	 */
 	private function map_result( mixed $result, string $type, string $action, ?string $identifier, array $completions ): CorePackageExecutionResult {
 		$successful_installation = $this->is_canonical_installation_result( $result );
 		$requires_completion     = true === $result || $successful_installation || $this->is_restored_plugin_failure( $type, $result );
@@ -334,6 +341,9 @@ class WordPressCorePackageExecutor {
 		}
 		return true;
 	}
+	/**
+	 * @param array<array-key,mixed> $completion
+	 */
 	private function completion_matches( array $completion, string $type, string $action, ?string $identifier ): bool {
 		if ( ( $completion['type'] ?? null ) !== $type || ( $completion['action'] ?? null ) !== $action ) {
 			return false;
