@@ -16,7 +16,7 @@ Focused commands use the shared PHP command contract:
 | `composer lint:syntax` | Parser checks for `src/`, `tests/`, `scripts/` and `bootstrap.php` |
 | `composer standards` | Common PHPCS/WPCS/PHPCompatibility over all first-party PHP; full PHPCompatibility additionally over standalone `tests/` and `scripts/` |
 | `composer standards:fix` | PHPCBF with both standards rulesets and their matching source paths |
-| `composer analyze` | Blocking PHPStan level 5 over both isolated production and all-maintained PHP profiles |
+| `composer analyze` | Blocking PHPStan level 8 over both isolated production and all-maintained PHP profiles |
 | `composer test` | All ordinary package and release-control contract tests |
 
 `composer check` retains syntax, standards, analysis and test checks, plus strict
@@ -108,8 +108,8 @@ substitute for it.
 
 ## Standalone development PHP coverage
 
-Common standards now select all **52 tracked PHP files**, up from the former
-37 runtime files: 36 `src/` files, `bootstrap.php`, 14 test/fixture files and one
+Common standards now select all **53 tracked PHP files**, up from the former
+37 runtime files: 36 `src/` files, `bootstrap.php`, 15 test/fixture files and one
 consumer-fixture script. Root discovery includes future maintained PHP; vendor,
 node dependencies and generated `tests/build/` proof artifacts are excluded.
 The standalone compatibility ruleset selects tests/scripts at the same PHP 8.2
@@ -132,7 +132,7 @@ Token-based line/block/doc-comment checks
 reject blanket/legacy suppressions without mistaking fixture strings for active
 directives. An `array_find` probe must fail standalone compatibility in each CLI
 root while retaining the existing WordPress-profile distinction. Production
-PHPStan remains blocking level 5; installed consumer and all behavioral proofs
+PHPStan remains blocking level 8; installed consumer and all behavioral proofs
 remain required. Native operation exemptions are narrowed below.
 
 ## Native-operation exceptions and remaining profile scope
@@ -164,12 +164,23 @@ A production `src/tests/` directory remains included. The independent filesystem
 inventory is compared with locked PHPStan's effective file finder. The existing
 bootstrap regression also proves that new untracked root/nested/split contracts
 produce real analysis diagnostics. Uppercase extensions and PHP entrypoints outside lowercase `.php` fail for an explicit scope decision rather than disappearing.
-The 37 current production PHP files remain clean at required level 5. The second,
+The 37 current production PHP files remain clean at required level 8. The second,
 all-maintained profile also includes tests and scripts automatically, covering all
-52 maintained PHP files at level 5. Its only exclusions are root `vendor/`,
+53 maintained PHP files at level 8. Its only exclusions are root `vendor/`,
 `node_modules/` and Git metadata. Both profiles run through `composer analyze`;
 the maintained controls additionally prove diagnostics in new root, test and
-script PHP files and protect the reviewed analysis-exemption inventory.
+script PHP files and protect the reviewed analysis-exemption inventory. Both
+profiles reject downgrades to levels 5, 6 and 7.
+
+The installed WordPress proof also checks a damaged theme whose missing stylesheet
+makes WordPress return `false` for its version. The adapter rejects that value
+before exposing installed facts. Focused adapter controls check transient
+normalization, missing update offers and invalid filesystem objects; these direct
+callback checks supplement the native plugin/theme installation and update proofs.
+Native `stdClass` transients keep their identity. Other objects are copied into a
+public value bag, preserving public fields and unrelated offers without mutating
+the original object. An unavailable filesystem returns the existing package-source
+failure. These checks do not change the documented lock-token limitations.
 
 The comment-token guard rejects standards/categories/sniffs, unexplained ignores,
 case variants, file-ignore prefixes, legacy directives and inline configuration

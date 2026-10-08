@@ -13,7 +13,7 @@ $configuration = $maintained ? 'phpstan-maintained.neon' : 'phpstan.neon';
 $config              = ( new PHPStan\DependencyInjection\NeonAdapter( array() ) )->load( $root . '/' . $configuration );
 $exemptions          = $maintained ? array( 'vendor', 'node_modules', '.git' ) : array( 'tests', 'scripts', 'vendor', 'node_modules', '.git' );
 $expected_exclusions = array_map( static fn( string $path ): string => $path . '/*', $exemptions );
-if ( 5 !== ( $config['parameters']['level'] ?? null )
+if ( 8 !== ( $config['parameters']['level'] ?? null )
 	|| array( '.' ) !== ( $config['parameters']['paths'] ?? null )
 	|| array( 'analyseAndScan' => $expected_exclusions ) !== ( $config['parameters']['excludePaths'] ?? null )
 	|| array( 'vendor/szepeviktor/phpstan-wordpress/extension.neon' ) !== ( $config['includes'] ?? null )

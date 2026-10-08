@@ -12,6 +12,9 @@ use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentLockStorageFailure;
 use RAN\WPBranchUpdater\V1\WordPress\WordPressPackageExecutor;
 use RAN\WPBranchUpdater\V1\WordPress\WordPressUpdaterLock;
 use RuntimeException;
+use ReflectionMethod;
+use InvalidArgumentException;
+use RAN\WPBranchUpdater\V1\WordPress\WordPressCorePackageExecutor;
 use WP_Error;
 use ZipArchive;
 
@@ -26,8 +29,116 @@ final class InstalledWordPressProof {
 
 	public function run(): void {
 		$this->lock();
+		$this->adapter_boundaries();
 		foreach ( array( 'plugin', 'theme' ) as $type ) {
 			$this->package( $type );
+		}
+	}
+
+	private function adapter_boundaries(): void {
+		$executor = new WordPressCorePackageExecutor();
+		$method   = new ReflectionMethod( $executor, 'transient_filter' );
+		$offer    = (object) array( 'new_version' => '2.0.0' );
+		foreach ( array( 'plugin', 'theme' ) as $type ) {
+			$filter            = $method->invoke( $executor, $type, $offer, 'target' );
+			$foreign           = new class() {
+				public string $last_checked = 'preserved';
+				/** @var array<string,string> */
+				public array $response = array();
+			};
+			$previous          = 'previous';
+			$response          = array(
+				'other'  => 'preserved',
+				'target' => &$previous,
+			);
+			$foreign->response =& $response;
+			$foreign_before    = array(
+				'last_checked' => 'preserved',
+				'response'     => array(
+					'other'  => 'preserved',
+					'target' => 'previous',
+				),
+			);
+			$native            = (object) array( 'response' => array( 'other' => 'preserved' ) );
+			foreach ( array( false, (object) array( 'response' => false ), $foreign, $native ) as $input ) {
+				$result = $filter( $input );
+				self::check( $result instanceof \stdClass && is_array( $result->response ), 'Update transient must be a native value bag with an array response.' );
+				self::check( ( 'plugin' === $type ? $offer : (array) $offer ) === $result->response['target'], 'Offer must retain native plugin/theme representation.' );
+				if ( $input === $foreign || $input === $native ) {
+					self::check( 'preserved' === $result->response['other'], 'Unrelated offers must survive normalization.' );
+				}
+				if ( $input === $foreign ) {
+					self::check( 'preserved' === $result->last_checked && get_object_vars( $foreign ) === $foreign_before, 'Foreign public fields survive without mutating even a referenced response.' );
+				}
+				if ( $input === $native ) {
+					self::check( $result === $native, 'Native transient identity must remain unchanged.' );
+				}
+			}
+		}
+		$method = new ReflectionMethod( $executor, 'run_core_operation' );
+		$failed = false;
+		try {
+			$method->invoke( $executor, 'update', 'plugin', '', null );
+		} catch ( InvalidArgumentException $error ) {
+			$failed = 'WordPress update requires an offer.' === $error->getMessage();
+		}
+		self::check( $failed, 'Missing update offer must be rejected before the automatic updater call.' );
+
+		global $wp_filesystem;
+		WP_Filesystem();
+		$filesystem = $wp_filesystem;
+		if ( ! $filesystem instanceof \WP_Filesystem_Base ) {
+			throw new RuntimeException( 'Installed proof requires the native filesystem.' );
+		}
+		$remote = get_temp_dir() . 'ran-branch-source-' . wp_generate_uuid4();
+		$source = $remote . '/repository';
+		self::check( wp_mkdir_p( $source ), 'Source boundary fixture must exist.' );
+		$method = new ReflectionMethod( $executor, 'source_selection_filter' );
+		$filter = $method->invoke( $executor, 'target', null, 'plugin', 'install', null );
+		try {
+			// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Inject an invalid native filesystem only for this boundary proof; restore it in finally.
+			$wp_filesystem = new \stdClass();
+			$result        = $filter(
+				$source,
+				$remote,
+				new \stdClass(),
+				array(
+					'type'   => 'plugin',
+					'action' => 'install',
+				)
+			);
+			self::check( $result instanceof WP_Error && 'ran_branch_deployment_invalid_package_source' === $result->get_error_code(), 'Invalid filesystem object must return the package-source failure.' );
+			self::check( is_dir( $source ) && ! file_exists( $remote . '/target' ), 'Invalid filesystem must not move package bytes.' );
+		} finally {
+			// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Restore the exact native filesystem after the controlled invalid-object proof.
+			$wp_filesystem = $filesystem;
+			$filesystem->delete( $remote, true );
+		}
+	}
+
+	private function missing_theme_version( string $slug ): void {
+		global $wp_filesystem;
+		$filesystem = $wp_filesystem;
+		if ( ! $filesystem instanceof \WP_Filesystem_Base ) {
+			throw new RuntimeException( 'Installed proof requires the native filesystem.' );
+		}
+		$style = get_theme_root() . '/' . $slug . '/style.css';
+		self::check( $filesystem->move( $style, $style . '.proof-backup', false ), 'Temporarily remove the installed theme stylesheet.' );
+		try {
+			wp_clean_themes_cache();
+			$theme = wp_get_theme( $slug );
+			self::check( $theme->exists() && false === $theme->get( 'Version' ), 'Real malformed theme must expose the false-version boundary.' );
+			$d      = new BranchDeploymentDeclaration( 'missing-version', 'theme', $slug, 'fixture/repository', 'fixture', 'main', null, 'update', null, $slug );
+			$failed = false;
+			try {
+				( new WordPressPackageExecutor() )->installed_facts( $d );
+			} catch ( RuntimeException $error ) {
+				$failed = 'WordPress did not report an installed package version.' === $error->getMessage();
+			}
+			self::check( $failed, 'Unavailable theme version must not become an admitted installed fact.' );
+		} finally {
+			self::check( $filesystem->move( $style . '.proof-backup', $style, false ), 'Restore installed theme stylesheet.' );
+			wp_clean_themes_cache();
 		}
 	}
 
@@ -139,6 +250,9 @@ final class InstalledWordPressProof {
 		}
 		$this->refused_update( $type, $slug );
 		$this->failures( $type );
+		if ( 'theme' === $type ) {
+			$this->missing_theme_version( $slug );
+		}
 	}
 
 	private function refused_update( string $type, string $slug ): void {

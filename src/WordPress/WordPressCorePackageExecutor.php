@@ -148,8 +148,17 @@ class WordPressCorePackageExecutor {
 
 	private function transient_filter( string $type, object $offer, string $identifier ): Closure {
 		return static function ( mixed $transient ) use ( $type, $offer, $identifier ): object {
-			if ( ! is_object( $transient ) ) {
+			if ( ! $transient instanceof \stdClass ) {
+				// Native update transients are public value bags, not arbitrary mutable objects.
+				$fields    = is_object( $transient ) ? get_object_vars( $transient ) : array();
 				$transient = new \stdClass();
+				foreach ( $fields as $name => $value ) {
+					$transient->{$name} = $value;
+				}
+				if ( isset( $transient->response ) && is_array( $transient->response ) ) {
+					// Replacing an offer must not write through a foreign array-element reference.
+					unset( $transient->response[ $identifier ] );
+				}
 			}
 			if ( ! isset( $transient->response ) || ! is_array( $transient->response ) ) {
 				$transient->response = array();
@@ -221,7 +230,7 @@ class WordPressCorePackageExecutor {
 				return self::invalid_package_source();
 			}
 			global $wp_filesystem;
-			if ( ! is_object( $wp_filesystem ) || ! $wp_filesystem->move( $selected_source, $destination, false ) ) {
+			if ( ! $wp_filesystem instanceof \WP_Filesystem_Base || ! $wp_filesystem->move( $selected_source, $destination, false ) ) {
 				return self::invalid_package_source();
 			}
 			return trailingslashit( $destination );
@@ -361,6 +370,9 @@ class WordPressCorePackageExecutor {
 		if ( 'install' === $action ) {
 			$skin = new \Automatic_Upgrader_Skin();
 			return 'plugin' === $type ? ( new \Plugin_Upgrader( $skin ) )->install( $archive_path ) : ( new \Theme_Upgrader( $skin ) )->install( $archive_path );
+		}
+		if ( null === $offer ) {
+			throw new InvalidArgumentException( 'WordPress update requires an offer.' );
 		}
 		return ( new \WP_Automatic_Updater() )->update( $type, $offer );
 	}

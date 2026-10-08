@@ -56,12 +56,12 @@ final class WordPressPackageExecutor implements PackageExecutor {
 		return $before;
 	}
 	/**
-	 * @return array{identifier:string,version:string|false,active:bool}
+	 * @return array{identifier:string,version:string,active:bool}
 	 */
 	public function installed_facts( BranchDeploymentDeclaration $d ): array {
 		$identifier = $d->installed_identifier ?? ( 'plugin' === $d->package_type ? $d->slug . '/' . $d->slug . '.php' : $d->slug );
 		$state      = $this->installed_state( $d->package_type, $identifier );
-		if ( null === $state['version'] ) {
+		if ( ! is_string( $state['version'] ) ) {
 			throw new RuntimeException( 'WordPress did not report an installed package version.' );
 		}
 		return array(
