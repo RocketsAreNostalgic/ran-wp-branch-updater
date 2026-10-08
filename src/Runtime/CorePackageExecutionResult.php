@@ -13,6 +13,7 @@ final readonly class CorePackageExecutionResult {
 	public static function failed( CorePackageExecutionFailure $failure ): self {
 		return new self( $failure );
 	}
+	/** @phpstan-assert-if-false CorePackageExecutionFailure $this->get_failure() */
 	public function is_successful(): bool {
 		return null === $this->failure;
 	}

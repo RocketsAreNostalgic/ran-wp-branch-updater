@@ -33,6 +33,9 @@ final class WordPressPackageExecutor implements PackageExecutor {
 			default => throw new RuntimeException( 'Unsupported package operation.' ),
 		};
 	}
+	/**
+	 * @return array{version:string|false|null,active:bool}
+	 */
 	public function preflight( BranchDeploymentDeclaration $d, PreparedArchive $archive ): array {
 		if ( is_multisite() ) {
 			throw new RuntimeException( 'Branch deployment supports single-site WordPress only.' );
@@ -52,6 +55,9 @@ final class WordPressPackageExecutor implements PackageExecutor {
 		$archive->assert_unchanged();
 		return $before;
 	}
+	/**
+	 * @return array{identifier:string,version:string|false,active:bool}
+	 */
 	public function installed_facts( BranchDeploymentDeclaration $d ): array {
 		$identifier = $d->installed_identifier ?? ( 'plugin' === $d->package_type ? $d->slug . '/' . $d->slug . '.php' : $d->slug );
 		$state      = $this->installed_state( $d->package_type, $identifier );
@@ -64,6 +70,9 @@ final class WordPressPackageExecutor implements PackageExecutor {
 			'active'     => $state['active'],
 		);
 	}
+	/**
+	 * @return array{version:string|false|null,active:bool}
+	 */
 	private function installed_state( string $type, string $identifier ): array {
 		require_once ABSPATH . 'wp-admin/includes/plugin.php';
 		require_once ABSPATH . 'wp-admin/includes/theme.php';

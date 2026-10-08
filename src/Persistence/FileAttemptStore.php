@@ -8,10 +8,17 @@ use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 use RuntimeException;
 use Throwable;
 
-/** Strict flock-serialised file journal; an unprovable write leaves execution state uncertain. */
+/**
+ * Strict flock-serialised file journal; an unprovable write leaves execution state uncertain.
+ *
+ * @phpstan-type AttemptRecord array{id:string,state:string,package_type:string,slug:string,repository:string,branch:string,expected_head:string|null,resolved_ref:string|null,mutation_started_at:string|null,outcome:string|null,finished_at:string|null}
+ */
 final class FileAttemptStore {
 	public function __construct( private readonly string $path ) {}
 
+	/**
+	 * @return AttemptRecord
+	 */
 	public function begin( BranchDeploymentDeclaration $d ): array {
 		return $this->mutate(
 			function ( array $records ) use ( $d ): array {
@@ -93,6 +100,7 @@ final class FileAttemptStore {
 	/**
 	 * Read mutable journal state from disk on every call.
 	 *
+	 * @return AttemptRecord
 	 * @phpstan-impure
 	 */
 	public function get( string $id ): array {
@@ -108,6 +116,9 @@ final class FileAttemptStore {
 		);
 	}
 
+	/**
+	 * @param callable(AttemptRecord):AttemptRecord $change
+	 */
 	private function running_transition( string $id, callable $change ): void {
 		$this->mutate(
 			function ( array $records ) use ( $id, $change ): array {
@@ -120,6 +131,9 @@ final class FileAttemptStore {
 		);
 	}
 
+	/**
+	 * @return AttemptRecord
+	 */
 	private function record( BranchDeploymentDeclaration $d ): array {
 		return array(
 			'id'                  => $d->attempt_id,
@@ -136,7 +150,7 @@ final class FileAttemptStore {
 		);
 	}
 
-	/** @return array<string,array<string,string|null>> */
+	/** @return array<string,AttemptRecord> */
 	private function read(): array {
 		if ( ! file_exists( $this->path ) && ! is_link( $this->path ) ) {
 			return array();
@@ -162,6 +176,10 @@ final class FileAttemptStore {
 		return $records;
 	}
 
+	/**
+	 * @param array<array-key,mixed> $r
+	 * @phpstan-assert-if-true AttemptRecord $r
+	 */
 	private function valid_record( string $id, array $r ): bool {
 		$keys = array( 'id', 'state', 'package_type', 'slug', 'repository', 'branch', 'expected_head', 'resolved_ref', 'mutation_started_at', 'outcome', 'finished_at' );
 		sort( $keys );
@@ -198,6 +216,10 @@ final class FileAttemptStore {
 		return true;
 	}
 
+	/**
+	 * @param callable(array<string,AttemptRecord>):array<array-key,AttemptRecord> $change
+	 * @return array<string,AttemptRecord>
+	 */
 	private function mutate( callable $change ): array {
 		return $this->locked(
 			LOCK_EX,
@@ -213,6 +235,9 @@ final class FileAttemptStore {
 		);
 	}
 
+	/**
+	 * @param array<array-key,AttemptRecord> $records
+	 */
 	private function write( array $records ): void {
 		try {
 			// phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- Preserve JSON_THROW_ON_ERROR and exact journal serialization before atomic replacement and readback.
@@ -232,6 +257,12 @@ final class FileAttemptStore {
 		}
 	}
 
+	/**
+	 * @template TResult
+	 * @param LOCK_SH|LOCK_EX $mode
+	 * @param callable():TResult $operation
+	 * @return TResult
+	 */
 	private function locked( int $mode, callable $operation ): mixed {
 		$this->ensure_parent();
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- flock requires the native journal lock descriptor across the complete read or mutation.

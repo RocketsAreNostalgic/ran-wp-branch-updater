@@ -12,6 +12,9 @@ use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 use RAN\WPBranchUpdater\V1\Runtime\StandaloneBranchRunner;
 
 final class RAN_WP_Branch_Updater_RAN_BranchDeploymentHardStopExecutor implements PackageExecutor {
+	/**
+	 * @return array{}
+	 */
 	public function preflight( BranchDeploymentDeclaration $deployment, PreparedArchive $archive ): array {
 		$archive->assert_unchanged();
 		return array();

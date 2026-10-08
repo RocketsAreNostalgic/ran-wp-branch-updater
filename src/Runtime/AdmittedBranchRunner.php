@@ -140,6 +140,7 @@ final class AdmittedBranchRunner {
 		return $outcome;
 	}
 
+	/** @phpstan-assert-if-true AdmittedBranchDurabilityFailure|BranchDeploymentJournalFailure|BranchDeploymentLockReleaseFailure|BranchDeploymentLockStorageFailure $failure */
 	private function is_ambiguous( ?Throwable $failure ): bool {
 		return $failure instanceof AdmittedBranchDurabilityFailure
 			|| $failure instanceof BranchDeploymentJournalFailure

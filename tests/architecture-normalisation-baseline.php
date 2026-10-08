@@ -86,6 +86,13 @@ final class RAN_WP_Branch_Updater_ArchitectureBaselineArchives implements Admitt
 final class RAN_WP_Branch_Updater_ArchitectureBaselineTarget implements AdmittedTargetFacts {
 	private int $policy_calls      = 0;
 	private int $maintenance_calls = 0;
+	/**
+	 * @param array{identifier:string,version:string,active:bool}|null $initial_baseline
+	 * @param array{identifier:string,version:string,active:bool}|null $locked_baseline
+	 * @param array{identifier:string,version:string,active:bool} $installed_facts
+	 * @param list<bool> $maintenance_states
+	 * @param array{identifier:string,version:string,active:bool}|null $restored_facts
+	 */
 	public function __construct(
 		private RAN_WP_Branch_Updater_ArchitectureBaselineTrace $trace,
 		private ?array $initial_baseline = array(

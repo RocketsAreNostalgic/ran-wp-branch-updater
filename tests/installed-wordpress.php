@@ -233,6 +233,9 @@ final class InstalledWordPressProof {
 		}
 	}
 
+	/**
+	 * @return array<string,array<int,array<string,array{function:callable,accepted_args:int}>>>
+	 */
 	private function hooks(): array {
 		global $wp_filter;
 		$result = array();

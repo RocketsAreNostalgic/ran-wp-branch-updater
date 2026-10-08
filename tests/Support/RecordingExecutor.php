@@ -11,10 +11,14 @@ use RuntimeException;
 
 /** Test-only executor that records the immutable archive presented for mutation. */
 final class RecordingExecutor implements PackageExecutor {
+	/** @var list<array{id:string,path:string,version:string}> */
 	public array $calls = array();
 
 	public function __construct( private readonly bool $fail = false ) {}
 
+	/**
+	 * @return array{}
+	 */
 	public function preflight( BranchDeploymentDeclaration $deployment, PreparedArchive $archive ): array {
 		$archive->assert_unchanged();
 		return array();
