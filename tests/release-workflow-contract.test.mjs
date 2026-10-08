@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { spawnSync } from 'node:child_process';
 
 const workflow = readFileSync(
 	new URL('../.github/workflows/release-please.yml', import.meta.url),
@@ -67,4 +68,20 @@ test('package-specific dependency classification remains in terminal quality top
 		ciWorkflow,
 		/quality:\n\s+if: \$\{\{ always\(\) \}\}[\s\S]*needs:[\s\S]*- consumer-install/
 	);
+});
+
+
+test('installed Branch proofs are required by the actual terminal shell gate', () => {
+	const terminal = ciWorkflow.slice(ciWorkflow.indexOf('\n  quality:'));
+	assert.match(terminal, /if: \$\{\{ always\(\) \}\}/);
+	assert.match(terminal, /- installed-wordpress/);
+	assert.match(terminal, /WORDPRESS_RESULT: \$\{\{ needs\.installed-wordpress\.result \}\}/);
+	const script = terminal.split('run: |\n')[1].split('\n').map(line => line.slice(10)).join('\n');
+	for (const lane of ['BASELINE_RESULT', 'CONSUMER_RESULT', 'WORDPRESS_RESULT']) {
+		for (const outcome of ['success', 'failure', 'cancelled', 'skipped', '']) {
+			const env = { ...process.env, BASELINE_RESULT: 'success', CONSUMER_RESULT: 'success', WORDPRESS_RESULT: 'success', [lane]: outcome };
+			const result = spawnSync('bash', ['-e', '-c', script], { env });
+			assert.equal(result.status === 0, outcome === 'success', `${lane}=${outcome}`);
+		}
+	}
 });
