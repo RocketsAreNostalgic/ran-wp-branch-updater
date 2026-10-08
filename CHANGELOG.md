@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0-beta.9](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.8...v1.0.0-beta.9) (2026-10-08)
+
+
+### Bug Fixes
+
+* validate WordPress boundaries and enforce PHPStan level 8 ([#83](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/83)) ([3dee4e0](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/commit/3dee4e0b8842e9ce08d281d6125e1edef8cb3508))
+
 ## [1.0.0-beta.8](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.7...v1.0.0-beta.8) (2026-10-01)
 
 
