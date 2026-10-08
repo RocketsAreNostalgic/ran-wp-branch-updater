@@ -185,7 +185,11 @@ if ( 1 !== $report['totals']['errors'] || ran_wp_branch_updater_has_blanket_dire
 }
 foreach ( array( 'tests/admitted-runner.php', 'tests/naming-enforcement.php' ) as $fixture_path ) {
 	// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Inspect the existing fixture in memory without executing or editing it.
-	$source     = file_get_contents( $root . '/' . $fixture_path ) . "\nfunction unprefixed_future_declaration() {}\n";
+	$source = file_get_contents( $root . '/' . $fixture_path );
+	if ( false === $source ) {
+		throw new RuntimeException( 'Cannot read the naming fixture.' );
+	}
+	$source    .= "\nfunction unprefixed_future_declaration() {}\n";
 	[, $report] = ran_wp_branch_updater_naming_report( $root, $fixture_path, $source, '.phpcs.xml', array( '--sniffs=WordPress.NamingConventions.PrefixAllGlobals' ) );
 	if ( 1 !== $report['totals']['errors'] ) {
 		throw new RuntimeException( 'Process-variable exemption must not cover future declarations.' );
@@ -197,20 +201,25 @@ function ran_wp_branch_updater_has_unreviewed_arguments( string $source, bool $s
 	if ( ! $xml->loadXML( $source, LIBXML_NONET ) ) {
 		return true;
 	}
-	$xpath = new DOMXPath( $xml );
-	if ( 0 !== $xpath->query( '//include-pattern | //rule//exclude-pattern | //rule/exclude | //*[@phpcs-only or @phpcbf-only]' )->length ) {
+	$xpath     = new DOMXPath( $xml );
+	$selectors = $xpath->query( '//include-pattern | //rule//exclude-pattern | //rule/exclude | //*[@phpcs-only or @phpcbf-only]' );
+	if ( false === $selectors || 0 !== $selectors->length ) {
 		return true;
 	}
 	$configurations = $xpath->query( '//config' );
-	if ( 1 !== $configurations->length ) {
+	if ( false === $configurations || 1 !== $configurations->length ) {
 		return true;
 	}
 	$config = $configurations->item( 0 );
 	if ( ! $config instanceof DOMElement || 'testVersion' !== $config->getAttribute( 'name' ) || '8.2-' !== $config->getAttribute( 'value' ) || 2 !== $config->attributes->length ) {
 		return true;
 	}
-	$exclusions = array();
-	foreach ( $xpath->query( '/ruleset/exclude-pattern' ) as $node ) {
+	$exclusions      = array();
+	$exclusion_nodes = $xpath->query( '/ruleset/exclude-pattern' );
+	if ( false === $exclusion_nodes ) {
+		return true;
+	}
+	foreach ( $exclusion_nodes as $node ) {
 		if ( ! $node instanceof DOMElement || $node->hasAttributes() ) {
 			return true;
 		}
@@ -220,8 +229,12 @@ function ran_wp_branch_updater_has_unreviewed_arguments( string $source, bool $s
 	if ( $expected_exclusions !== $exclusions ) {
 		return true;
 	}
-	$arguments = array();
-	foreach ( $xpath->query( '//arg' ) as $node ) {
+	$arguments      = array();
+	$argument_nodes = $xpath->query( '//arg' );
+	if ( false === $argument_nodes ) {
+		return true;
+	}
+	foreach ( $argument_nodes as $node ) {
 		if ( ! $node instanceof DOMElement ) {
 			return true;
 		}
@@ -236,10 +249,11 @@ foreach ( array(
 	'.phpcs-cli-compat.xml' => true,
 ) as $ruleset => $is_standalone ) {
 	// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Inspect the reviewed local ruleset command arguments without executing it.
-	$profiles[ $ruleset ] = file_get_contents( $root . '/' . $ruleset );
-	if ( ran_wp_branch_updater_has_unreviewed_arguments( $profiles[ $ruleset ], $is_standalone ) ) {
+	$profile = file_get_contents( $root . '/' . $ruleset );
+	if ( false === $profile || ran_wp_branch_updater_has_unreviewed_arguments( $profile, $is_standalone ) ) {
 		throw new RuntimeException( 'Review PHPCS conditional rules, path selectors and command arguments before certifying standards.' );
 	}
+	$profiles[ $ruleset ] = $profile;
 }
 // Both the WordPress and standalone profiles must retain the actual PHP 8.2 diagnostic.
 foreach ( $profiles as $ruleset => $profile ) {
@@ -340,9 +354,10 @@ function ran_wp_branch_updater_maintained_php( string $root ): array {
 $tracked = ran_wp_branch_updater_maintained_php( $root );
 foreach ( $tracked as $tracked_path ) {
 	// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Inspect maintained source comments without executing fixture bytes.
-	if ( ran_wp_branch_updater_has_blanket_directive( (string) file_get_contents( $root . '/' . $tracked_path ), $tracked_path ) ) {
+	$source = file_get_contents( $root . '/' . $tracked_path );
+	if ( false === $source || ran_wp_branch_updater_has_blanket_directive( $source, $tracked_path ) ) {
 		// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- CLI failure identifies the exact local source path; this diagnostic is not rendered HTML.
-		throw new RuntimeException( 'Maintained PHP contains a broad or unexplained suppression: ' . $tracked_path );
+		throw new RuntimeException( 'Cannot read maintained PHP or found a broad or unexplained suppression: ' . $tracked_path );
 	}
 }
 $probe_path = 'standards-discovery-' . bin2hex( random_bytes( 8 ) ) . '.php';

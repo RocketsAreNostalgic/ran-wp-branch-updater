@@ -76,6 +76,18 @@ for path in root-contract.php 'new product/contracts/split.php' src/tests/runtim
     php -r '$r=json_decode(file_get_contents($argv[1]),true,512,JSON_THROW_ON_ERROR);foreach($r["files"][realpath($argv[2])]["messages"]??[] as $m){if(($m["identifier"]??"")==="function.notFound"&&str_contains($m["message"],"ran_branch_new_contract_missing")){exit(0);}}exit(1);' "$fixture/new.json" "$fixture/$path"
     rm "$fixture/$path"
 done
+# Each profile must reject every former level, including the nearest downgrade.
+for profile in phpstan.neon phpstan-maintained.neon; do
+    args=(); [[ "$profile" == phpstan-maintained.neon ]] && args=(--maintained)
+    for level in 5 6 7; do
+        sed "s/level: 8/level: $level/" "$root/$profile" > "$fixture/$profile"
+        if php "$root/tests/analysis-coverage.php" "$fixture" "${args[@]}" > "$fixture/guard.log" 2>&1; then
+            echo "Lowered $profile to $level escaped." >&2; exit 1
+        fi
+        grep -q 'Review inclusive analysis scope' "$fixture/guard.log"
+    done
+    cp "$root/$profile" "$fixture/$profile"
+done
 # Configuration reductions fail even when today's source would still be covered.
 sed -i 's/- \.$/- src/' "$fixture/phpstan.neon"
 if php "$root/tests/analysis-coverage.php" "$fixture" > "$fixture/guard.log" 2>&1; then
@@ -227,7 +239,7 @@ printf '%s\n' "$coverage_original" > "$fixture/tests/analysis-coverage.php"
 for change in level exclusion ignore; do
     cp "$root/phpstan-maintained.neon" "$fixture/phpstan-maintained.neon"
     case "$change" in
-        level) sed -i 's/level: 5/level: 4/' "$fixture/phpstan-maintained.neon" ;;
+        level) sed -i 's/level: 8/level: 7/' "$fixture/phpstan-maintained.neon" ;;
         exclusion) printf '\t\t\t- tests/*\n' >> "$fixture/phpstan-maintained.neon" ;;
         ignore) printf '\tignoreErrors: []\n' >> "$fixture/phpstan-maintained.neon" ;;
     esac
