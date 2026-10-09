@@ -22,7 +22,7 @@ jobs:
       php-floor: '8.2'
       php-current: '8.5'
       php-extensions: zip
-      node-version: '24.11.0'
+      node-version: '24.21.0'
 
   consumer-install:
     name: Installed Composer consumer
@@ -75,7 +75,7 @@ jobs:
         if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: '24.11.0'
+          node-version: '24.21.0'
           check-latest: false
 
       - name: Require release-driving squash title for production dependency changes

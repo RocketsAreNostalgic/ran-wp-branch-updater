@@ -2,7 +2,7 @@
 
 This package is in a pre-release development line. Keep every change suitable for public review. Use a Conventional Commit pull-request title so an ordinary squash merge uses that title as the subject consumed by Release Please, rather than the individual branch commit subjects. Release-significant changes must use a visible type from this repository's release configuration (including `deps:` for its production-dependency policy), or a supported breaking classification; see [RELEASING.md](RELEASING.md). A deliberately approved merge commit preserves individual commits, so their Conventional Commit subjects remain release inputs.
 
-Use PHP 8.2 and Node.js 24.11.0. Install Composer dependencies, then run the repository gate:
+Use PHP 8.2 and Node.js 24.21.0. Install Composer dependencies, then run the repository gate:
 
 ```sh
 composer install --no-interaction --prefer-dist
