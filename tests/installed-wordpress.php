@@ -231,7 +231,7 @@ final class InstalledWordPressProof {
 			};
 			add_filter( 'upgrader_pre_download', $observer, 20, 4 );
 			try {
-				$executor->preflight( $declaration, $artifact );
+				$this->preflight_admission( $executor, $declaration, $artifact );
 				$result = $executor->execute_core( $declaration, $artifact );
 				self::check( $result->is_successful(), $type . ' ' . $operation . ' must succeed through the default adapter.' );
 				$facts = $executor->installed_facts( $declaration );
@@ -252,6 +252,23 @@ final class InstalledWordPressProof {
 		$this->failures( $type );
 		if ( 'theme' === $type ) {
 			$this->missing_theme_version( $slug );
+		}
+	}
+
+	private function preflight_admission( WordPressPackageExecutor $executor, BranchDeploymentDeclaration $declaration, PreparedArchive $artifact ): void {
+		$observations = 0;
+		$observe      = static function ( mixed $value ) use ( &$observations ): mixed {
+			++$observations;
+			return $value;
+		};
+		add_filter( 'extra_plugin_headers', $observe );
+		add_filter( 'stylesheet', $observe );
+		try {
+			self::check( array() === $executor->preflight( $declaration, $artifact ), 'WordPress preflight must return no installed observations.' );
+			self::check( 0 === $observations, 'Preflight must not query plugin headers or the active stylesheet.' );
+		} finally {
+			remove_filter( 'extra_plugin_headers', $observe );
+			remove_filter( 'stylesheet', $observe );
 		}
 	}
 

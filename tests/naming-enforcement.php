@@ -7,10 +7,10 @@ $root          = dirname( __DIR__ );
 $method_code   = 'RANOwnedMethods.NamingConventions.ValidMethodName.NotSnakeCase';
 $variable_code = 'WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase';
 $cases         = array(
-	array( 'src/Archive/PreparedArchive.php', 'final class PreparedArchive implements PreparedPackageArtifact {', 'final class PreparedArchive implements PreparedPackageArtifact { public function silence_probe(): void { @strlen( "probe" ); }', 'WordPress.PHP.NoSilencedErrors.Discouraged' ),
+	array( 'src/Archive/PreparedArchive.php', 'final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchArtifact {', 'final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchArtifact { public function silence_probe(): void { @strlen( "probe" ); }', 'WordPress.PHP.NoSilencedErrors.Discouraged' ),
 
 	array( 'src/Archive/ArchiveValidator.php', 'final class ArchiveValidator {', 'final class ArchiveValidator { public function native_operation_probe(): void { json_encode( array() ); }', 'WordPress.WP.AlternativeFunctions.json_encode_json_encode' ),
-	array( 'src/Archive/PreparedArchive.php', 'final class PreparedArchive implements PreparedPackageArtifact {', 'final class PreparedArchive implements PreparedPackageArtifact { public function native_operation_probe(): void { json_encode( array() ); }', 'WordPress.WP.AlternativeFunctions.json_encode_json_encode' ),
+	array( 'src/Archive/PreparedArchive.php', 'final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchArtifact {', 'final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchArtifact { public function native_operation_probe(): void { json_encode( array() ); }', 'WordPress.WP.AlternativeFunctions.json_encode_json_encode' ),
 	array( 'src/Persistence/FileAttemptStore.php', 'final class FileAttemptStore {', 'final class FileAttemptStore { public function native_operation_probe(): void { json_encode( array() ); }', 'WordPress.WP.AlternativeFunctions.json_encode_json_encode' ),
 	array( 'src/Persistence/FileMutationLock.php', 'final class FileMutationLock implements MutationLock {', 'final class FileMutationLock implements MutationLock { public function native_operation_probe(): void { json_encode( array() ); }', 'WordPress.WP.AlternativeFunctions.json_encode_json_encode' ),
 	array( 'src/Contract/AdmittedTargetFacts.php', 'function frozen_target(', 'function frozenTarget(', $method_code ),

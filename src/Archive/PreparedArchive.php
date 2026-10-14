@@ -3,12 +3,13 @@ declare(strict_types=1);
 
 namespace RAN\WPBranchUpdater\V1\Archive;
 
+use RAN\WPBranchUpdater\V1\Contract\AdmittedBranchArtifact;
 use RAN\WPBranchUpdater\V1\Contract\PreparedPackageArtifact;
 use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 use RuntimeException;
 
 /** Exact-byte custody from provider download through the WordPress boundary. */
-final class PreparedArchive implements PreparedPackageArtifact {
+final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchArtifact {
 	public const DEFAULT_MAXIMUM_ARTIFACT_BYTES = 52428800;
 
 	private const EXPANDED_RATIO = 4;
@@ -98,6 +99,14 @@ final class PreparedArchive implements PreparedPackageArtifact {
 			}
 			throw $e;
 		}
+	}
+
+	public function resolved_ref(): string {
+		return $this->resolved_ref;
+	}
+
+	public function expected_version(): string {
+		return $this->version;
 	}
 
 	public function path(): string {

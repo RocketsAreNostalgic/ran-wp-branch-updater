@@ -30,7 +30,6 @@ If a host imported one of the previous flat public types, update the full FQCN r
 | `RAN\BranchDeployment\ArchiveValidator` | `RAN\WPBranchUpdater\V1\Archive\ArchiveValidator` |
 | `RAN\BranchDeployment\PackageSubdirectory` | `RAN\WPBranchUpdater\V1\Archive\PackageSubdirectory` |
 | `RAN\BranchDeployment\PreparedArchive` | `RAN\WPBranchUpdater\V1\Archive\PreparedArchive` |
-| `RAN\BranchDeployment\PreparedArchiveArtifact` | `RAN\WPBranchUpdater\V1\Archive\PreparedArchiveArtifact` |
 | `RAN\BranchDeployment\AdmittedArchiveSource` | `RAN\WPBranchUpdater\V1\Contract\AdmittedArchiveSource` |
 | `RAN\BranchDeployment\AdmittedAttemptJournal` | `RAN\WPBranchUpdater\V1\Contract\AdmittedAttemptJournal` |
 | `RAN\BranchDeployment\AdmittedBranchArtifact` | `RAN\WPBranchUpdater\V1\Contract\AdmittedBranchArtifact` |
@@ -59,6 +58,14 @@ If a host imported one of the previous flat public types, update the full FQCN r
 | `RAN\BranchDeployment\WordPressUpdaterLock` | `RAN\WPBranchUpdater\V1\WordPress\WordPressUpdaterLock` |
 
 These are naming and source-organisation changes. `deploy()` remains the public terminal action, and existing terminal outcome strings remain unchanged.
+
+## Direct admitted archive owner
+
+The forwarding `Archive\PreparedArchiveArtifact` class is retired in this beta cut. `Archive\PreparedArchive` now implements `Contract\AdmittedBranchArtifact` directly. Replace wrapper construction with the validated archive owner, remove `archive()` unwrapping, and pass that same owner to `StandaloneTargetFacts::record_installed()`. `ProviderArchiveSource::prepare()` now returns the owner directly. There is no legacy wrapper or dual-representation dispatch.
+
+`resolved_ref()` and `expected_version()` return the existing immutable metadata; they remain readable after cleanup. Custody checks, local byte access and cleanup stay on the same object. A cloned owner does not share cleanup state: after either copy deletes the file, the other's custody checks fail. Hosts must retain one owner per acquired archive rather than relying on cloned wrappers sharing cleanup. Update concrete type checks and reflection expectations alongside callers.
+
+Core hosts that constructed or consumed the wrapper must update their archive adapter and adopt the matching immutable released Composer dependency as one qualified tuple. The direct adapter cannot run against the earlier package whose `PreparedArchive` lacks the admitted interface. Publishing this library alone does not qualify an unchanged Core installation; coordinate the host's released dependency adoption before upgrading controlled sites.
 
 ## Typical host update
 
@@ -157,3 +164,7 @@ rename similarly spelled WordPress, provider or Core-owned receiver contracts.
 Promoted property names also change constructor named arguments. Persisted and
 wire keys, journal outcomes, protocol strings, defaults/types/visibility and
 mutation ordering do not change. `ZipArchive::$numFiles` remains external.
+
+## WordPress preflight observations
+
+`WordPress\WordPressPackageExecutor::preflight()` now returns an empty array instead of installed version and activation observations. The standalone runner already discarded those observations. Use `installed_facts()` when explicitly querying the installed package; deployment target checks continue to acquire fresh facts at their existing authority boundaries. Preflight retains dependency loading, runtime policy and archive custody checks. The `PackageExecutor` interface and custom executor calls are unchanged.

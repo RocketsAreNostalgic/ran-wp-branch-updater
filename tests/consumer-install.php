@@ -22,6 +22,15 @@ if ( ! class_exists( RAN\WPBranchUpdater\V1\Runtime\BranchUpdater::class ) ) {
 if ( ! class_exists( RAN\UpdaterSupport\V1\ArchiveSafety::class ) ) {
 	throw new RuntimeException( 'Composer did not load updater support.' );
 }
+$archive_contract = new ReflectionClass( RAN\WPBranchUpdater\V1\Archive\PreparedArchive::class );
+if ( ! $archive_contract->implementsInterface( RAN\WPBranchUpdater\V1\Contract\AdmittedBranchArtifact::class )
+	|| ! $archive_contract->implementsInterface( RAN\WPBranchUpdater\V1\Contract\PreparedPackageArtifact::class )
+) {
+	throw new RuntimeException( 'Installed prepared archive must directly implement both archive contracts.' );
+}
+if ( class_exists( 'RAN\\WPBranchUpdater\\V1\\Archive\\PreparedArchiveArtifact' ) ) {
+	throw new RuntimeException( 'Installed package retains the retired archive wrapper.' );
+}
 if (
 	class_exists( RAN\WPBranchUpdater\V1\GitHubFixtureProvider::class )
 	|| class_exists( RAN\WPBranchUpdater\V1\BitbucketFixtureProvider::class )

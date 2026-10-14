@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace RAN\WPBranchUpdater\V1\Runtime;
 
-use RAN\WPBranchUpdater\V1\Archive\PreparedArchiveArtifact;
+use RAN\WPBranchUpdater\V1\Archive\PreparedArchive;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedTargetFacts;
 use RAN\WPBranchUpdater\V1\Contract\PackageExecutor;
 use RAN\WPBranchUpdater\V1\WordPress\WordPressPackageExecutor;
@@ -49,7 +49,7 @@ final class StandaloneTargetFacts implements AdmittedTargetFacts {
 	}
 
 	/** @param array{identifier:string,version:string,active:bool}|null $observed */
-	public function record_installed( BranchDeploymentDeclaration $deployment, PreparedArchiveArtifact $artifact, ?array $observed ): void {
+	public function record_installed( BranchDeploymentDeclaration $deployment, PreparedArchive $artifact, ?array $observed ): void {
 		$this->installed = $observed ?? array(
 			'identifier' => $deployment->installed_identifier ?? $deployment->slug,
 			'version'    => $artifact->expected_version(),

@@ -6,7 +6,6 @@ namespace RAN\WPBranchUpdater\V1\Runtime;
 
 use RAN\WPBranchUpdater\V1\Archive\ArchiveOffer;
 use RAN\WPBranchUpdater\V1\Archive\PreparedArchive;
-use RAN\WPBranchUpdater\V1\Archive\PreparedArchiveArtifact;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedArchiveSource;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedBranchArtifact;
 use RAN\WPBranchUpdater\V1\Contract\BranchProvider;
@@ -39,13 +38,11 @@ final class ProviderArchiveSource implements AdmittedArchiveSource {
 			throw new AdmittedBranchStageFailure( 'provider_failed' );
 		}
 		try {
-			return new PreparedArchiveArtifact(
-				PreparedArchive::download_and_validate(
-					$offer,
-					$deployment,
-					$this->directory,
-					$this->maximum_artifact_bytes
-				)
+			return PreparedArchive::download_and_validate(
+				$offer,
+				$deployment,
+				$this->directory,
+				$this->maximum_artifact_bytes
 			);
 		} catch ( RuntimeException $failure ) {
 			throw new AdmittedBranchStageFailure( 'archive_integrity_failed' );

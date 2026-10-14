@@ -34,7 +34,7 @@ final class WordPressPackageExecutor implements PackageExecutor {
 		};
 	}
 	/**
-	 * @return array{version:string|false|null,active:bool}
+	 * @return array{}
 	 */
 	public function preflight( BranchDeploymentDeclaration $d, PreparedArchive $archive ): array {
 		if ( is_multisite() ) {
@@ -50,10 +50,10 @@ final class WordPressPackageExecutor implements PackageExecutor {
 		if ( file_exists( ABSPATH . '.maintenance' ) || is_link( ABSPATH . '.maintenance' ) ) {
 			throw new RuntimeException( 'WordPress maintenance mode is active.' );
 		}
-		$identifier = $d->installed_identifier ?? ( 'plugin' === $d->package_type ? $d->slug . '/' . $d->slug . '.php' : $d->slug );
-		$before     = $this->installed_state( $d->package_type, $identifier );
+		require_once ABSPATH . 'wp-admin/includes/plugin.php';
+		require_once ABSPATH . 'wp-admin/includes/theme.php';
 		$archive->assert_unchanged();
-		return $before;
+		return array();
 	}
 	/**
 	 * @return array{identifier:string,version:string,active:bool}
