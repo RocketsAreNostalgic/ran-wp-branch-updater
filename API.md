@@ -25,6 +25,8 @@ $outcome = $plugin->deploy(expected_commit: $commit);
 
 `Archive\PreparedArchive` owns the exact local ZIP from acquisition until cleanup. Validation covers path safety, entry metadata/type, collision rules, one package root, size limits, selected subdirectory, package identity, headers, version syntax, and PHP/WordPress compatibility.
 
+The same `PreparedArchive` implements `Contract\AdmittedBranchArtifact` and `Contract\PreparedPackageArtifact`. `ProviderArchiveSource::prepare()` returns that validated owner directly; standalone executors receive the same object. `resolved_ref()` and `expected_version()` expose immutable metadata alongside `resolved_ref`, `version`, and `get_expected_version()`, including after cleanup. Byte access, capacity checks and mutation still require intact custody. Reuse this owner rather than cloning it: copies do not share cleanup state, and cleaning one invalidates the other's file custody.
+
 `Runtime\AdmittedBranchRunner` owns the ordered execution of one already-admitted attempt. `Runtime\StandaloneBranchRunner` is the package's standalone composition around the same admitted runner.
 
 `WordPress\WordPressPackageExecutor` adapts the package-level execution contract to WordPress. `WordPress\WordPressCorePackageExecutor` scopes the direct Core upgrader interaction. WordPress remains the installation owner.
