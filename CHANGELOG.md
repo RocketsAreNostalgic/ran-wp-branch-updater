@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.0-beta.10](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.9...v1.0.0-beta.10) (2026-10-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* simplify archive ownership and preflight observations ([#89](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/89))
+
+### Code Refactoring
+
+* simplify archive ownership and preflight observations ([#89](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/89)) ([a578ebf](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/commit/a578ebf4bf5f599e32b7f762cf5cbb73abb985c4))
+
 ## [1.0.0-beta.9](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.8...v1.0.0-beta.9) (2026-10-08)
 
 
