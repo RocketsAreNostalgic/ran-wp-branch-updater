@@ -164,3 +164,7 @@ rename similarly spelled WordPress, provider or Core-owned receiver contracts.
 Promoted property names also change constructor named arguments. Persisted and
 wire keys, journal outcomes, protocol strings, defaults/types/visibility and
 mutation ordering do not change. `ZipArchive::$numFiles` remains external.
+
+## WordPress preflight observations
+
+`WordPress\WordPressPackageExecutor::preflight()` now returns an empty array instead of installed version and activation observations. The standalone runner already discarded those observations. Use `installed_facts()` when explicitly querying the installed package; deployment target checks continue to acquire fresh facts at their existing authority boundaries. Preflight retains dependency loading, runtime policy and archive custody checks. The `PackageExecutor` interface and custom executor calls are unchanged.

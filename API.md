@@ -31,6 +31,8 @@ The same `PreparedArchive` implements `Contract\AdmittedBranchArtifact` and `Con
 
 `WordPress\WordPressPackageExecutor` adapts the package-level execution contract to WordPress. `WordPress\WordPressCorePackageExecutor` scopes the direct Core upgrader interaction. WordPress remains the installation owner.
 
+The WordPress executor's `preflight()` checks runtime policy, loads the plugin and theme helpers and verifies archive custody, returning an empty array. It does not query installed metadata. The deployment lifecycle still acquires fresh installed facts before acquisition, under the mutation lock, after execution and when checking restoration. Custom `PackageExecutor` implementations retain the two-argument array-returning contract.
+
 ## Outcomes and exceptions
 
 `deploy()` returns a terminal outcome only after the configured journal has finished. Existing outcome strings are intentionally stable, including examples such as:
