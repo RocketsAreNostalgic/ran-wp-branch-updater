@@ -116,3 +116,25 @@ Production providers are host-supplied. The `GitHubFixtureProvider` and `Bitbuck
 A host remains responsible for credential handling, webhook authentication, scheduling, durable admission/deduplication, and recovery decisions. The branch package is responsible only for its declared deployment lifecycle.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the updater-family grammar and [MIGRATING.md](MIGRATING.md) for beta class/namespace changes.
+
+## Non-reclaiming WordPress mutation barrier
+
+`WordPress\WordPressUpdaterLock::try_acquire_without_reclaim(): ?string`
+atomically inserts the existing non-autoloaded `auto_updater.lock` row only when
+absent. A token means ownership; `null` means an occupied row, including an expired
+or malformed token. Database failure throws `BranchDeploymentLockStorageFailure`.
+The method never deletes or reclaims an existing row. Release a successful claim
+through the unchanged exact-token `release($token)` method in `finally` and handle
+failed release as uncertainty.
+
+Use this barrier for host authority transitions that must not steal an interrupted
+operation's lock. `current_token()` followed by `acquire()` is not equivalent:
+ordinary `acquire()` retains its existing expired-lock takeover policy. The new
+method does not establish that an earlier operation stopped, clear durable mutation
+journals, or authorize recovery. Those remain host responsibilities. The existing
+timestamp token format and standalone deployment behavior are unchanged.
+
+Timestamp tokens are not globally unique receipts. Do not reuse a token after its
+release or infer another process's lifetime from its age. A host's durable
+mutation/recovery ownership must be established separately; this barrier does not
+provide that evidence.
