@@ -234,7 +234,9 @@ final class InstalledWordPressProof {
 			$query_count = $wpdb->num_queries;
 			self::check( null === $lock->try_acquire_without_reclaim(), 'Every occupied row must refuse acquisition.' );
 			self::check( 1 === $wpdb->num_queries - $query_count, 'Non-reclaiming acquisition must execute exactly one INSERT, not a check-then-reclaim sequence.' );
-			self::check( $occupied === $wpdb->get_var( $wpdb->prepare( 'SELECT option_value FROM %i WHERE option_name = %s', $wpdb->options, $name ) ) && get_option( $name ) === $occupied, 'Occupied SQL and cached bytes must survive unchanged.' );
+			// get_var() maps an empty SQL string to null; a row read preserves the exact stored bytes.
+			$row = $wpdb->get_row( $wpdb->prepare( 'SELECT option_value FROM %i WHERE option_name = %s', $wpdb->options, $name ) );
+			self::check( null !== $row && $row->option_value === $occupied && get_option( $name ) === $occupied, 'Occupied SQL and cached bytes must survive unchanged.' );
 			self::check( ! $lock->release( 'wrong-token' ), 'Wrong-token release must not erase an occupied row.' );
 			self::check( $lock->release( $occupied ) && false === get_option( $name ), 'Proof cleanup releases only its exact inserted row.' );
 		}
