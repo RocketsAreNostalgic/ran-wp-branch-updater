@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0-beta.12](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.11...v1.0.0-beta.12) (2026-10-16)
+
+
+### Features
+
+* validate explicit initial package identity (admitted API 3) ([#95](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/95)) ([fcfbbad](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/commit/fcfbbad9ec2458f80fba57ce2fc09672645f1501))
+
 ## [1.0.0-beta.11](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.10...v1.0.0-beta.11) (2026-10-16)
 
 
