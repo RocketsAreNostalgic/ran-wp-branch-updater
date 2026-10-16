@@ -40,6 +40,16 @@ class WordPressUpdaterLock implements MutationLock {
 		return is_string( $stored ) && 1 === preg_match( '/^\d+$/D', $stored ) && (int) $stored > time() - self::TIMEOUT ? $stored : null;
 	}
 
+	/**
+	 * Acquire only an absent row. Present rows, including expired or malformed
+	 * tokens, belong to their existing owner/recovery policy and are never reclaimed.
+	 * Database failure throws; null means occupancy, not permission to proceed.
+	 */
+	public function try_acquire_without_reclaim(): ?string {
+		$token = (string) time();
+		return $this->insert( $token ) ? $token : null;
+	}
+
 	public function acquire(): string {
 		global $wpdb;
 		$this->database();

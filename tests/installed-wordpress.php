@@ -29,6 +29,8 @@ final class InstalledWordPressProof {
 
 	public function run(): void {
 		$this->lock();
+		$this->non_reclaiming_lock();
+		$this->lock_race();
 		$this->adapter_boundaries();
 		foreach ( array( 'plugin', 'theme' ) as $type ) {
 			$this->package( $type );
@@ -199,7 +201,7 @@ final class InstalledWordPressProof {
 		$previous_suppression = $wpdb->suppress_errors( true );
 		try {
 			$wpdb->options = $original_options . '_missing_branch_proof';
-			foreach ( array( static fn () => $owner->acquire(), static fn () => $owner->current_token(), static fn () => $owner->release( '1' ) ) as $operation ) {
+			foreach ( array( static fn () => $owner->acquire(), static fn () => $owner->try_acquire_without_reclaim(), static fn () => $owner->current_token(), static fn () => $owner->release( '1' ) ) as $operation ) {
 				$failed = false;
 				try {
 					$operation();
@@ -212,6 +214,120 @@ final class InstalledWordPressProof {
 			$wpdb->options = $original_options;
 			$wpdb->suppress_errors( $previous_suppression );
 		}
+	}
+
+	private function non_reclaiming_lock(): void {
+		global $wpdb;
+		$name = 'auto_updater.lock';
+		$lock = new WordPressUpdaterLock();
+		self::check( false === get_option( $name ), 'Non-reclaiming proof requires no existing lock.' );
+		$token = $lock->try_acquire_without_reclaim();
+		if ( ! is_string( $token ) ) {
+			throw new RuntimeException( 'Absent-row acquisition must succeed.' );
+		}
+		self::check( get_option( $name ) === $token, 'Absent-row acquisition must invalidate the negative cache.' );
+		self::check( null === $lock->try_acquire_without_reclaim() && get_option( $name ) === $token, 'A present current owner must remain unchanged.' );
+		self::check( $lock->release( $token ) && false === get_option( $name ), 'Non-reclaiming token uses exact release and positive cache invalidation.' );
+		foreach ( array( (string) ( time() - 7200 ), 'malformed-token', '', '0' ) as $occupied ) {
+			update_option( $name, $occupied, false );
+			self::check( get_option( $name ) === $occupied, 'Prime occupied option cache.' );
+			$query_count = $wpdb->num_queries;
+			self::check( null === $lock->try_acquire_without_reclaim(), 'Every occupied row must refuse acquisition.' );
+			self::check( 1 === $wpdb->num_queries - $query_count, 'Non-reclaiming acquisition must execute exactly one INSERT, not a check-then-reclaim sequence.' );
+			// get_var() maps an empty SQL string to null; a row read preserves the exact stored bytes.
+			$row = $wpdb->get_row( $wpdb->prepare( 'SELECT option_value FROM %i WHERE option_name = %s', $wpdb->options, $name ) );
+			self::check( null !== $row && $row->option_value === $occupied && get_option( $name ) === $occupied, 'Occupied SQL and cached bytes must survive unchanged.' );
+			self::check( ! $lock->release( 'wrong-token' ), 'Wrong-token release must not erase an occupied row.' );
+			self::check( $lock->release( $occupied ) && false === get_option( $name ), 'Proof cleanup releases only its exact inserted row.' );
+		}
+	}
+
+	/** @param resource $output */
+	private static function child_line( $output ): string {
+		$read   = array( $output );
+		$write  = null;
+		$except = null;
+		self::check( 1 === stream_select( $read, $write, $except, 15 ), 'Lock contender must respond within the bounded proof deadline.' );
+		$line = fgets( $output );
+		if ( ! is_string( $line ) ) {
+			throw new RuntimeException( 'Lock contender must provide a result.' );
+		}
+		return trim( $line );
+	}
+
+	/** Independent PHP processes load WordPress and contend through separate DB connections. */
+	private function lock_race(): void {
+		global $wpdb;
+		$name = 'auto_updater.lock';
+		self::check( false === get_option( $name ), 'Race requires an absent updater lock.' );
+		$workers = array();
+		$tokens  = array();
+		try {
+			for ( $index = 0; $index < 2; ++$index ) {
+				// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.system_calls_proc_open -- Independent CLI processes prove actual database contention on the verified disposable site.
+				$process = proc_open(
+					array( PHP_BINARY, __FILE__, '--lock-contender' ),
+					array(
+						0 => array( 'pipe', 'r' ),
+						1 => array( 'pipe', 'w' ),
+						2 => array( 'pipe', 'w' ),
+					),
+					$pipes
+				);
+				if ( ! is_resource( $process ) ) {
+					throw new RuntimeException( 'Cannot start independent WordPress lock contender.' );
+				}
+				$workers[] = array( $process, $pipes );
+				self::check( 'ready' === self::child_line( $pipes[1] ), 'Contender must load WordPress before racing.' );
+			}
+			foreach ( $workers as $worker ) {
+				// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fwrite -- Send a bounded command through this proof-owned subprocess pipe.
+				fwrite( $worker[1][0], "acquire\n" );
+			}
+			foreach ( $workers as $worker ) {
+				$line = self::child_line( $worker[1][1] );
+				self::check( 'occupied' === $line || 1 === preg_match( '/^owned:[0-9]+$/D', $line ), 'Contender must report explicit ownership or occupancy.' );
+				if ( str_starts_with( $line, 'owned:' ) ) {
+					$tokens[] = substr( $line, 6 );
+				}
+			}
+			self::check( 1 === count( $tokens ), 'Exactly one independent process may own the atomic INSERT.' );
+			self::check( $tokens[0] === $wpdb->get_var( $wpdb->prepare( 'SELECT option_value FROM %i WHERE option_name = %s', $wpdb->options, $name ) ), 'Winning row must remain while both contenders report.' );
+			foreach ( $workers as $worker ) {
+				// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fwrite -- Send a bounded command through this proof-owned subprocess pipe.
+				fwrite( $worker[1][0], "release\n" );
+				self::check( 'done' === self::child_line( $worker[1][1] ), 'Each contender must complete exact-owner cleanup.' );
+			}
+		} finally {
+			foreach ( $workers as $worker ) {
+				foreach ( $worker[1] as $pipe ) {
+					// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Close this proof-owned subprocess pipe.
+					fclose( $pipe );
+				}
+				proc_terminate( $worker[0] );
+				proc_close( $worker[0] );
+			}
+			foreach ( $tokens as $token ) {
+				( new WordPressUpdaterLock() )->release( $token );
+			}
+		}
+		self::check( null === $wpdb->get_var( $wpdb->prepare( 'SELECT option_value FROM %i WHERE option_name = %s', $wpdb->options, $name ) ), 'Race must leave no durable lock.' );
+		wp_cache_delete( $name, 'options' );
+		wp_cache_delete( 'notoptions', 'options' );
+	}
+
+	public static function lock_contender(): void {
+		$lock = new WordPressUpdaterLock();
+		echo "ready\n";
+		self::check( "acquire\n" === fgets( STDIN ), 'Contender requires explicit parent acquisition signal.' );
+		$token = $lock->try_acquire_without_reclaim();
+		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Closed CLI protocol transmits only this adapter-generated decimal lock token, never HTML or secrets.
+		echo null === $token ? "occupied\n" : 'owned:' . $token . "\n";
+		self::check( "release\n" === fgets( STDIN ), 'Contender retains ownership until explicit parent release signal.' );
+		if ( null !== $token ) {
+			self::check( $lock->release( $token ), 'Winner must release exactly its token.' );
+		}
+		echo "done\n";
 	}
 
 	private function package( string $type ): void {
@@ -384,8 +500,13 @@ if ( ! is_string( $ran_wp_branch_updater_site ) || '1' !== getenv( 'RAN_BRANCH_D
 }
 require $ran_wp_branch_updater_site . '/wp-load.php';
 require dirname( __DIR__ ) . '/vendor/autoload.php';
+InstalledWordPressProof::check( realpath( ABSPATH ) === realpath( $ran_wp_branch_updater_site ) && ! is_link( $ran_wp_branch_updater_site ) && realpath( WP_CONTENT_DIR ) === realpath( $ran_wp_branch_updater_site . '/wp-content' ) && ! is_link( WP_CONTENT_DIR ) && 'http://localhost' === untrailingslashit( home_url() ), 'Proof requires the exact disposable site, content directory and local URL.' );
 require_once ABSPATH . 'wp-admin/includes/file.php';
 require_once ABSPATH . 'wp-admin/includes/plugin.php';
 require_once ABSPATH . 'wp-admin/includes/theme.php';
+if ( in_array( '--lock-contender', $argv ?? array(), true ) ) {
+	InstalledWordPressProof::lock_contender();
+	return;
+}
 ( new InstalledWordPressProof() )->run();
 echo "PASS Branch default executor and database lock installed proofs\n";
