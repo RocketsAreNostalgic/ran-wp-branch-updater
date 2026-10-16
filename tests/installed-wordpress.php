@@ -5,6 +5,13 @@ declare(strict_types=1);
 namespace RAN\WPBranchUpdater\V1\Tests;
 
 use RAN\WPBranchUpdater\V1\Archive\ArchiveOffer;
+use RAN\WPBranchUpdater\V1\Contract\AdmittedArchiveSource;
+use RAN\WPBranchUpdater\V1\Contract\AdmittedAttemptJournal;
+use RAN\WPBranchUpdater\V1\Contract\AdmittedBranchArtifact;
+use RAN\WPBranchUpdater\V1\Contract\AdmittedPackageExecutor;
+use RAN\WPBranchUpdater\V1\Contract\AdmittedTargetFacts;
+use RAN\WPBranchUpdater\V1\Runtime\BranchUpdater;
+use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionResult;
 use RAN\WPBranchUpdater\V1\Archive\PreparedArchive;
 use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionFailure;
@@ -34,6 +41,8 @@ final class InstalledWordPressProof {
 		$this->adapter_boundaries();
 		foreach ( array( 'plugin', 'theme' ) as $type ) {
 			$this->package( $type );
+			$this->initial_identity( $type, false );
+			$this->initial_identity( $type, true );
 		}
 	}
 
@@ -330,6 +339,93 @@ final class InstalledWordPressProof {
 		echo "done\n";
 	}
 
+	/** Exercise API 3 admission with real archive validation, database lock and WordPress installation. */
+	private function initial_identity( string $type, bool $mismatch ): void {
+		$slug       = 'ran-identity-' . $type . ( $mismatch ? '-refused' : '-accepted' );
+		$identifier = 'plugin' === $type ? $slug . '/Bootstrap.php' : $slug;
+		$d          = new BranchDeploymentDeclaration( 'identity-' . $slug, $type, $slug, 'fixture/repository', 'fixture', 'main', null, 'install', 'packages/target', null, null, $identifier );
+		$path       = 'plugin' === $type ? WP_PLUGIN_DIR . '/' . $slug : get_theme_root() . '/' . $slug;
+		self::check( ! file_exists( $path ), 'Identity proof requires an absent destination.' );
+		self::check( array() === glob( get_temp_dir() . 'ran-branch-proof-custody/*' ), 'Identity proof requires empty archive custody.' );
+		$journal  = new class() implements AdmittedAttemptJournal {
+			public int $fences     = 0;
+			public string $outcome = '';
+			public function record_resolved_ref( string $ref ): void {}
+			public function mark_mutation_started(): void {
+				++$this->fences;
+			}
+			public function finish( string $code ): void {
+				$this->outcome = $code;
+			}
+		};
+		$target   = new class() implements AdmittedTargetFacts {
+			public int $adoptions = 0;
+			public function assert_mutation_allowed(): void {}
+			public function frozen_target( BranchDeploymentDeclaration $deployment, bool $defer_existing ): ?array {
+				InstalledWordPressProof::check( 'install' === $deployment->operation && ( $defer_existing || null === $deployment->installed_identifier ), 'Initial admission must not carry installed management authority.' );
+				return null;
+			}
+			public function maintenance_active(): bool {
+				return file_exists( ABSPATH . '.maintenance' );
+			}
+			public function recheck_managed( BranchDeploymentDeclaration $deployment ): void {}
+			public function installed( BranchDeploymentDeclaration $deployment ): array {
+				return ( new WordPressPackageExecutor() )->installed_facts( $deployment );
+			}
+			public function baseline_now( BranchDeploymentDeclaration $deployment, array $baseline ): array {
+				InstalledWordPressProof::check( '' !== $baseline['identifier'], 'A baseline must identify its package.' );
+				return $this->installed( $deployment );
+			}
+			public function adopt( BranchDeploymentDeclaration $deployment ): bool {
+				InstalledWordPressProof::check( $deployment->expected_identifier === $this->installed( $deployment )['identifier'], 'Adoption must receive exactly the installed requested identity.' );
+				++$this->adoptions;
+				return true;
+			}
+		};
+		$archives = new class( fn (): PreparedArchive => $this->artifact( $d, '1.0.0', $mismatch ? 'Wrong.php' : 'Bootstrap.php', $mismatch && 'theme' === $type ) ) implements AdmittedArchiveSource {
+			/** @param \Closure():PreparedArchive $prepare */
+			public function __construct( private \Closure $prepare ) {}
+			public function prepare( BranchDeploymentDeclaration $deployment, ?array $baseline ): AdmittedBranchArtifact {
+				InstalledWordPressProof::check( null === $baseline && null !== $deployment->expected_identifier, 'Initial archive admission must retain the requested identity without a baseline.' );
+				return ( $this->prepare )();
+			}
+			public function verify_current_head(): void {}
+		};
+		$executor = new class() implements AdmittedPackageExecutor {
+			public int $calls = 0;
+			public function preflight( BranchDeploymentDeclaration $deployment, AdmittedBranchArtifact $artifact ): void {
+				if ( ! $artifact instanceof PreparedArchive ) {
+					throw new RuntimeException( 'Installed proof requires real validated archive custody.' );
+				}
+				( new WordPressPackageExecutor() )->preflight( $deployment, $artifact );
+			}
+			public function execute( BranchDeploymentDeclaration $deployment, ?array $baseline, AdmittedBranchArtifact $artifact ): CorePackageExecutionResult {
+				if ( ! $artifact instanceof PreparedArchive ) {
+					throw new RuntimeException( 'Installed proof requires a validated archive.' );
+				}
+				++$this->calls;
+				return ( new WordPressPackageExecutor() )->execute_core( $deployment, $artifact );
+			}
+		};
+		$updater  = BranchUpdater::for_admitted_attempt( $d, $journal, $archives, $target, $executor, new WordPressUpdaterLock() );
+		$pending  = 'plugin' === $type
+			? $updater->plugin( $d->repository, $d->repository_id, $d->branch, null, $slug, $d->subdirectory )
+			: $updater->theme( $d->repository, $d->repository_id, $d->branch, $slug, $d->subdirectory );
+		$outcome  = $pending->deploy();
+		self::check( $journal->outcome === $outcome, 'The admitted outcome must be journalled.' );
+		if ( $mismatch ) {
+			self::check( 'preflight_failed' === $outcome && 0 === $journal->fences && 0 === $executor->calls && 0 === $target->adoptions, 'Mismatched archive must refuse before mutation or adoption.' );
+			self::check( ! file_exists( $path ), 'Refused identity must leave destination absent.' );
+		} else {
+			self::check( 'deployed' === $outcome && 1 === $journal->fences && 1 === $executor->calls && 1 === $target->adoptions, 'Exact identity must install and adopt once.' );
+			$facts = $target->installed( $d );
+			self::check( $identifier === $facts['identifier'] && '1.0.0' === $facts['version'] && ! $facts['active'], 'WordPress must report the exact inactive identity and version.' );
+			self::check( is_file( $path . '/proof.txt' ) && ! file_exists( $path . '/outside.txt' ), 'Only the selected repository subdirectory may be installed.' );
+		}
+		self::check( false === get_option( 'auto_updater.lock' ) && ! file_exists( ABSPATH . '.maintenance' ), 'Identity proof must release native lock and maintenance scope.' );
+		self::check( array() === glob( get_temp_dir() . 'ran-branch-proof-custody/*' ), 'Accepted and rejected archives must leave no custody files.' );
+	}
+
 	private function package( string $type ): void {
 		$slug     = 'ran-branch-proof-' . $type;
 		$executor = new WordPressPackageExecutor();
@@ -450,15 +546,15 @@ final class InstalledWordPressProof {
 		}
 	}
 
-	private function artifact( BranchDeploymentDeclaration $d, string $version ): PreparedArchive {
+	private function artifact( BranchDeploymentDeclaration $d, string $version, ?string $main_file = null, bool $omit_style = false ): PreparedArchive {
 		$source = wp_tempnam( 'branch-proof.zip' );
 		$zip    = new ZipArchive();
 		self::check( true === $zip->open( $source, ZipArchive::CREATE | ZipArchive::OVERWRITE ), 'Fixture ZIP must open.' );
 		$prefix = 'repository/packages/target/';
 		if ( 'plugin' === $d->package_type ) {
-			$zip->addFromString( $prefix . $d->slug . '.php', "<?php\n/*\nPlugin Name: Branch proof\nVersion: " . $version . "\n*/\n" );
+			$zip->addFromString( $prefix . ( $main_file ?? $d->slug . '.php' ), "<?php\n/*\nPlugin Name: Branch proof\nVersion: " . $version . "\n*/\n" );
 		} else {
-			$zip->addFromString( $prefix . 'style.css', "/*\nTheme Name: Branch proof\nVersion: " . $version . "\n*/\n" );
+			$zip->addFromString( $prefix . ( $omit_style ? 'missing-style.css' : 'style.css' ), "/*\nTheme Name: Branch proof\nVersion: " . $version . "\n*/\n" );
 			$zip->addFromString( $prefix . 'index.php', '<?php // Local fixture.' );
 		}
 		$zip->addFromString( $prefix . 'proof.txt', $version );
