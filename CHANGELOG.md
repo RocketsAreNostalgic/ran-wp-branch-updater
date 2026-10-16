@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.0-beta.11](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.10...v1.0.0-beta.11) (2026-10-16)
+
+
+### Features
+
+* add non-reclaiming updater lock acquisition ([#92](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/92)) ([c8ea438](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/commit/c8ea438df0d5e54d6ecf33bb6bd4fae9c3b7e77e))
+* verify explicitly selected historical commits ([#93](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/93)) ([386555f](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/commit/386555fa6a4313c569f62e631b220b75e1df53d5))
+
 ## [1.0.0-beta.10](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.9...v1.0.0-beta.10) (2026-10-14)
 
 
