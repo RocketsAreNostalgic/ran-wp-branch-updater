@@ -11,7 +11,7 @@ use Throwable;
 /**
  * Strict flock-serialised file journal; an unprovable write leaves execution state uncertain.
  *
- * @phpstan-type AttemptRecord array{id:string,state:string,package_type:string,slug:string,repository:string,branch:string,expected_head:string|null,resolved_ref:string|null,mutation_started_at:string|null,outcome:string|null,finished_at:string|null}
+ * @phpstan-type AttemptRecord array{id:string,state:string,package_type:string,slug:string,repository:string,branch:string,expected_head:string|null,selected_commit:string|null,resolved_ref:string|null,mutation_started_at:string|null,outcome:string|null,finished_at:string|null}
  */
 final class FileAttemptStore {
 	public function __construct( private readonly string $path ) {}
@@ -43,8 +43,8 @@ final class FileAttemptStore {
 		$this->running_transition(
 			$id,
 			function ( array $record ) use ( $ref ): array {
-				if ( null !== $record['resolved_ref'] ) {
-					throw new RuntimeException( 'Revision is already recorded.' );
+				if ( null !== $record['resolved_ref'] || ( null !== $record['selected_commit'] && $record['selected_commit'] !== $ref ) ) {
+					throw new RuntimeException( 'Revision is already recorded or differs from the selected commit.' );
 				}
 				$record['resolved_ref'] = $ref;
 				return $record;
@@ -143,6 +143,7 @@ final class FileAttemptStore {
 			'repository'          => $d->repository,
 			'branch'              => $d->branch,
 			'expected_head'       => $d->expected_head,
+			'selected_commit'     => $d->selected_commit,
 			'resolved_ref'        => null,
 			'mutation_started_at' => null,
 			'outcome'             => null,
@@ -181,7 +182,7 @@ final class FileAttemptStore {
 	 * @phpstan-assert-if-true AttemptRecord $r
 	 */
 	private function valid_record( string $id, array $r ): bool {
-		$keys = array( 'id', 'state', 'package_type', 'slug', 'repository', 'branch', 'expected_head', 'resolved_ref', 'mutation_started_at', 'outcome', 'finished_at' );
+		$keys = array( 'id', 'state', 'package_type', 'slug', 'repository', 'branch', 'expected_head', 'selected_commit', 'resolved_ref', 'mutation_started_at', 'outcome', 'finished_at' );
 		sort( $keys );
 		$actual = array_keys( $r );
 		sort( $actual );
@@ -193,10 +194,13 @@ final class FileAttemptStore {
 				return false;
 			}
 		}
-		foreach ( array( 'expected_head', 'resolved_ref', 'mutation_started_at', 'outcome', 'finished_at' ) as $field ) {
+		foreach ( array( 'expected_head', 'selected_commit', 'resolved_ref', 'mutation_started_at', 'outcome', 'finished_at' ) as $field ) {
 			if ( null !== $r[ $field ] && ( ! is_string( $r[ $field ] ) || '' === $r[ $field ] ) ) {
 				return false;
 			}
+		}
+		if ( null !== $r['selected_commit'] && ( null !== $r['expected_head'] || 1 !== preg_match( '/\A(?:[a-f0-9]{40}|[a-f0-9]{64})\z/D', $r['selected_commit'] ) || ( null !== $r['resolved_ref'] && $r['selected_commit'] !== $r['resolved_ref'] ) ) ) {
+			return false;
 		}
 		if ( null !== $r['mutation_started_at'] && null === $r['resolved_ref'] ) {
 			return false;

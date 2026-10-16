@@ -18,8 +18,12 @@ final readonly class BranchDeploymentDeclaration {
 		public ?string $expected_head,
 		public string $operation = 'update',
 		public ?string $subdirectory = null,
-		public ?string $installed_identifier = null
+		public ?string $installed_identifier = null,
+		public ?string $selected_commit = null
 	) {
+		if ( null !== $selected_commit && ( null !== $expected_head || 1 !== preg_match( '/\A(?:[a-f0-9]{40}|[a-f0-9]{64})\z/D', $selected_commit ) ) ) {
+			throw new RuntimeException( 'Invalid historical commit selection.' );
+		}
 		if ( ! preg_match( '/^[a-z0-9][a-z0-9._-]{0,190}$/D', $slug ) || ! in_array( $package_type, array( 'plugin', 'theme' ), true )
 			|| ! in_array( $operation, array( 'install', 'update' ), true ) || '' === trim( $attempt_id ) || '' === trim( $repository ) || '' === trim( $repository_id )
 			|| '' === trim( $branch ) || ( null !== $expected_head && '' === trim( $expected_head ) ) ) {

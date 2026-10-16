@@ -10,19 +10,27 @@ use RuntimeException;
 
 /** Test-only local transport. It proves the contract shape, never claims to be a provider client. */
 abstract class FixtureProvider implements BranchProvider {
-	public function __construct( private readonly string $archive, private string $head, private readonly ?string $repository_id = null ) {}
+	public int $prepare_calls      = 0;
+	public int $verification_calls = 0;
+	public bool $historical_access = true;
+	public ?string $forced_ref     = null;
+	public function __construct( private readonly string $archive, private string $head, private readonly ?string $repository_id = null, private readonly bool $historical = false ) {}
 	abstract protected function name(): string;
 	public function move_head( string $head ): void {
 		$this->head = $head;
 	}
+	public function supports_selected_commit(): bool {
+		return $this->historical;
+	}
 	public function prepare( BranchDeploymentDeclaration $d ): ArchiveOffer {
+		++$this->prepare_calls;
 		if ( null !== $d->expected_head && $d->expected_head !== $this->head ) {
 			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- CLI assertion diagnostics are not HTML; preserve the actual failing fixture detail.
 			throw new RuntimeException( $this->name() . ': expected head is stale.' );
 		}
 		$archive  = $this->archive;
 		$head     =&$this->head;
-		$expected = $this->head;
+		$expected = $this->forced_ref ?? $d->selected_commit ?? $this->head;
 		return new ArchiveOffer(
 			$this->name(),
 			$this->repository_id ?? $d->repository_id,
@@ -36,8 +44,9 @@ abstract class FixtureProvider implements BranchProvider {
 					throw new RuntimeException( 'Fixture archive copy failed.' );
 				}
 			},
-			static function () use ( &$head, $expected ): void {
-				if ( $head !== $expected ) {
+			function () use ( &$head, $expected, $d ): void {
+				++$this->verification_calls;
+				if ( ! $this->historical_access || ( null === $d->selected_commit && $head !== $expected ) ) {
 					throw new RuntimeException( 'Branch head became stale before mutation.' );
 				}
 			}

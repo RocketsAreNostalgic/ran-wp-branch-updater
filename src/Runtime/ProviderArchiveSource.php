@@ -12,8 +12,8 @@ use RAN\WPBranchUpdater\V1\Contract\BranchProvider;
 use RuntimeException;
 
 final class ProviderArchiveSource implements AdmittedArchiveSource {
-	private ?ArchiveOffer $offer         = null;
-	private bool $constrain_current_head = false;
+	private ?ArchiveOffer $offer = null;
+	private bool $verify_source  = false;
 
 	public function __construct(
 		private readonly BranchProvider $provider,
@@ -23,15 +23,18 @@ final class ProviderArchiveSource implements AdmittedArchiveSource {
 
 	public function prepare( BranchDeploymentDeclaration $deployment, ?array $baseline ): AdmittedBranchArtifact {
 		try {
+			if ( null !== $deployment->selected_commit && ! $this->provider->supports_selected_commit() ) {
+				throw new AdmittedBranchStageFailure( 'provider_failed' );
+			}
 			$offer = $this->provider->prepare( $deployment );
 			if ( ! hash_equals( $deployment->repository_id, $offer->repository_id ) ) {
 				throw new AdmittedBranchStageFailure( 'provider_failed' );
 			}
-			if ( null !== $deployment->expected_head && ! hash_equals( $deployment->expected_head, $offer->resolved_ref ) ) {
+			if ( null !== ( $deployment->selected_commit ?? $deployment->expected_head ) && ! hash_equals( $deployment->selected_commit ?? $deployment->expected_head, $offer->resolved_ref ) ) {
 				throw new AdmittedBranchStageFailure( 'provider_failed' );
 			}
-			$this->offer                  = $offer;
-			$this->constrain_current_head = null !== $deployment->expected_head;
+			$this->offer         = $offer;
+			$this->verify_source = null !== $deployment->expected_head || null !== $deployment->selected_commit;
 		} catch ( AdmittedBranchStageFailure $failure ) {
 			throw $failure;
 		} catch ( RuntimeException $failure ) {
@@ -50,7 +53,7 @@ final class ProviderArchiveSource implements AdmittedArchiveSource {
 	}
 
 	public function verify_current_head(): void {
-		if ( $this->constrain_current_head && null !== $this->offer ) {
+		if ( $this->verify_source && null !== $this->offer ) {
 			$this->offer->verify_current_head();
 		}
 	}
