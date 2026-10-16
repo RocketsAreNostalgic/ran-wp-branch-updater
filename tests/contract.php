@@ -97,6 +97,9 @@ $provider_factory = static function ( string $archive ): BranchProvider {
 
 		public function __construct( private readonly string $archive ) {}
 
+		public function supports_selected_commit(): bool {
+			return false;
+		}
 		public function prepare( BranchDeploymentDeclaration $deployment ): ArchiveOffer {
 			return new ArchiveOffer(
 				'limit-fixture',
@@ -181,6 +184,60 @@ $failing = $bootstrap( new GitHubFixtureProvider( $zip, 'abc123' ), $store, $roo
 $assert( $failing->deploy( expected_commit: 'abc123' ) === 'restoration_uncertain', 'post-fence failure is a closed outcome' );
 $assert( 'needs_attention' === $store->get( $failing->attempt_id() )['state'], 'post-fence failure is durable attention' );
 $assert( ! glob( $root . '/archives/*' ), 'failure cleans exact archive' );
+
+// Historical selection is one acquisition, not a permanent branch tracking lock.
+foreach ( array( 40, 64 ) as $length ) {
+	$commit           = str_repeat( 'a', $length );
+	$history_provider = new GitHubFixtureProvider( $zip, str_repeat( 'b', $length ), historical: true );
+	$history_executor = new RecordingExecutor();
+	$history_store    = new FileAttemptStore( $root . '/historical-' . $length . '.json' );
+	$history          = $bootstrap( $history_provider, $history_store, $root . '/archives', $history_executor, $lock )->plugin( repository: 'acme/demo', repository_id: 'fixture-1', branch: 'main', plugin_file: 'demo/demo.php', subdirectory: 'demo' );
+	$assert( 'deployed' === $history->deploy( selected_commit: $commit ), 'historical selection survives a moved branch' );
+	$record = $history_store->get( $history->attempt_id() );
+	$assert( $commit === $record['selected_commit'] && $commit === $record['resolved_ref'] && 'main' === $record['branch'] && null === $record['expected_head'], 'journal retains exact selection and future branch' );
+	$assert( 1 === $history_provider->verification_calls && count( $history_executor->calls ) === 1, 'historical mode runs final verifier and executor' );
+	$assert( ! glob( $root . '/archives/*' ), 'historical completion cleans custody' );
+	$head_only = $bootstrap( $history_provider, $history_store, $root . '/archives', new RecordingExecutor(), $lock )->plugin( repository: 'acme/demo', repository_id: 'fixture-1', branch: 'main', plugin_file: 'demo/demo.php', subdirectory: 'demo' );
+	$assert( 'provider_failed' === $head_only->deploy( expected_commit: $commit ), 'expected-head mode still refuses moved branch' );
+}
+foreach ( array( 'unsupported', 'mismatch', 'revoked' ) as $case ) {
+	$commit                              = str_repeat( 'a', 40 );
+	$history_provider                    = new GitHubFixtureProvider( $zip, str_repeat( 'b', 40 ), historical: 'unsupported' !== $case );
+	$history_provider->forced_ref        = 'mismatch' === $case ? str_repeat( 'c', 40 ) : null;
+	$history_provider->historical_access = 'revoked' !== $case;
+	$history_executor                    = new RecordingExecutor();
+	$history_store                       = new FileAttemptStore( $root . '/historical-' . $case . '.json' );
+	$history                             = $bootstrap( $history_provider, $history_store, $root . '/archives', $history_executor, $lock )->plugin( repository: 'acme/demo', repository_id: 'fixture-1', branch: 'main', plugin_file: 'demo/demo.php', subdirectory: 'demo' );
+	$assert( 'provider_failed' === $history->deploy( selected_commit: $commit ), 'unsupported, mismatched or revoked historical selection refuses' );
+	$assert( count( $history_executor->calls ) === 0 && null === $history_store->get( $history->attempt_id() )['mutation_started_at'], 'historical refusal precedes mutation' );
+	$assert( ( 'unsupported' === $case ? 0 : 1 ) === $history_provider->prepare_calls, 'unsupported mode refuses before provider preparation' );
+	$assert( ( 'revoked' === $case ? 1 : 0 ) === $history_provider->verification_calls, 'final verifier is required for acquired historical archives' );
+	$assert( ! glob( $root . '/archives/*' ), 'historical refusal cleans custody' );
+}
+foreach ( array( 'abc123', str_repeat( 'A', 40 ), str_repeat( 'a', 41 ), ' ' . str_repeat( 'a', 40 ) ) as $invalid ) {
+	try {
+		new BranchDeploymentDeclaration( 'invalid-history', 'plugin', 'demo', 'acme/demo', 'fixture-1', 'main', null, selected_commit: $invalid );
+		$assert( false, 'invalid historical identity must refuse' );
+	} catch ( RuntimeException $failure ) {
+		$assert( 'Invalid historical commit selection.' === $failure->getMessage(), 'canonical historical identity is mandatory' );
+	}
+}
+try {
+	new BranchDeploymentDeclaration( 'conflicting-history', 'plugin', 'demo', 'acme/demo', 'fixture-1', 'main', str_repeat( 'b', 40 ), selected_commit: str_repeat( 'a', 40 ) );
+	$assert( false, 'historical and current-head modes cannot coexist' );
+} catch ( RuntimeException $failure ) {
+	$assert( 'Invalid historical commit selection.' === $failure->getMessage(), 'conflicting modes refuse' );
+}
+
+$selected_store = new FileAttemptStore( $root . '/selected-journal.json' );
+$selected_store->begin( new BranchDeploymentDeclaration( 'selected-journal', 'plugin', 'demo', 'acme/demo', 'fixture-1', 'main', null, selected_commit: str_repeat( 'a', 40 ) ) );
+try {
+	$selected_store->resolved( 'selected-journal', str_repeat( 'b', 40 ) );
+	$assert( false, 'journal cannot record a different selected revision' );
+} catch ( RuntimeException $failure ) {
+	$assert( 'Revision is already recorded or differs from the selected commit.' === $failure->getMessage(), 'journal rejects mismatched revision before write' );
+}
+$assert( null === $selected_store->get( 'selected-journal' )['resolved_ref'], 'mismatched journal write preserves readable original state' );
 
 $recovery_store = new FileAttemptStore( $root . '/recovery-attempts.json' );
 $recovery_store->begin( $deploy( 'stopped-before-fence', 'abc123' ) );

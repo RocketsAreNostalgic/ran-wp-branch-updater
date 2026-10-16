@@ -34,6 +34,7 @@ final readonly class ArchiveOffer {
 		( $this->copy_to )( $destination, $maximum_artifact_bytes );
 	}
 
+	/** Recheck current source authority: branch head, or exact selected commit with fresh repository/access verification. */
 	public function verify_current_head(): void {
 		( $this->verify_head )();
 	}

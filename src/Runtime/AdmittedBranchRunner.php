@@ -39,6 +39,9 @@ final class AdmittedBranchRunner {
 			$baseline = $this->target->frozen_target( $deployment, true );
 			$stage    = 'preflight_failed';
 			$artifact = $this->archives->prepare( $deployment, $baseline );
+			if ( null !== $deployment->selected_commit && ! hash_equals( $deployment->selected_commit, $artifact->resolved_ref() ) ) {
+				throw new AdmittedBranchStageFailure( 'provider_failed' );
+			}
 			if ( null !== $baseline && version_compare( $artifact->expected_version(), $baseline['version'], '<' ) ) {
 				throw new AdmittedBranchStageFailure( 'downgrade_blocked' );
 			}

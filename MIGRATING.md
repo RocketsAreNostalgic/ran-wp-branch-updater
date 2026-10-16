@@ -168,3 +168,30 @@ mutation ordering do not change. `ZipArchive::$numFiles` remains external.
 ## WordPress preflight observations
 
 `WordPress\WordPressPackageExecutor::preflight()` now returns an empty array instead of installed version and activation observations. The standalone runner already discarded those observations. Use `installed_facts()` when explicitly querying the installed package; deployment target checks continue to acquire fresh facts at their existing authority boundaries. Preflight retains dependency loading, runtime policy and archive custody checks. The `PackageExecutor` interface and custom executor calls are unchanged.
+
+## Explicit historical commit acquisition
+
+The admitted contract is now `BranchUpdater::ADMITTED_API_VERSION = 2`.
+`BranchDeploymentDeclaration` appends nullable `selected_commit`, and
+`BranchDeployment::deploy()` appends the same named argument. It accepts only
+full lowercase 40- or 64-character hexadecimal identities and cannot coexist
+with `expected_head` (the `deploy()` argument `expected_commit`). The configured
+branch remains the future tracking branch; this one acquisition does not pin
+subsequent deployments or prove installed-file equality.
+
+Standalone `BranchProvider` implementations must now implement
+`supports_selected_commit(): bool`. Return false until the provider can resolve
+the exact requested commit, verify repository identity and access, and supply a
+fresh final verifier that rechecks those facts without requiring branch-head
+equality. Unsupported mode refuses before `prepare()`. A prepared reference
+must equal `selected_commit`; the normal final verifier, custody, mutation lock,
+downgrade protection and cleanup still apply. Providers may explicitly reject
+hash formats they cannot support. Expected-head deployments retain their branch
+movement refusal.
+
+The existing attempt journal now records nullable `selected_commit` and validates
+its syntax, exclusive mode and resolved-reference equality. Older journal shapes
+are not migrated; resolve interrupted work on its originating package before
+adopting this changed prerelease contract. Core's admitted host must pass the
+field unchanged through its own declaration and archive contracts and qualify
+that exact connected dependency tuple before enabling historical acquisition.

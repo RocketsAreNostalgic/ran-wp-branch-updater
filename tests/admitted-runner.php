@@ -37,9 +37,9 @@ final class RAN_WP_Branch_Updater_RunnerFixtureJournal implements AdmittedAttemp
 // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- These test-only fault-injection doubles share one standalone behavioral proof.
 final class RAN_WP_Branch_Updater_RunnerFixtureArtifact implements AdmittedBranchArtifact {
 	public int $cleanup_calls = 0;
-	public function __construct( private ?\Throwable $cleanup_failure = null ) {}
+	public function __construct( private ?\Throwable $cleanup_failure = null, private string $ref = 'abc123' ) {}
 	public function resolved_ref(): string {
-		return 'abc123'; }
+		return $this->ref; }
 	public function expected_version(): string {
 		return '1.2.3'; }
 	public function assert_unchanged(): void {}
@@ -114,6 +114,24 @@ $runner        = static fn( RAN_WP_Branch_Updater_RunnerFixtureJournal $journal,
 $accepted_slug = 'package.' . str_repeat( 'a', 183 );
 $accepted      = new BranchDeploymentDeclaration( 'accepted-dotted-slug', 'plugin', $accepted_slug, 'acme/demo', 'fixture-1', 'main', 'abc123' );
 $assert( $accepted_slug === $accepted->slug, 'admitted Core dotted package slugs remain accepted through 191 characters' );
+
+$historical = new BranchDeploymentDeclaration( 'historical', 'plugin', 'demo', 'acme/demo', 'fixture-1', 'main', null, selected_commit: str_repeat( 'a', 40 ) );
+$journal    = new RAN_WP_Branch_Updater_RunnerFixtureJournal();
+$artifact   = new RAN_WP_Branch_Updater_RunnerFixtureArtifact();
+$outcome    = $runner( $journal, $artifact, new RAN_WP_Branch_Updater_RunnerFixtureTarget(), new RAN_WP_Branch_Updater_RunnerFixtureLock() )->run( $historical );
+$assert( 'provider_failed' === $outcome && 1 === $artifact->cleanup_calls && 1 === $journal->finish_calls, 'admitted historical artifact mismatch fails with captured cleanup' );
+
+$artifact = new RAN_WP_Branch_Updater_RunnerFixtureArtifact( ref: str_repeat( 'a', 40 ) );
+$journal  = new RAN_WP_Branch_Updater_RunnerFixtureJournal();
+$target   = new RAN_WP_Branch_Updater_RunnerFixtureTarget();
+$bound    = \RAN\WPBranchUpdater\V1\Runtime\BranchUpdater::for_admitted_attempt( $historical, $journal, new RAN_WP_Branch_Updater_RunnerFixtureArchives( $artifact ), $target, new RAN_WP_Branch_Updater_RunnerFixtureExecutor(), new RAN_WP_Branch_Updater_RunnerFixtureLock() )->plugin( 'acme/demo', 'fixture-1', 'main', package_slug: 'demo' );
+$assert( 'deployed' === $bound->deploy() && 1 === $artifact->cleanup_calls, 'admitted pending and deploy copies preserve historical selection' );
+try {
+	$bound->deploy( selected_commit: str_repeat( 'b', 40 ) );
+	$assert( false, 'admitted historical identity cannot be overridden' );
+} catch ( InvalidArgumentException $failure ) {
+	$assert( 'The admitted deployment terminal declaration does not match.' === $failure->getMessage(), 'admitted exact selection remains immutable' );
+}
 
 $journal  = new RAN_WP_Branch_Updater_RunnerFixtureJournal( new BranchDeploymentJournalFailure( 'record unavailable' ) );
 $artifact = new RAN_WP_Branch_Updater_RunnerFixtureArtifact();

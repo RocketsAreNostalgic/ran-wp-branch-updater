@@ -27,6 +27,7 @@ $base = array(
 	'repository'          => 'acme/demo',
 	'branch'              => 'main',
 	'expected_head'       => 'abc123',
+	'selected_commit'     => null,
 	'resolved_ref'        => null,
 	'mutation_started_at' => null,
 	'outcome'             => null,
@@ -51,6 +52,29 @@ $reject = static function ( array $record ) use ( $write, $store ): void {
 	} catch ( BranchDeploymentJournalFailure ) { // Expected rejection is the assertion; execution continues only for this exception.
 	}
 };
+
+foreach ( array( 'abc', str_repeat( 'A', 40 ), 123 ) as $selected ) {
+	$reject(
+		array_merge(
+			$base,
+			array(
+				'expected_head'   => null,
+				'selected_commit' => $selected,
+			)
+		)
+	);
+}
+$reject( array_merge( $base, array( 'selected_commit' => str_repeat( 'a', 40 ) ) ) );
+$reject(
+	array_merge(
+		$base,
+		array(
+			'expected_head'   => null,
+			'selected_commit' => str_repeat( 'a', 40 ),
+			'resolved_ref'    => str_repeat( 'b', 40 ),
+		)
+	)
+);
 
 $reject(
 	array_merge(

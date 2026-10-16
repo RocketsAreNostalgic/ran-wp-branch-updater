@@ -56,6 +56,9 @@ if ( ! $configure instanceof Closure ) {
 }
 
 $provider = new class() implements RAN\WPBranchUpdater\V1\Contract\BranchProvider {
+	public function supports_selected_commit(): bool {
+		return false;
+	}
 	// phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found -- The non-acquiring consumer stub retains the BranchProvider prepare signature.
 	public function prepare( RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration $deployment ): RAN\WPBranchUpdater\V1\Archive\ArchiveOffer {
 		throw new RuntimeException( 'The consumer smoke must not prepare an archive.' );
