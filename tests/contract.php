@@ -47,6 +47,34 @@ $assert( 'deployed' === $result, 'github fixture executes' );
 $assert( count( $executor->calls ) === 1, 'executor received real local ZIP' );
 $assert( ! glob( $root . '/archives/*' ), 'archive is cleaned' );
 
+// Initial installs bind the exact main file before executor entry, even with identical version/ref/slug.
+foreach ( array(
+	'demo/demo.php'  => 'deployed',
+	'demo/other.php' => 'archive_integrity_failed',
+) as $identifier => $outcome ) {
+	$identity_store    = new FileAttemptStore( $root . '/identity-' . basename( $identifier ) . '.json' );
+	$identity_executor = new RecordingExecutor();
+	$identity          = $bootstrap( new GitHubFixtureProvider( $zip, 'abc123' ), $identity_store, $root . '/archives', $identity_executor, $lock )->plugin( repository: 'acme/demo', repository_id: 'fixture-1', branch: 'main', plugin_file: 'demo/demo.php', subdirectory: 'demo' );
+	$assert( $outcome === $identity->deploy( expected_commit: 'abc123', operation: 'install', expected_identifier: $identifier ), 'initial install enforces exact target main file' );
+	$assert( ( 'deployed' === $outcome ? 1 : 0 ) === count( $identity_executor->calls ), 'mismatched main file never enters mutation' );
+	$assert( $identifier === $identity_store->get( $identity->attempt_id() )['expected_identifier'], 'exact target survives public declaration copies and journal' );
+	$assert( ! glob( $root . '/archives/*' ), 'identity validation preserves archive cleanup' );
+}
+foreach ( array( '', 'demo/../demo.php', 'demo/main.php ', '/demo/main.php', 'demo/main.PHP', 'demo/' . str_repeat( 'a', 183 ) . '.php', 'other/main.php', 'demo/nested/main.php', 'demo\\main.php' ) as $identifier ) {
+	try {
+		new BranchDeploymentDeclaration( 'invalid-target', 'plugin', 'demo', 'acme/demo', 'fixture-1', 'main', null, operation: 'install', expected_identifier: $identifier );
+		$assert( false, 'malformed exact target must refuse' );
+	} catch ( RuntimeException $expected ) {
+		$assert( 'Invalid expected installation identifier.' === $expected->getMessage(), 'malformed target rejected during declaration' );
+	}
+}
+try {
+	new BranchDeploymentDeclaration( 'update-target', 'plugin', 'demo', 'acme/demo', 'fixture-1', 'main', null, expected_identifier: 'demo/main.php' );
+	$assert( false, 'update target field must refuse' );
+} catch ( RuntimeException $expected ) {
+	$assert( 'Invalid expected installation identifier.' === $expected->getMessage(), 'target field is initial-install only' );
+}
+
 $bitbucket_store    = new FileAttemptStore( $root . '/bitbucket-attempts.json' );
 $bitbucket_executor = new RecordingExecutor();
 $bitbucket_result   = $bootstrap( new BitbucketFixtureProvider( $zip, 'abc123' ), $bitbucket_store, $root . '/archives', $bitbucket_executor, $lock )->plugin( repository: 'acme/demo', repository_id: 'fixture-1', branch: 'main', plugin_file: 'demo/demo.php', subdirectory: 'demo' )->deploy( expected_commit: 'abc123' );

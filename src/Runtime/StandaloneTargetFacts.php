@@ -51,7 +51,7 @@ final class StandaloneTargetFacts implements AdmittedTargetFacts {
 	/** @param array{identifier:string,version:string,active:bool}|null $observed */
 	public function record_installed( BranchDeploymentDeclaration $deployment, PreparedArchive $artifact, ?array $observed ): void {
 		$this->installed = $observed ?? array(
-			'identifier' => $deployment->installed_identifier ?? $deployment->slug,
+			'identifier' => $deployment->expected_identifier ?? $deployment->installed_identifier ?? $deployment->slug,
 			'version'    => $artifact->expected_version(),
 			'active'     => false,
 		);

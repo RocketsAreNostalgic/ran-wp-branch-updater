@@ -78,6 +78,9 @@ final class AdmittedBranchRunner {
 								$this->target->recheck_managed( $deployment );
 							}
 							$installed = $this->target->installed( $deployment );
+							if ( null !== $deployment->expected_identifier && ! hash_equals( $deployment->expected_identifier, $installed['identifier'] ) ) {
+								return 'persistence_uncertain';
+							}
 							if ( ! hash_equals( $artifact->expected_version(), $installed['version'] ) ) {
 								return 'installed_version_mismatch';
 							}

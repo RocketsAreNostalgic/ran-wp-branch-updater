@@ -14,7 +14,7 @@ use RAN\WPBranchUpdater\V1\WordPress\InstalledPackageIdentifier;
 
 /** Public declaration-to-terminal-operation entry point. */
 final class BranchUpdater {
-	public const ADMITTED_API_VERSION = 2;
+	public const ADMITTED_API_VERSION = 3;
 	private function __construct(
 		private readonly StandaloneBranchRunner|AdmittedBranchRunner $runner,
 		private readonly BranchDeploymentDeclaration|false $admitted
@@ -74,7 +74,8 @@ final class BranchUpdater {
 			$bound ? $this->admitted->operation : 'update',
 			PackageSubdirectory::normalize( $subdirectory ),
 			$installed_identifier,
-			$bound ? $this->admitted->selected_commit : null
+			$bound ? $this->admitted->selected_commit : null,
+			$bound ? $this->admitted->expected_identifier : null
 		);
 		if ( $bound && (array) $deployment !== (array) $this->admitted ) {
 			throw new \InvalidArgumentException( 'The admitted deployment declaration does not match.' );
