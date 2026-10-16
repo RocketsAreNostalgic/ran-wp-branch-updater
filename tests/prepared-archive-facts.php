@@ -64,6 +64,22 @@ $offer = static fn(): ArchiveOffer => new ArchiveOffer(
 	verify_head: static function (): void {}
 );
 
+foreach ( array(
+	'plugin' => 'custom-main.php',
+	'theme'  => 'style.css',
+) as $package_type => $main ) {
+	$zip->open( $source, ZipArchive::CREATE | ZipArchive::OVERWRITE );
+	$zip->addFromString( 'repository/packages/demo/' . $main, 'plugin' === $package_type ? $contents : "/*\nTheme Name: Demo\nVersion: 1.2.3\n*/" );
+	$zip->close();
+	$exact         = new BranchDeploymentDeclaration( 'exact-target', $package_type, 'demo', 'acme/demo', 'repository-id', 'main', 'abc123', operation: 'install', subdirectory: 'packages/demo', expected_identifier: 'plugin' === $package_type ? 'demo/' . $main : 'demo' );
+	$exact_archive = PreparedArchive::download_and_validate( $offer(), $exact, $root . '/archives' );
+	$assert( '1.2.3' === $exact_archive->expected_version(), 'exact target supports nonstandard plugin main and subdirectory theme' );
+	$exact_archive->cleanup();
+}
+$zip->open( $source, ZipArchive::CREATE | ZipArchive::OVERWRITE );
+$zip->addFromString( 'repository/demo/demo.php', $contents );
+$zip->close();
+
 $archive_type = new ReflectionClass( PreparedArchive::class );
 $constructor  = $archive_type->getConstructor();
 $assert( null !== $constructor && $constructor->isPrivate(), 'prepared archive facts cannot be supplied through public construction' );

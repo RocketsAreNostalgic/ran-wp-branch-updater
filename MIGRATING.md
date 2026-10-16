@@ -195,3 +195,18 @@ are not migrated; resolve interrupted work on its originating package before
 adopting this changed prerelease contract. Core's admitted host must pass the
 field unchanged through its own declaration and archive contracts and qualify
 that exact connected dependency tuple before enabling historical acquisition.
+
+## Exact initial-install targets (admitted API 3)
+
+`BranchDeploymentDeclaration` appends nullable `expected_identifier`. For an
+initial install, pass the exact canonical `slug/main.php` plugin identifier or
+`slug` theme identifier. It must match the declared slug; update declarations
+reject this field. `installed_identifier` continues to describe an existing
+installation and does not replace this initial-install intent.
+
+Archive validation requires the unique plugin main file to match before exposing
+a prepared archive. Subdirectory packages and nonstandard main filenames are
+supported. The runner checks the installed identity before adoption; mismatch
+retains an uncertain outcome. Standalone `deploy()` accepts the same final optional
+argument. The strict journal records and validates the nullable target. Existing
+historical selection behavior remains available under admitted API 3.

@@ -28,6 +28,7 @@ $base = array(
 	'branch'              => 'main',
 	'expected_head'       => 'abc123',
 	'selected_commit'     => null,
+	'expected_identifier' => null,
 	'resolved_ref'        => null,
 	'mutation_started_at' => null,
 	'outcome'             => null,
@@ -52,6 +53,10 @@ $reject = static function ( array $record ) use ( $write, $store ): void {
 	} catch ( BranchDeploymentJournalFailure ) { // Expected rejection is the assertion; execution continues only for this exception.
 	}
 };
+
+foreach ( array( '', 'demo/other/main.php', 'other/main.php', ' demo/main.php', 123 ) as $identifier ) {
+	$reject( array_merge( $base, array( 'expected_identifier' => $identifier ) ) );
+}
 
 foreach ( array( 'abc', str_repeat( 'A', 40 ), 123 ) as $selected ) {
 	$reject(

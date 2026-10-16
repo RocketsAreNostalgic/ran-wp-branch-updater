@@ -61,7 +61,8 @@ final class RAN_WP_Branch_Updater_RunnerFixtureArchives implements AdmittedArchi
 
 // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- These test-only fault-injection doubles share one standalone behavioral proof.
 final class RAN_WP_Branch_Updater_RunnerFixtureTarget implements AdmittedTargetFacts {
-	public function __construct( private ?\Throwable $first_frozen_failure = null, private bool $installed_active = false ) {}
+	public int $adoptions = 0;
+	public function __construct( private ?\Throwable $first_frozen_failure = null, private bool $installed_active = false, private string $identifier = 'demo' ) {}
 	public function assert_mutation_allowed(): void {}
 	public function frozen_target( BranchDeploymentDeclaration $deployment, bool $defer_existing ): ?array {
 		if ( $defer_existing && null !== $this->first_frozen_failure ) {
@@ -74,13 +75,14 @@ final class RAN_WP_Branch_Updater_RunnerFixtureTarget implements AdmittedTargetF
 	public function recheck_managed( BranchDeploymentDeclaration $deployment ): void {}
 	public function installed( BranchDeploymentDeclaration $deployment ): array {
 		return array(
-			'identifier' => 'demo',
+			'identifier' => $this->identifier,
 			'version'    => '1.2.3',
 			'active'     => $this->installed_active,
 		); }
 	public function baseline_now( BranchDeploymentDeclaration $deployment, array $baseline ): array {
 		return $baseline; }
 	public function adopt( BranchDeploymentDeclaration $deployment ): bool {
+		++$this->adoptions;
 		return true; }
 }
 
@@ -114,6 +116,24 @@ $runner        = static fn( RAN_WP_Branch_Updater_RunnerFixtureJournal $journal,
 $accepted_slug = 'package.' . str_repeat( 'a', 183 );
 $accepted      = new BranchDeploymentDeclaration( 'accepted-dotted-slug', 'plugin', $accepted_slug, 'acme/demo', 'fixture-1', 'main', 'abc123' );
 $assert( $accepted_slug === $accepted->slug, 'admitted Core dotted package slugs remain accepted through 191 characters' );
+
+foreach ( array(
+	'demo/custom.php' => 'deployed',
+	'demo/wrong.php'  => 'persistence_uncertain',
+) as $identifier => $expected_outcome ) {
+	$exact          = new BranchDeploymentDeclaration( 'exact-initial', 'plugin', 'demo', 'acme/demo', 'fixture-1', 'main', 'abc123', operation: 'install', expected_identifier: 'demo/custom.php' );
+	$exact_artifact = new RAN_WP_Branch_Updater_RunnerFixtureArtifact();
+	$exact_target   = new RAN_WP_Branch_Updater_RunnerFixtureTarget( identifier: $identifier );
+	$exact_bound    = \RAN\WPBranchUpdater\V1\Runtime\BranchUpdater::for_admitted_attempt( $exact, new RAN_WP_Branch_Updater_RunnerFixtureJournal(), new RAN_WP_Branch_Updater_RunnerFixtureArchives( $exact_artifact ), $exact_target, new RAN_WP_Branch_Updater_RunnerFixtureExecutor(), new RAN_WP_Branch_Updater_RunnerFixtureLock() )->plugin( 'acme/demo', 'fixture-1', 'main', package_slug: 'demo' );
+	$assert( $expected_outcome === $exact_bound->deploy() && 1 === $exact_artifact->cleanup_calls, 'admitted copies retain exact initial target and postcondition' );
+	$assert( ( 'deployed' === $expected_outcome ? 1 : 0 ) === $exact_target->adoptions, 'installed identity mismatch refuses adoption' );
+	try {
+		$exact_bound->deploy( expected_identifier: 'demo/override.php' );
+		$assert( false, 'admitted initial target cannot be overridden' );
+	} catch ( InvalidArgumentException $failure ) {
+		$assert( 'The admitted deployment terminal declaration does not match.' === $failure->getMessage(), 'exact initial target remains immutable' );
+	}
+}
 
 $historical = new BranchDeploymentDeclaration( 'historical', 'plugin', 'demo', 'acme/demo', 'fixture-1', 'main', null, selected_commit: str_repeat( 'a', 40 ) );
 $journal    = new RAN_WP_Branch_Updater_RunnerFixtureJournal();

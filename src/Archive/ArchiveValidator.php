@@ -245,9 +245,10 @@ final class ArchiveValidator {
 		if ( 1 < count( $candidates ) ) {
 			$this->fail( self::CODE_MULTIPLE_PLUGINS, 'The archive contains multiple top-level plugins.' );
 		}
-		$main = null === $installed ? null : basename( $installed );
+		$identifier = $d->expected_identifier ?? $installed;
+		$main       = null === $identifier ? null : basename( $identifier );
 		if ( null !== $main && ! isset( $candidates[ $main ] ) ) {
-			$this->fail( self::CODE_PLUGIN_MISSING, 'The archive does not contain the installed plugin main file.' );
+			$this->fail( self::CODE_PLUGIN_MISSING, 'The archive does not contain the required plugin main file.' );
 		}
 		$headers = reset( $candidates );
 		$this->assert_compatibility( $headers, $wordpress_version );
