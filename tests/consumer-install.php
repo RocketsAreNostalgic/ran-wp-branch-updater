@@ -35,6 +35,7 @@ if (
 	class_exists( RAN\WPBranchUpdater\V1\GitHubFixtureProvider::class )
 	|| class_exists( RAN\WPBranchUpdater\V1\BitbucketFixtureProvider::class )
 	|| class_exists( RAN\WPBranchUpdater\V1\RecordingExecutor::class )
+	|| class_exists( RAN\WPBranchUpdater\V1\HeaderFormattingFixtures::class )
 ) {
 	throw new RuntimeException( 'Consumer installation loaded test-only fixture classes.' );
 }
@@ -85,6 +86,25 @@ if (
 	|| ! $runner_facts->getProperty( 'lock' )->getValue( $runner ) instanceof RAN\WPBranchUpdater\V1\WordPress\WordPressUpdaterLock
 ) {
 	throw new RuntimeException( 'Installed bootstrap did not retain its default executor and lock.' );
+}
+
+// Exercise installed production parsing without loading development-only fixture support.
+foreach ( array( 'plugin', 'theme' ) as $package_type ) {
+	$header_path = $private . '/' . $package_type . '.zip';
+	$zip         = new ZipArchive();
+	if ( true !== $zip->open( $header_path, ZipArchive::CREATE | ZipArchive::OVERWRITE ) ) {
+		throw new RuntimeException( 'Installed header fixture ZIP could not open.' );
+	}
+	$label = 'plugin' === $package_type ? 'Plugin Name' : 'Theme Name';
+	$zip->addFromString( 'repository/demo/' . ( 'plugin' === $package_type ? 'demo.php' : 'style.css' ), '<?php /* ' . $label . ": Demo */\r/* Version: 1.2.3 ?> ignored" );
+	$zip->close();
+	$declaration = new RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration( 'consumer-header-' . $package_type, $package_type, 'demo', 'synthetic/demo', 'fixture', 'main', null, 'install', 'demo' );
+	$inspection  = ( new RAN\WPBranchUpdater\V1\Archive\ArchiveValidator() )->validate( $header_path, $declaration, null, 1048576, 4194304, '6.5' );
+	if ( '1.2.3' !== $inspection['expected_version'] ) {
+		throw new RuntimeException( 'Installed package did not apply WordPress header formatting.' );
+	}
+	// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Delete only the synthetic ZIP created under this separate consumer's private fixture directory.
+	unlink( $header_path );
 }
 
 // Reflection retains named argument binding for the installed, dynamically loaded closure.
