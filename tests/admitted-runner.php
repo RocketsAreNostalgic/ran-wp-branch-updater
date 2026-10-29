@@ -117,6 +117,11 @@ $accepted_slug = 'package.' . str_repeat( 'a', 183 );
 $accepted      = new BranchDeploymentDeclaration( 'accepted-dotted-slug', 'plugin', $accepted_slug, 'acme/demo', 'fixture-1', 'main', 'abc123' );
 $assert( $accepted_slug === $accepted->slug, 'admitted Core dotted package slugs remain accepted through 191 characters' );
 
+$numeric_attempt = new BranchDeploymentDeclaration( '123', 'plugin', 'demo', 'acme/demo', 'fixture-1', 'main', 'abc123' );
+$numeric_journal = new RAN_WP_Branch_Updater_RunnerFixtureJournal();
+$numeric_bound   = \RAN\WPBranchUpdater\V1\Runtime\BranchUpdater::for_admitted_attempt( $numeric_attempt, $numeric_journal, new RAN_WP_Branch_Updater_RunnerFixtureArchives( new RAN_WP_Branch_Updater_RunnerFixtureArtifact() ), new RAN_WP_Branch_Updater_RunnerFixtureTarget(), new RAN_WP_Branch_Updater_RunnerFixtureExecutor(), new RAN_WP_Branch_Updater_RunnerFixtureLock() )->plugin( 'acme/demo', 'fixture-1', 'main', package_slug: 'demo' );
+$assert( 'deployed' === $numeric_bound->deploy() && 1 === $numeric_journal->finish_calls, 'custom admitted journals retain numeric attempt IDs' );
+
 foreach ( array(
 	'demo/custom.php' => 'deployed',
 	'demo/wrong.php'  => 'persistence_uncertain',

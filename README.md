@@ -72,6 +72,15 @@ Pass an expected commit only after the host has authenticated and admitted it. T
 
 New installs remain inactive. Do not retry an uncertain outcome automatically.
 
+The standalone `FileAttemptStore` refuses custom attempt IDs that PHP converts
+to integer array keys, such as `0`, `123`, `-1`, and the current platform's integer
+bounds. It rejects them before touching the journal. Numeric-looking strings
+that remain string keys, including leading-zero and integer-overflow values,
+continue to round-trip; generated IDs are unchanged. This is a file-store
+constraint, not a restriction on declarations or custom admitted journals.
+Existing malformed journals still require an explicit operator recovery decision;
+the store does not migrate, prune or rebuild them.
+
 ## Updater-family architecture
 
 The branch and release updaters share a common architectural grammar without pretending their runtime models are identical:

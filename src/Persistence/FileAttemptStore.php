@@ -20,6 +20,10 @@ final class FileAttemptStore {
 	 * @return AttemptRecord
 	 */
 	public function begin( BranchDeploymentDeclaration $d ): array {
+		// JSON object keys must survive PHP's array-key coercion on readback.
+		if ( is_int( array_key_first( array( $d->attempt_id => true ) ) ) ) {
+			throw new RuntimeException( 'Attempt ID cannot be stored as a string journal key.' );
+		}
 		return $this->mutate(
 			function ( array $records ) use ( $d ): array {
 				if ( isset( $records[ $d->attempt_id ] ) ) {
