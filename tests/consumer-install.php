@@ -108,4 +108,26 @@ if (
 	throw new RuntimeException( 'Installed bootstrap did not forward its named arguments.' );
 }
 
-echo "PASS installed Composer consumer bootstrap (positional defaults and named arguments)\n";
+$installed_store = new RAN\WPBranchUpdater\V1\Persistence\FileAttemptStore( $state );
+$installed_store->begin( new RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration( '01', 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', null ) );
+$installed_store->finish( '01', 'failed', 'provider_failed' );
+$installed_record = $installed_store->get( '01' );
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Compare synthetic consumer journal bytes across unsupported input rejection.
+$installed_bytes = file_get_contents( $state );
+if ( ! is_string( $installed_bytes ) ) {
+	throw new RuntimeException( 'Installed consumer journal cannot be read.' );
+}
+try {
+	$installed_store->begin( new RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration( '123', 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', null ) );
+	throw new RuntimeException( 'Installed file store accepted an integer-coercible attempt ID.' );
+} catch ( RuntimeException $expected ) {
+	if ( 'Attempt ID cannot be stored as a string journal key.' !== $expected->getMessage() ) {
+		throw $expected;
+	}
+}
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Verify the installed store preserves exact journal bytes and existing records.
+if ( file_get_contents( $state ) !== $installed_bytes || $installed_store->get( '01' ) !== $installed_record ) {
+	throw new RuntimeException( 'Installed file store rejection damaged its prior journal.' );
+}
+
+echo "PASS installed Composer consumer bootstrap and journal ID admission\n";
