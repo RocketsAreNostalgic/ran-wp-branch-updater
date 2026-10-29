@@ -72,6 +72,15 @@ Pass an expected commit only after the host has authenticated and admitted it. T
 
 New installs remain inactive. Do not retry an uncertain outcome automatically.
 
+The standalone `FileAttemptStore` refuses custom attempt IDs that PHP converts
+to integer array keys, such as `0`, `123`, `-1`, and the current platform's integer
+bounds. It rejects them before touching the journal. Numeric-looking strings
+that remain string keys, including leading-zero and integer-overflow values,
+continue to round-trip; generated IDs are unchanged. This is a file-store
+constraint, not a restriction on declarations or custom admitted journals.
+Existing malformed journals still require an explicit operator recovery decision;
+the store does not migrate, prune or rebuild them.
+
 ## Updater-family architecture
 
 The branch and release updaters share a common architectural grammar without pretending their runtime models are identical:
@@ -92,11 +101,39 @@ Likewise, dependency mechanics intentionally differ. The branch package consumes
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the family model and ownership boundaries, [API.md](API.md) for the package API, and [MIGRATING.md](MIGRATING.md) for the beta namespace/class migration.
 
+### Expanded-size refusal
+
+After validating each ZIP entry's metadata and type, archive validation admits
+its declared size against the aggregate expanded-byte limit before opening its
+stream. Admitted entries still require actual-length and CRC verification. An
+entry whose declared size exceeds the remaining aggregate allowance reports
+expanded-size error 1018 before stream inspection, even if its data is corrupt.
+Admitted corrupt entries still report integrity error 1010. This avoids
+inflating an already-over-limit entry without claiming a measured deployment
+speedup.
+
 ## Verification
 
 The repository gate runs behavioral characterization for declaration validation, provider/source-head checks, archive safety and identity, downgrade prevention, mutation locking, journal transitions, WordPress execution, restoration/postcondition handling, cleanup, and hard-stop recovery.
 
 CI also installs the package into a separate no-dev Composer consumer and runs `tests/consumer-install.php`. That proves production classes resolve through the installed PSR-4 package and that bootstrap does not depend on a package-private `vendor` directory.
+
+### Package header policy
+
+Archive metadata and child-theme `Template` values follow WordPress
+[`get_file_data()`](https://developer.wordpress.org/reference/functions/get_file_data/)
+and [`_cleanup_header_comment()`](https://developer.wordpress.org/reference/functions/_cleanup_header_comment/)
+formatting: inspect the first 8 KiB, replace carriage returns with newlines,
+allow the optional opening `<?php` prefix, and trim closing comments or PHP tags.
+LF, CRLF and CR-only headers are supported. A cleaned empty `Template` means no
+parent; a nonempty parent must remain a safe slug, differ from the target and
+exist in WordPress.
+
+Package admission intentionally remains stricter than header extraction:
+required name/version values, the 64-byte field limit, control-character refusal,
+version/compatibility syntax and requirements, and exact package identity still
+apply. Formatting compatibility does not waive archive custody or installation
+eligibility checks.
 
 ## Community
 

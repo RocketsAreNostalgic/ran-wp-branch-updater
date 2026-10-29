@@ -24,6 +24,9 @@ use InvalidArgumentException;
 use RAN\WPBranchUpdater\V1\WordPress\WordPressCorePackageExecutor;
 use WP_Error;
 use ZipArchive;
+use RAN\WPBranchUpdater\V1\Archive\ArchiveValidator;
+use RAN\WPBranchUpdater\V1\GitHubFixtureProvider;
+use RAN\WPBranchUpdater\V1\HeaderFormattingFixtures;
 
 /** Real adapters in a disposable, installed single-site WordPress database. */
 final class InstalledWordPressProof {
@@ -39,10 +42,95 @@ final class InstalledWordPressProof {
 		$this->non_reclaiming_lock();
 		$this->lock_race();
 		$this->adapter_boundaries();
+		$this->header_compatibility();
 		foreach ( array( 'plugin', 'theme' ) as $type ) {
 			$this->package( $type );
 			$this->initial_identity( $type, false );
 			$this->initial_identity( $type, true );
+		}
+	}
+
+	private function header_compatibility(): void {
+		$parent_slug = 'ran-header-parent-' . wp_generate_uuid4();
+		$parent_root = get_theme_root() . '/' . $parent_slug;
+		self::check( ! file_exists( $parent_root ) && wp_mkdir_p( $parent_root ), 'Synthetic parent directory must be new.' );
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Create only the synthetic parent under the verified disposable site's theme root.
+		file_put_contents( $parent_root . '/style.css', "/* Theme Name: Header parent */\nVersion: 1.0.0" );
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Create only the synthetic parent under the verified disposable site's theme root.
+		file_put_contents( $parent_root . '/index.php', '<?php // Synthetic parent.' );
+		wp_clean_themes_cache();
+		$read_headers = new ReflectionMethod( ArchiveValidator::class, 'read_headers' );
+		$read_parent  = new ReflectionMethod( WordPressCorePackageExecutor::class, 'theme_parent_from_archive' );
+		$eligibility  = new ReflectionMethod( WordPressCorePackageExecutor::class, 'theme_parent_is_available' );
+		$executor     = new WordPressCorePackageExecutor();
+		try {
+			foreach ( array(
+				'plugin' => 'Plugin Name',
+				'theme'  => 'Theme Name',
+			) as $type => $name ) {
+				foreach ( HeaderFormattingFixtures::variants( $name ) as $format => $contents ) {
+					$contents = str_replace( 'Template: parent', 'Template: ' . $parent_slug, $contents );
+					$source   = wp_tempnam( 'branch-header.txt' );
+					$archive  = wp_tempnam( 'branch-header.zip' );
+					$zip      = new ZipArchive();
+					$artifact = null;
+					try {
+						// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Differential proof writes only its synthetic temporary header file.
+						file_put_contents( $source, $contents );
+						$fields = array(
+							$name               => $name,
+							'Version'           => 'Version',
+							'Requires at least' => 'Requires at least',
+							'Requires PHP'      => 'Requires PHP',
+						);
+						$native = get_file_data( $source, $fields );
+						self::check( 'Demo' === $native[ $name ] && '1.2.3' === $native['Version'], 'WordPress must read the synthetic formatting control.' );
+						self::check( true === $zip->open( $archive, ZipArchive::CREATE | ZipArchive::OVERWRITE ), 'Header fixture ZIP must open.' );
+						$zip->addFromString( 'repository/demo/' . ( 'plugin' === $type ? 'demo.php' : 'style.css' ), $contents );
+						$zip->close();
+						self::check( true === $zip->open( $archive, ZipArchive::RDONLY ), 'Reopen the committed header bytes for unchanged-entry reads.' );
+						self::check( $native === $read_headers->invoke( new ArchiveValidator(), $zip, 0, $name ), 'Archive fields must match actual get_file_data for ' . $type . '/' . $format );
+						$zip->close();
+						if ( 'theme' === $type ) {
+							$d        = new BranchDeploymentDeclaration( 'header-' . $format, 'theme', 'demo', 'synthetic/demo', 'fixture', 'main', 'abc123', 'install', 'demo' );
+							$artifact = PreparedArchive::download_and_validate( ( new GitHubFixtureProvider( $archive, 'abc123' ) )->prepare( $d ), $d, get_temp_dir() . 'ran-branch-proof-custody' );
+							$template = get_file_data( $source, array( 'Template' => 'Template' ) )['Template'];
+							self::check( $parent_slug === $template && $template === $read_parent->invoke( $executor, $artifact, 'demo' ), 'Template must match actual get_file_data for ' . $format );
+							self::check( true === $eligibility->invoke( $executor, $artifact, 'demo', 'demo' ), 'Existing synthetic parent must remain eligible.' );
+							self::check( false === $eligibility->invoke( $executor, $artifact, $parent_slug, 'demo' ), 'A theme must not use itself as parent.' );
+							if ( 'lf' === $format ) {
+								$parent_theme = wp_get_theme( $parent_slug );
+								wp_delete_file( $parent_root . '/index.php' );
+								wp_delete_file( $parent_root . '/style.css' );
+								// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Remove only this proof's empty synthetic parent so WordPress observes a missing theme directory.
+								rmdir( $parent_root );
+								clearstatcache();
+								$parent_theme->cache_delete();
+								wp_clean_themes_cache();
+								self::check( false === $eligibility->invoke( $executor, $artifact, 'demo', 'demo' ), 'Unavailable synthetic parent must remain ineligible.' );
+								self::check( wp_mkdir_p( $parent_root ), 'Restore only the synthetic parent for remaining formatting controls.' );
+								// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Restore only the synthetic parent before remaining formatting controls.
+								file_put_contents( $parent_root . '/style.css', "/* Theme Name: Header parent */\nVersion: 1.0.0" );
+								// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Restore only the synthetic parent before remaining formatting controls.
+								file_put_contents( $parent_root . '/index.php', '<?php // Synthetic parent.' );
+								wp_clean_themes_cache();
+							}
+						}
+					} finally {
+						$artifact?->cleanup();
+						wp_delete_file( $source );
+						wp_delete_file( $archive );
+					}
+				}
+			}
+		} finally {
+			wp_delete_file( $parent_root . '/index.php' );
+			wp_delete_file( $parent_root . '/style.css' );
+			if ( is_dir( $parent_root ) ) {
+				// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Remove only the empty synthetic parent created by this proof in the verified disposable theme root.
+				rmdir( $parent_root );
+			}
+			wp_clean_themes_cache();
 		}
 	}
 
