@@ -107,6 +107,23 @@ The repository gate runs behavioral characterization for declaration validation,
 
 CI also installs the package into a separate no-dev Composer consumer and runs `tests/consumer-install.php`. That proves production classes resolve through the installed PSR-4 package and that bootstrap does not depend on a package-private `vendor` directory.
 
+### Package header policy
+
+Archive metadata and child-theme `Template` values follow WordPress
+[`get_file_data()`](https://developer.wordpress.org/reference/functions/get_file_data/)
+and [`_cleanup_header_comment()`](https://developer.wordpress.org/reference/functions/_cleanup_header_comment/)
+formatting: inspect the first 8 KiB, replace carriage returns with newlines,
+allow the optional opening `<?php` prefix, and trim closing comments or PHP tags.
+LF, CRLF and CR-only headers are supported. A cleaned empty `Template` means no
+parent; a nonempty parent must remain a safe slug, differ from the target and
+exist in WordPress.
+
+Package admission intentionally remains stricter than header extraction:
+required name/version values, the 64-byte field limit, control-character refusal,
+version/compatibility syntax and requirements, and exact package identity still
+apply. Formatting compatibility does not waive archive custody or installation
+eligibility checks.
+
 ## Community
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing a change. Use [SUPPORT.md](SUPPORT.md) for non-sensitive support and [SECURITY.md](SECURITY.md) for confidential vulnerability reports. Participation is governed by [RAN Code of Conduct](https://github.com/RocketsAreNostalgic/.github/blob/main/CODE_OF_CONDUCT.md).

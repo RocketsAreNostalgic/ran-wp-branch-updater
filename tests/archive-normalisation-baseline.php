@@ -6,6 +6,10 @@ require dirname( __DIR__ ) . '/vendor/autoload.php';
 
 use RAN\WPBranchUpdater\V1\Archive\ArchiveValidator;
 use RAN\WPBranchUpdater\V1\Archive\PackageSubdirectory;
+use RAN\WPBranchUpdater\V1\Archive\PreparedArchive;
+use RAN\WPBranchUpdater\V1\GitHubFixtureProvider;
+use RAN\WPBranchUpdater\V1\HeaderFormattingFixtures;
+use RAN\WPBranchUpdater\V1\WordPress\WordPressCorePackageExecutor;
 use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 
 $assert = static function ( bool $actual, string $message ): void {
@@ -112,6 +116,55 @@ $valid      = $zip( array( 'repository/demo/demo.php' => $plugin() ) );
 $inspection = $validate( $valid, $deployment( 'valid' ) );
 $assert( '1.2.3' === $inspection['expected_version'], 'valid plugin version remains discoverable' );
 
+// Formatting matches WordPress extraction; package value/identity policy remains stricter.
+$parent_method = new ReflectionMethod( WordPressCorePackageExecutor::class, 'theme_parent_from_archive' );
+foreach ( array(
+	'plugin' => 'Plugin Name',
+	'theme'  => 'Theme Name',
+) as $package_type => $name ) {
+	foreach ( HeaderFormattingFixtures::variants( $name ) as $format => $contents ) {
+		$file        = 'plugin' === $package_type ? 'demo.php' : 'style.css';
+		$header_path = $zip( array( 'repository/demo/' . $file => $contents ) );
+		$d           = new BranchDeploymentDeclaration( $package_type . '-' . $format, $package_type, 'demo', 'acme/demo', 'repository-id', 'main', 'abc123', 'install', 'demo' );
+		$assert( '1.2.3' === $validate( $header_path, $d )['expected_version'], $package_type . ' accepts ' . $format );
+		if ( 'theme' === $package_type ) {
+			$parent_path = $zip( array( 'repository/demo/style.css' => str_replace( 'Requires at least: 6.5', 'Requires at least:', $contents ) ) );
+			$artifact    = PreparedArchive::download_and_validate( ( new GitHubFixtureProvider( $parent_path, 'abc123' ) )->prepare( $d ), $d, $root . '/custody' );
+			try {
+				$assert( 'parent' === $parent_method->invoke( new WordPressCorePackageExecutor(), $artifact, 'demo' ), 'Template is cleaned for ' . $format );
+			} finally {
+				$artifact->cleanup();
+			}
+		}
+	}
+}
+
+foreach ( array(
+	'missing' => '',
+	'empty'   => 'Template: */',
+	'late'    => str_repeat( ' ', 8192 ) . 'Template: parent',
+	'invalid' => 'Template: ../parent */',
+) as $case => $template ) {
+	$contents    = "/* Theme Name: Demo */\nVersion: 1.2.3\n" . $template;
+	$header_path = $zip( array( 'repository/demo/style.css' => $contents ) );
+	$d           = new BranchDeploymentDeclaration( 'parent-' . $case, 'theme', 'demo', 'acme/demo', 'repository-id', 'main', 'abc123', 'install', 'demo' );
+	$artifact    = PreparedArchive::download_and_validate( ( new GitHubFixtureProvider( $header_path, 'abc123' ) )->prepare( $d ), $d, $root . '/custody' );
+	try {
+		$assert( ( 'invalid' === $case ? false : null ) === $parent_method->invoke( new WordPressCorePackageExecutor(), $artifact, 'demo' ), 'Template retains ' . $case . ' boundary' );
+	} finally {
+		$artifact->cleanup();
+	}
+}
+
+$late_headers = $zip( array( 'repository/demo/demo.php' => str_repeat( ' ', 8192 ) . $plugin() ) );
+$reject( ArchiveValidator::CODE_PLUGIN_MISSING, $late_headers, $deployment( 'late-header' ) );
+$empty_version = $zip( array( 'repository/demo/demo.php' => "/* Plugin Name: Demo */\n/* Version: */\nRequires PHP: 8.2" ) );
+$reject( ArchiveValidator::CODE_VERSION_MISSING, $empty_version, $deployment( 'empty-version' ) );
+$invalid_compatibility = $zip( array( 'repository/demo/demo.php' => "<?php /* Plugin Name: Demo */\rVersion: 1.2.3 ?>\rRequires PHP: future */" ) );
+$reject( ArchiveValidator::CODE_COMPATIBILITY_INVALID, $invalid_compatibility, $deployment( 'invalid-compatibility' ) );
+$long_name = $zip( array( 'repository/demo/demo.php' => $plugin( 'Plugin Name: ' . str_repeat( 'A', 65 ) . " */\nVersion: 1.2.3" ) ) );
+$reject( ArchiveValidator::CODE_HEADER_UNREADABLE, $long_name, $deployment( 'long-name' ) );
+
 $unsafe = $zip(
 	array(
 		'repository/demo/demo.php' => $plugin(),
@@ -171,6 +224,8 @@ foreach ( glob( $root . '/*.zip' ) ?: array() as $path ) {
 	// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Standalone CLI proof creates or cleans only its isolated local fixture files with native filesystem semantics.
 	unlink( $path );
 }
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Remove only the empty synthetic custody directory after every artifact was cleaned.
+rmdir( $root . '/custody' );
 // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Standalone CLI proof creates or cleans only its isolated local fixture files with native filesystem semantics.
 rmdir( $root );
 
