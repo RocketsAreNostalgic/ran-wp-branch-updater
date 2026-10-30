@@ -101,6 +101,17 @@ Likewise, dependency mechanics intentionally differ. The branch package consumes
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the family model and ownership boundaries, [API.md](API.md) for the package API, and [MIGRATING.md](MIGRATING.md) for the beta namespace/class migration.
 
+### Expanded-size refusal
+
+After validating each ZIP entry's metadata and type, archive validation admits
+its declared size against the aggregate expanded-byte limit before opening its
+stream. Admitted entries still require actual-length and CRC verification. An
+entry whose declared size exceeds the remaining aggregate allowance reports
+expanded-size error 1018 before stream inspection, even if its data is corrupt.
+Admitted corrupt entries still report integrity error 1010. This avoids
+inflating an already-over-limit entry without claiming a measured deployment
+speedup.
+
 ## Verification
 
 The repository gate runs behavioral characterization for declaration validation, provider/source-head checks, archive safety and identity, downgrade prevention, mutation locking, journal transitions, WordPress execution, restoration/postcondition handling, cleanup, and hard-stop recovery.
