@@ -4,7 +4,13 @@ declare(strict_types=1);
 
 require dirname( __DIR__ ) . '/vendor/autoload.php';
 
+use RAN\WPBranchUpdater\V1\Archive\PreparedArchive;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedArchiveSource;
+use RAN\WPBranchUpdater\V1\GitHubFixtureProvider;
+use RAN\WPBranchUpdater\V1\Runtime\ProviderArchiveSource;
+use RAN\WPBranchUpdater\V1\Runtime\StandalonePackageExecutor;
+use RAN\WPBranchUpdater\V1\Runtime\StandaloneTargetFacts;
+use RAN\WPBranchUpdater\V1\WordPress\WordPressPackageExecutor;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedAttemptJournal;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedBranchArtifact;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedPackageExecutor;
@@ -204,5 +210,90 @@ $artifact = new RAN_WP_Branch_Updater_RunnerFixtureArtifact();
 $install  = new BranchDeploymentDeclaration( 'focused-install', 'plugin', 'demo', 'acme/demo', 'fixture-1', 'main', 'abc123', 'install', 'demo', 'demo/demo.php' );
 $outcome  = $runner( $journal, $artifact, new RAN_WP_Branch_Updater_RunnerFixtureTarget( null, true ), new RAN_WP_Branch_Updater_RunnerFixtureLock() )->run( $install );
 $assert( 'activation_state_changed' === $outcome, 'an install unexpectedly activated by WordPress cannot succeed' );
+
+
+// Model the WordPress topology at the real default adapter boundary.
+// phpcs:ignore Universal.Files.SeparateFunctionsFromOO.Mixed, WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound -- WordPress topology stub must retain its native global name in this standalone proof.
+function is_multisite(): bool {
+	return true;
+}
+
+$root = __DIR__ . '/build/multisite-runner-' . bin2hex( random_bytes( 4 ) );
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_mkdir -- This standalone fixture owns its isolated temporary directory.
+if ( ! mkdir( $root, 0700, true ) ) {
+	throw new RuntimeException( 'Cannot create multisite fixture directory.' );
+}
+$source = $root . '/source.zip';
+$zip    = new ZipArchive();
+if ( true !== $zip->open( $source, ZipArchive::CREATE | ZipArchive::OVERWRITE ) ) {
+	throw new RuntimeException( 'Cannot create multisite fixture ZIP.' );
+}
+$zip->addFromString( 'repository/demo/demo.php', "<?php\n/* Plugin Name: Demo\nVersion: 1.2.3\n*/\n" );
+$zip->close();
+$multisite           = new BranchDeploymentDeclaration( 'multisite', 'plugin', 'demo', 'acme/demo', 'fixture-1', 'main', 'abc123', 'install', 'demo' );
+$archives            = new class( new ProviderArchiveSource( new GitHubFixtureProvider( $source, 'abc123', 'fixture-1' ), $root . '/archives' ) ) implements AdmittedArchiveSource {
+	public int $preparations = 0;
+	public function __construct( private ProviderArchiveSource $source ) {}
+	public function prepare( BranchDeploymentDeclaration $deployment, ?array $baseline ): AdmittedBranchArtifact {
+		++$this->preparations;
+		return $this->source->prepare( $deployment, $baseline );
+	}
+	public function verify_current_head(): void {
+		$this->source->verify_current_head();
+	}
+};
+$journal             = new class() implements AdmittedAttemptJournal {
+	public int $fences     = 0;
+	public string $outcome = '';
+	public function record_resolved_ref( string $ref ): void {}
+	public function mark_mutation_started(): void {
+		++$this->fences; }
+	public function finish( string $code ): void {
+		$this->outcome = $code; }
+};
+$wordpress_executor  = new WordPressPackageExecutor();
+$standalone_executor = new StandalonePackageExecutor( $wordpress_executor, new StandaloneTargetFacts( $wordpress_executor ) );
+$executor            = new class( $standalone_executor ) implements AdmittedPackageExecutor {
+	public function __construct( private StandalonePackageExecutor $delegate ) {}
+	public int $executions = 0;
+	public string $failure = '';
+	public function preflight( BranchDeploymentDeclaration $deployment, AdmittedBranchArtifact $artifact ): void {
+		if ( ! $artifact instanceof PreparedArchive ) {
+			throw new RuntimeException( 'Expected prepared archive.' );
+		}
+		try {
+			$this->delegate->preflight( $deployment, $artifact );
+		} catch ( RuntimeException $failure ) {
+			$this->failure = $failure->getMessage();
+			throw $failure;
+		}
+	}
+	public function execute( BranchDeploymentDeclaration $deployment, ?array $baseline, AdmittedBranchArtifact $artifact ): CorePackageExecutionResult {
+		++$this->executions;
+		return $this->delegate->execute( $deployment, $baseline, $artifact );
+	}
+};
+$lock                = new class() implements MutationLock {
+	public int $calls = 0;
+	public function run( callable $operation ): mixed {
+		++$this->calls;
+		return $operation();
+	}
+};
+try {
+	$outcome = ( new AdmittedBranchRunner( $journal, $archives, new RAN_WP_Branch_Updater_RunnerFixtureTarget(), $executor, $lock ) )->run( $multisite );
+	$assert( 1 === $archives->preparations, 'multisite refusal follows real archive preparation' );
+	$assert( 'Branch deployment supports single-site WordPress only.' === $executor->failure, 'real default WordPress adapter rejects multisite' );
+	$assert( 'preflight_failed' === $outcome && $outcome === $journal->outcome, 'multisite refusal records its terminal outcome' );
+	$assert( 0 === $lock->calls && 0 === $journal->fences && 0 === $executor->executions, 'multisite refusal precedes lock, fence and WordPress execution' );
+	$assert( array() === glob( $root . '/archives/*' ), 'multisite refusal cleans prepared archive custody' );
+} finally {
+	// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Delete only this fixture's source archive.
+	unlink( $source );
+	// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Remove only the empty fixture custody directory.
+	rmdir( $root . '/archives' );
+	// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Remove only the empty fixture directory.
+	rmdir( $root );
+}
 
 echo "PASS admitted branch runner fault-injection contracts\n";
