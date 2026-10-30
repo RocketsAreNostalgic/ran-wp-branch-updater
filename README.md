@@ -57,6 +57,12 @@ $branches = $configure(
 
 State and archive directories must be private and durable. Do not use WordPress's upgrade directory for either.
 
+The default WordPress runtime supports single-site installations only. Hosts
+must reject multisite deployments at admission, before invoking `deploy()`.
+The default executor also rejects multisite during preflight, but that check
+follows baseline acquisition and artifact preparation; it does not prevent
+provider or archive work. Custom adapters do not inherit that check.
+
 ## Declare and deploy
 
 ```php
