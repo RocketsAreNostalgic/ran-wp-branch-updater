@@ -33,6 +33,16 @@ The same `PreparedArchive` implements `Contract\AdmittedBranchArtifact` and `Con
 
 The WordPress executor's `preflight()` checks runtime policy, loads the plugin and theme helpers and verifies archive custody, returning an empty array. It does not query installed metadata. The deployment lifecycle still acquires fresh installed facts before acquisition, under the mutation lock, after execution and when checking restoration. Custom `PackageExecutor` implementations retain the two-argument array-returning contract.
 
+The default WordPress executor rejects multisite in preflight. Preflight follows
+baseline acquisition and artifact preparation, so hosts must reject multisite
+at admission if they need to avoid that work. This guard precedes the mutation
+lock, mutation fence, and WordPress execution; custom adapters must enforce their
+own policy. Multisite deployment remains unsupported.
+
+Target facts expose one `active: bool`. The default adapter observes plugin
+activation or the current stylesheet/template in the current WordPress context;
+that value cannot describe network-wide and per-site activation or theme state.
+
 ## Outcomes and exceptions
 
 `deploy()` returns a terminal outcome only after the configured journal has finished. Existing outcome strings are intentionally stable, including examples such as:
@@ -67,6 +77,9 @@ $branches = $configure(
 ```
 
 `Persistence\FileAttemptStore` provides locked atomic file replacement, readback, and process-stop recovery. It does not claim power-loss durability on filesystems where data or directory metadata has not reached stable storage, and it does not issue explicit `fsync` calls. Hosts needing stronger guarantees should supply an `AdmittedAttemptJournal` backed by storage with those semantics.
+
+The host chooses the file journal path and therefore its sharing and ownership
+scope. The store does not derive a network or site identity for that path.
 
 ## Themes and repository subdirectories
 
@@ -138,3 +151,8 @@ Timestamp tokens are not globally unique receipts. Do not reuse a token after it
 release or infer another process's lifetime from its age. A host's durable
 mutation/recovery ownership must be established separately; this barrier does not
 provide that evidence.
+
+The adapter uses `$wpdb->options` and the current context's `options` cache
+group. On multisite these are not a network-wide mutex or cache invalidation
+scheme. The host must not treat this lock or a file journal path as multisite
+admission or coordination.
