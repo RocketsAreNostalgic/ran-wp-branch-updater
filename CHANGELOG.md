@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.0-beta.13](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.12...v1.0.0-beta.13) (2026-10-29)
+
+
+### Bug Fixes
+
+* accept WordPress-compatible archive and child-theme headers ([#103](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/103)) ([1790fac](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/commit/1790facbf3a7ff7be28e0ed96794fc017e7bf270))
+* reject integer-coercible file journal attempt IDs ([#102](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/102)) ([378c152](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/commit/378c1520ba960dfbdc39b28b1bc27e83ebcdb004))
+
 ## [1.0.0-beta.12](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.11...v1.0.0-beta.12) (2026-10-16)
 
 

@@ -57,6 +57,12 @@ $branches = $configure(
 
 State and archive directories must be private and durable. Do not use WordPress's upgrade directory for either.
 
+The default WordPress runtime supports single-site installations only. Hosts
+must reject multisite deployments at admission, before invoking `deploy()`.
+The default executor also rejects multisite during preflight, but that check
+follows baseline acquisition and artifact preparation; it does not prevent
+provider or archive work. Custom adapters do not inherit that check.
+
 ## Declare and deploy
 
 ```php
@@ -71,6 +77,15 @@ $outcome = $branches->plugin(
 Pass an expected commit only after the host has authenticated and admitted it. The provider resolves and acquires the branch artifact; when `expected_commit` is supplied, the runner verifies that branch head again immediately before the mutation fence. The archive is always rechecked before the fence. WordPress Core performs the installation/update, and postconditions are then verified before the attempt is finished.
 
 New installs remain inactive. Do not retry an uncertain outcome automatically.
+
+The standalone `FileAttemptStore` refuses custom attempt IDs that PHP converts
+to integer array keys, such as `0`, `123`, `-1`, and the current platform's integer
+bounds. It rejects them before touching the journal. Numeric-looking strings
+that remain string keys, including leading-zero and integer-overflow values,
+continue to round-trip; generated IDs are unchanged. This is a file-store
+constraint, not a restriction on declarations or custom admitted journals.
+Existing malformed journals still require an explicit operator recovery decision;
+the store does not migrate, prune or rebuild them.
 
 ## Updater-family architecture
 
@@ -108,6 +123,23 @@ speedup.
 The repository gate runs behavioral characterization for declaration validation, provider/source-head checks, archive safety and identity, downgrade prevention, mutation locking, journal transitions, WordPress execution, restoration/postcondition handling, cleanup, and hard-stop recovery.
 
 CI also installs the package into a separate no-dev Composer consumer and runs `tests/consumer-install.php`. That proves production classes resolve through the installed PSR-4 package and that bootstrap does not depend on a package-private `vendor` directory.
+
+### Package header policy
+
+Archive metadata and child-theme `Template` values follow WordPress
+[`get_file_data()`](https://developer.wordpress.org/reference/functions/get_file_data/)
+and [`_cleanup_header_comment()`](https://developer.wordpress.org/reference/functions/_cleanup_header_comment/)
+formatting: inspect the first 8 KiB, replace carriage returns with newlines,
+allow the optional opening `<?php` prefix, and trim closing comments or PHP tags.
+LF, CRLF and CR-only headers are supported. A cleaned empty `Template` means no
+parent; a nonempty parent must remain a safe slug, differ from the target and
+exist in WordPress.
+
+Package admission intentionally remains stricter than header extraction:
+required name/version values, the 64-byte field limit, control-character refusal,
+version/compatibility syntax and requirements, and exact package identity still
+apply. Formatting compatibility does not waive archive custody or installation
+eligibility checks.
 
 ## Community
 

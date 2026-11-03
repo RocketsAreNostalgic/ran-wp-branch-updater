@@ -210,4 +210,54 @@ if ( 'abc123' !== $record['resolved_ref'] || null === $record['mutation_started_
 	throw new RuntimeException( 'Named-argument journal transitions did not preserve persisted state.' );
 }
 
-echo "PASS persisted journal state invariants\n";
+$id_path  = $root . '/custom-ids.json';
+$id_store = new FileAttemptStore( $id_path );
+$id_store->begin( new BranchDeploymentDeclaration( 'safe-id', 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', null ) );
+$id_store->finish( 'safe-id', 'failed', 'provider_failed' );
+$safe_record = $id_store->get( 'safe-id' );
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Compare exact synthetic journal bytes before and after rejected input.
+$before = file_get_contents( $id_path );
+if ( ! is_string( $before ) ) {
+	throw new RuntimeException( 'Cannot read the custom ID fixture journal.' );
+}
+$reject_id = static function ( FileAttemptStore $target_store, BranchDeploymentDeclaration $declaration ): void {
+	try {
+		$target_store->begin( $declaration );
+		throw new RuntimeException( 'Integer-coercible attempt ID was accepted.' );
+	} catch ( RuntimeException $expected ) {
+		if ( 'Attempt ID cannot be stored as a string journal key.' !== $expected->getMessage() ) {
+			throw $expected;
+		}
+	}
+};
+foreach ( array( '0', '1', '123', '-1', (string) PHP_INT_MAX, (string) PHP_INT_MIN ) as $attempt_id ) {
+	// The general declaration still accepts IDs that custom journals may support.
+	$declaration = new BranchDeploymentDeclaration( $attempt_id, 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', null );
+	if ( $attempt_id !== $declaration->attempt_id ) {
+		throw new RuntimeException( 'General declaration changed a custom attempt ID.' );
+	}
+	$reject_id( $id_store, $declaration );
+	// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Refusal must leave the complete existing synthetic journal byte-identical.
+	if ( file_get_contents( $id_path ) !== $before || ( new FileAttemptStore( $id_path ) )->get( 'safe-id' ) !== $safe_record ) {
+		throw new RuntimeException( 'Rejected attempt ID changed prior bytes or made a valid record unreadable.' );
+	}
+	$fresh_path = $root . '/refused-' . $attempt_id . '/attempts.json';
+	$reject_id( new FileAttemptStore( $fresh_path ), $declaration );
+	if ( file_exists( dirname( $fresh_path ) ) || file_exists( $fresh_path ) || file_exists( $fresh_path . '.lock' ) || file_exists( $fresh_path . '.new' ) ) {
+		throw new RuntimeException( 'Rejected attempt ID created journal state on a fresh path.' );
+	}
+}
+foreach ( array( '01', '00', '-01', '-0', '+1', '1.0', '1e3', (string) PHP_INT_MAX . '0', (string) PHP_INT_MIN . '0', str_repeat( '1', 32 ), bin2hex( random_bytes( 16 ) ), 'safe-custom' ) as $attempt_id ) {
+	$declaration = new BranchDeploymentDeclaration( $attempt_id, 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', null );
+	if ( $id_store->begin( $declaration )['id'] !== $attempt_id || ( new FileAttemptStore( $id_path ) )->get( $attempt_id )['id'] !== $attempt_id ) {
+		throw new RuntimeException( 'Supported custom attempt ID did not round-trip.' );
+	}
+	$id_store->resolved( $attempt_id, 'abc123' );
+	$id_store->fence( $attempt_id );
+	$id_store->finish( $attempt_id, 'succeeded', 'deployed' );
+	if ( 'succeeded' !== ( new FileAttemptStore( $id_path ) )->get( $attempt_id )['state'] || $id_store->get( 'safe-id' ) !== $safe_record ) {
+		throw new RuntimeException( 'Supported custom attempt ID did not preserve transitions or existing records.' );
+	}
+}
+
+echo "PASS persisted journal state invariants and custom attempt ID admission\n";

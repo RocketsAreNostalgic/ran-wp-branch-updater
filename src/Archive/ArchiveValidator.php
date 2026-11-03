@@ -260,10 +260,11 @@ final class ArchiveValidator {
 		if ( false === $contents ) {
 			$this->fail( self::CODE_HEADER_UNREADABLE, 'The package header cannot be read.' );
 		}
-		$headers = array();
+		$contents = str_replace( "\r", "\n", $contents );
+		$headers  = array();
 		foreach ( array( $required, 'Version', 'Requires at least', 'Requires PHP' ) as $header ) {
-			$pattern = '/^[ \t\\/*#@]*' . preg_quote( $header, '/' ) . ':[ \t]*(.+?)\\s*$/mi';
-			$value   = preg_match( $pattern, $contents, $match ) === 1 ? trim( $match[1] ) : '';
+			$pattern = '/^(?:[ \t]*<\?php)?[ \t\/*#@]*' . preg_quote( $header, '/' ) . ':(.*)$/mi';
+			$value   = preg_match( $pattern, $contents, $match ) === 1 && $match[1] ? trim( (string) preg_replace( '/\s*(?:\*\/|\?>).*/', '', $match[1] ) ) : '';
 			if ( strlen( $value ) > 64 || preg_match( '/[[:cntrl:]]/', $value ) === 1 ) {
 				$this->fail( 'Version' === $header ? self::CODE_VERSION_INVALID : ( $required === $header ? self::CODE_HEADER_UNREADABLE : self::CODE_COMPATIBILITY_INVALID ), 'The package header is invalid.' );
 			}

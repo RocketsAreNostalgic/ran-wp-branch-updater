@@ -292,11 +292,13 @@ class WordPressCorePackageExecutor {
 		if ( ! is_string( $header ) ) {
 			return false;
 		}
-		if ( preg_match( '/^[ \t\/*#@]*Template:[ \t]*(.+)$/mi', $header, $match ) !== 1 ) {
+		$header = str_replace( "\r", "\n", $header );
+		$parent = preg_match( '/^(?:[ \t]*<\?php)?[ \t\/*#@]*Template:(.*)$/mi', $header, $match ) === 1 && $match[1] ? trim( (string) preg_replace( '/\s*(?:\*\/|\?>).*/', '', $match[1] ) ) : '';
+		if ( '' === $parent ) {
 			return null;
 		}
 		try {
-			return PackageSubdirectory::normalize_slug( trim( $match[1] ) );
+			return PackageSubdirectory::normalize_slug( $parent );
 		} catch ( InvalidArgumentException ) {
 			return false;
 		}
