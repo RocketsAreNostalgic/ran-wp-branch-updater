@@ -81,10 +81,10 @@ final class ArchiveValidator {
 					$this->fail( self::CODE_MULTIPLE_ROOTS, 'The archive must contain one package root.' );
 				}
 				$this->assert_safe_entry_type( $zip, $index, $stat, str_ends_with( $name, '/' ) );
+				$expanded = $this->add_expanded_bytes( $expanded, $stat['size'], $expanded_limit );
 				if ( ! str_ends_with( $name, '/' ) ) {
 					$this->verify_entry_contents( $zip, $index, $stat['size'], $stat['crc'], $expanded_limit );
 				}
-				$expanded = $this->add_expanded_bytes( $expanded, $stat['size'], $expanded_limit );
 			}
 			if ( null === $root ) {
 				$this->fail( self::CODE_LAYOUT_INVALID, 'The archive does not contain a package.' );
