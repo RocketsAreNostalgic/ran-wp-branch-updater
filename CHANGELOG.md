@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0-beta.14](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.13...v1.0.0-beta.14) (2026-11-03)
+
+
+### Performance
+
+* reject declared aggregate overflow before entry streams ([#104](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/104)) ([95dd974](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/commit/95dd974f080395e3908ca0dc7960e28faa758196))
+
 ## [1.0.0-beta.13](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.12...v1.0.0-beta.13) (2026-10-29)
 
 
