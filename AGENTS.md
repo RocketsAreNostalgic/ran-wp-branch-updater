@@ -39,6 +39,10 @@ Read [ARCHITECTURE.md](ARCHITECTURE.md) before changing production structure. Pr
 - Merging requires explicit owner authorization of the exact PR and merge method.
 - Keep credentials, local logs, vendor files, temporary transformation artifacts, and internal planning out of commits.
 
+## Failure reasons
+
+Outcome codes are a stable closed contract; reasons and details only refine them. Every detail must go through `AdmittedFailureReason::screen_detail()`; never read an exception, WP_Error or provider message into a reason or detail. A new reason is an additive `FailureReason` case and a new row in [docs/error-detail-inventory.md](docs/error-detail-inventory.md), with a test through the public admitted path. Do not add a reason that carries a path, URL, credential or digest, and do not bump `ADMITTED_API_VERSION` for an additive change.
+
 ## Development PHP profile
 
 Keep CLI fixtures under the common WordPress-derived formatting and owned naming

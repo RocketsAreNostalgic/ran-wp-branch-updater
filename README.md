@@ -118,6 +118,10 @@ Admitted corrupt entries still report integrity error 1010. This avoids
 inflating an already-over-limit entry without claiming a measured deployment
 speedup.
 
+## Failure reasons
+
+Outcome codes are unchanged. A failure can also carry a closed reason and a screened, bounded detail, read from `BranchDeployment::last_reason()`. The vocabulary, its precise guarantees, and the inventory of every audited site are in [docs/error-detail-inventory.md](docs/error-detail-inventory.md).
+
 ## Verification
 
 The repository gate runs behavioral characterization for declaration validation, provider/source-head checks, archive safety and identity, downgrade prevention, mutation locking, journal transitions, WordPress execution, restoration/postcondition handling, cleanup, and hard-stop recovery.

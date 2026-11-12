@@ -122,4 +122,15 @@ $outer = new RuntimeException( 'outer', 0, new RuntimeException( 'middle', 0, $i
 $assert( ReasonedFailure::find( $outer ) === $inner, 'find returns the nearest reasoned failure in the chain' );
 $assert( null === ReasonedFailure::find( new RuntimeException( 'plain' ) ), 'find returns null without a reasoned failure' );
 
+// The documentation names every reason, and is linked from the README and agent guidance.
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Read local documentation to keep the vocabulary and its documentation in step.
+$inventory = (string) file_get_contents( dirname( __DIR__ ) . '/docs/error-detail-inventory.md' );
+foreach ( FailureReason::cases() as $vocabulary ) {
+	$assert( str_contains( $inventory, '`' . $vocabulary->value . '`' ), 'the inventory documents reason ' . $vocabulary->value );
+}
+foreach ( array( 'README.md', 'AGENTS.md' ) as $document ) {
+	// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Read local documentation to keep the links in step.
+	$assert( str_contains( (string) file_get_contents( dirname( __DIR__ ) . '/' . $document ), 'docs/error-detail-inventory.md' ), $document . ' links the inventory' );
+}
+
 echo "PASS failure detail screening and reason vocabulary\n";

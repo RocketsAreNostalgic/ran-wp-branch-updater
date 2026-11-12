@@ -59,6 +59,10 @@ Invalid declarations throw. Durability failures from the attempt journal or muta
 
 Archive-integrity and cleanup failures are closed outcomes when their state is known. A fenced interruption remains conservative. Do not retry an uncertain outcome automatically; use the host's durable attempt record and recovery policy.
 
+## Failure reasons
+
+`BranchDeployment::last_reason()` returns `?AdmittedFailureReason` with a closed `reason`, an optional screened `detail` (untrusted text: escape it), `primary_outcome` and `cleanup_failed`. A journal may implement `Contract\AdmittedAttemptReasonJournal` to receive it from `finish_with_reason()`; one that does not is called exactly as before. See [docs/error-detail-inventory.md](docs/error-detail-inventory.md).
+
 ## Standalone composition
 
 The package bootstrap composes a `BranchUpdater` using a host-supplied provider, attempt store, private archive directory, package executor, mutation lock, and optional `maximum_artifact_bytes`. The former named arguments `archiveDirectory` and `maximumArtifactBytes` are now `archive_directory` and `maximum_artifact_bytes`; positional calls are unchanged and no legacy aliases are provided. The artifact limit defaults to 52,428,800 bytes (50 MiB). Defaults use the WordPress package executor and WordPress updater lock.
