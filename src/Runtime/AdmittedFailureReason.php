@@ -36,13 +36,16 @@ final readonly class AdmittedFailureReason {
 	}
 
 	/**
-	 * Return the detail only if the COMPLETE input is safe, else null. Unsafe
-	 * input is dropped, never redacted or partly kept, and only a safe input is
-	 * then bounded to MAXIMUM_DETAIL_LENGTH. Dropped: non-printable and non-ASCII
-	 * text, markup, paths, URLs, userinfo, credential-looking words, digest-shaped
-	 * text (digest prefixes, hex runs with or without separators, long mixed
-	 * tokens) and anything outside [A-Za-z0-9 ._-]. A harmless word that merely
-	 * contains one of those patterns (for example "tokenizer") is dropped too.
+	 * Return the detail only if the COMPLETE input passes, else null; only a passing
+	 * input is then bounded to MAXIMUM_DETAIL_LENGTH. Unsafe input is dropped, never
+	 * redacted or partly kept.
+	 *
+	 * This is a charset allow-list ([A-Za-z0-9 ._-], ASCII only) plus a heuristic
+	 * deny-list (paths, markup, URLs, credential-looking words and prefixes, digest
+	 * shapes). The deny-list is best effort and a harmless word that matches it
+	 * (for example "tokenizer") is dropped too. Safety rests on callers passing only
+	 * closed literals or allow-listed values, never message text; a test guards the
+	 * call sites. This function is a stopgap for the shared failure-text screener.
 	 */
 	public static function screen_detail( string $detail ): ?string {
 		if ( '' === $detail || strlen( $detail ) > self::MAXIMUM_INPUT_LENGTH ) {

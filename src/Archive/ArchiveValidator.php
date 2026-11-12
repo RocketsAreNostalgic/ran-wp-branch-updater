@@ -339,6 +339,6 @@ final class ArchiveValidator {
 	/** @return never */
 	private function fail( int $code, string $message, ?string $header = null ): never {
 		// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Preserve the bounded internal validation message and numeric error code; neither is rendered output.
-		throw new ReasonedFailure( $message, ( self::REASONS[ $code ] ?? FailureReason::ARCHIVE_CORRUPT )->value, $header, $code );
+		throw new ReasonedFailure( $message, self::REASONS[ $code ]->value, $header, $code );
 	}
 }

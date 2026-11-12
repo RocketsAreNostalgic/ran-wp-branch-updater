@@ -143,7 +143,7 @@ final class AdmittedBranchRunner {
 								throw $primary;
 							}
 							// The failing cleanup supersedes the outcome below; keep the outcome it replaced.
-							$primary_outcome = $primary instanceof AdmittedBranchStageFailure ? $primary->outcome_code : ( null === $primary ? $returned : $stage );
+							$primary_outcome = null === $primary ? $returned : ( $fenced ? 'interrupted' : ( $primary instanceof AdmittedBranchStageFailure ? $primary->outcome_code : $stage ) );
 							$stage           = 'archive_cleanup_failed';
 							throw $cleanup_failure;
 						}
@@ -163,7 +163,7 @@ final class AdmittedBranchRunner {
 						throw $failure;
 					}
 					if ( ! $this->is_ambiguous( $failure ) ) {
-						$primary_outcome = $failure instanceof AdmittedBranchStageFailure ? $failure->outcome_code : $stage;
+						$primary_outcome = $fenced ? 'interrupted' : ( $failure instanceof AdmittedBranchStageFailure ? $failure->outcome_code : $stage );
 						$stage           = 'archive_cleanup_failed';
 						$failure         = $cleanup_failure;
 					}

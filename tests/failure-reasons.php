@@ -15,6 +15,10 @@ use RAN\WPBranchUpdater\V1\Contract\AdmittedTargetFacts;
 use RAN\WPBranchUpdater\V1\Contract\BranchProvider;
 use RAN\WPBranchUpdater\V1\Contract\MutationLock;
 use RAN\WPBranchUpdater\V1\GitHubFixtureProvider;
+use RAN\WPBranchUpdater\V1\Persistence\FileAttemptStore;
+use RAN\WPBranchUpdater\V1\Persistence\FileMutationLock;
+use RAN\WPBranchUpdater\V1\RecordingExecutor;
+use RAN\WPBranchUpdater\V1\Runtime\StandaloneBranchRunner;
 use RAN\WPBranchUpdater\V1\Persistence\BranchDeploymentJournalFailure;
 use RAN\WPBranchUpdater\V1\Runtime\AdmittedBranchDurabilityFailure;
 use RAN\WPBranchUpdater\V1\Runtime\AdmittedBranchStageFailure;
@@ -132,13 +136,16 @@ final class RAN_WP_Branch_Updater_ReasonTarget implements AdmittedTargetFacts {
 
 // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- These test-only fault-injection doubles share one standalone behavioral proof.
 final class RAN_WP_Branch_Updater_ReasonExecutor implements AdmittedPackageExecutor {
-	public function __construct( private CorePackageExecutionResult $result, private ?Throwable $preflight ) {}
+	public function __construct( private CorePackageExecutionResult $result, private ?Throwable $preflight, private ?Throwable $execution = null ) {}
 	public function preflight( BranchDeploymentDeclaration $deployment, AdmittedBranchArtifact $artifact ): void {
 		if ( null !== $this->preflight ) {
 			throw $this->preflight;
 		}
 	}
 	public function execute( BranchDeploymentDeclaration $deployment, ?array $baseline, AdmittedBranchArtifact $artifact ): CorePackageExecutionResult {
+		if ( null !== $this->execution ) {
+			throw $this->execution;
+		}
 		return $this->result;
 	}
 }
@@ -179,7 +186,7 @@ final class RAN_WP_Branch_Updater_ReasonFixtures {
 			$journal,
 			$o['archives'] ?? new RAN_WP_Branch_Updater_ReasonArchives( $artifact, $o['prepare_failure'] ?? null ),
 			new RAN_WP_Branch_Updater_ReasonTarget( $baseline, $o ),
-			new RAN_WP_Branch_Updater_ReasonExecutor( $o['result'] ?? CorePackageExecutionResult::succeeded(), $o['preflight_failure'] ?? null ),
+			new RAN_WP_Branch_Updater_ReasonExecutor( $o['result'] ?? CorePackageExecutionResult::succeeded(), $o['preflight_failure'] ?? null, $o['execute_failure'] ?? null ),
 			new RAN_WP_Branch_Updater_ReasonLock( $o['lock_failure'] ?? null )
 		);
 		$bound    = $theme ? $bound->theme( 'acme/demo', 'fixture-1', 'main', 'demo', $o['subdirectory'] ?? null ) : $bound->plugin( 'acme/demo', 'fixture-1', 'main', package_slug: 'demo', subdirectory: $o['subdirectory'] ?? null );
@@ -433,17 +440,47 @@ $assert( null !== $record && FailureReason::EXPANDED_TOO_LARGE === $record->reas
 [, $record] = $via_zip( $make_zip( array( 'repository/demo/demo.php' => $plugin_source() ) ), array(), 10 );
 $assert( null !== $record && FailureReason::ARCHIVE_PREPARE_FAILED === $record->reason && null === $record->detail, 'a non-validator archive failure is archive_prepare_failed without its message' );
 
-// Every numeric validator cause maps into the closed vocabulary and keeps its code and fixed message.
+// Every numeric validator cause maps to its expected reason, and the table covers every CODE_* constant.
+$expected_reasons  = array(
+	'CODE_ZIP_UNAVAILABLE'           => FailureReason::ZIP_UNAVAILABLE,
+	'CODE_ZIP_INVALID'               => FailureReason::ZIP_INVALID,
+	'CODE_ENTRY_LIMIT'               => FailureReason::ENTRY_LIMIT,
+	'CODE_ENTRY_INVALID'             => FailureReason::ENTRY_INVALID,
+	'CODE_PATH_UNSAFE'               => FailureReason::PATH_UNSAFE,
+	'CODE_PATH_COLLISION'            => FailureReason::PATH_COLLISION,
+	'CODE_LAYOUT_INVALID'            => FailureReason::LAYOUT_INVALID,
+	'CODE_ENTRY_UNSUPPORTED'         => FailureReason::ENTRY_UNSUPPORTED,
+	'CODE_ENTRY_ENCRYPTED'           => FailureReason::ENTRY_ENCRYPTED,
+	'CODE_COMPRESSED_TOO_LARGE'      => FailureReason::COMPRESSED_TOO_LARGE,
+	'CODE_ARCHIVE_INTEGRITY'         => FailureReason::ARCHIVE_CORRUPT,
+	'CODE_SUBDIRECTORY_MISSING'      => FailureReason::SUBDIRECTORY_MISSING,
+	'CODE_PACKAGE_IDENTITY'          => FailureReason::IDENTITY_MISMATCH,
+	'CODE_HEADER_UNREADABLE'         => FailureReason::HEADER_UNREADABLE,
+	'CODE_VERSION_INVALID'           => FailureReason::VERSION_INVALID,
+	'CODE_COMPATIBILITY_INVALID'     => FailureReason::COMPAT_INVALID,
+	'CODE_REQUIRES_NEWER_PHP'        => FailureReason::REQUIRES_NEWER_PHP,
+	'CODE_REQUIRES_NEWER_WP'         => FailureReason::REQUIRES_NEWER_WP,
+	'CODE_EXPANDED_TOO_LARGE'        => FailureReason::EXPANDED_TOO_LARGE,
+	'CODE_PLUGIN_MISSING'            => FailureReason::PLUGIN_MISSING,
+	'CODE_THEME_MISSING'             => FailureReason::THEME_MISSING,
+	'CODE_MULTIPLE_PLUGINS'          => FailureReason::MULTIPLE_PLUGINS,
+	'CODE_HEADER_MISSING'            => FailureReason::HEADER_MISSING,
+	'CODE_VERSION_MISSING'           => FailureReason::VERSION_MISSING,
+	'CODE_MULTIPLE_ROOTS'            => FailureReason::LAYOUT_INVALID,
+	'CODE_PACKAGE_DIRECTORY_MISSING' => FailureReason::PACKAGE_DIR_MISSING,
+	'CODE_THEME_IDENTITY_MISMATCH'   => FailureReason::IDENTITY_MISMATCH,
+	'CODE_FILE_PARENT_COLLISION'     => FailureReason::PATH_COLLISION,
+);
 $validator_failure = new ReflectionMethod( ArchiveValidator::class, 'fail' );
-foreach ( ( new ReflectionClass( ArchiveValidator::class ) )->getConstants() as $name => $code ) {
-	if ( ! str_starts_with( $name, 'CODE_' ) ) {
-		continue;
-	}
+$validator_codes   = array_filter( ( new ReflectionClass( ArchiveValidator::class ) )->getConstants(), static fn( string $name ): bool => str_starts_with( $name, 'CODE_' ), ARRAY_FILTER_USE_KEY );
+$assert( array_keys( $validator_codes ) === array_keys( $expected_reasons ), 'the expected-reason table covers exactly every validator CODE_ constant' );
+foreach ( $validator_codes as $name => $code ) {
 	try {
 		$validator_failure->invoke( new ArchiveValidator(), $code, 'The fixed message.' );
 		$assert( false, 'fail() returned for ' . $name );
 	} catch ( ReasonedFailure $failure ) {
-		$assert( $code === $failure->getCode() && 'The fixed message.' === $failure->getMessage() && null !== $failure->reason, $name . ' keeps its code, message and a closed reason' );
+		$assert( $code === $failure->getCode() && 'The fixed message.' === $failure->getMessage(), $name . ' keeps its code and message' );
+		$assert( $expected_reasons[ $name ]->value === $failure->reason, $name . ' maps to ' . $expected_reasons[ $name ]->value );
 	}
 }
 
@@ -505,6 +542,15 @@ $assert( null !== $record && FailureReason::LOCK_RELEASE === $record->reason && 
 $dump = null === $record ? '' : $record->reason->value . '|' . $record->detail . '|' . $record->primary_outcome;
 $assert( ! str_contains( $dump, 'private' ) && ! str_contains( $dump, 'var/www' ), 'the cleanup failure message never enters the record' );
 
+// The replaced outcome of a fenced failure is interrupted, which is what the runner would have returned.
+[$actual, $record] = RAN_WP_Branch_Updater_ReasonFixtures::run(
+	array(
+		'cleanup_failure' => $cleanup,
+		'execute_failure' => new RuntimeException( 'private execution text' ),
+	)
+);
+$assert( 'interrupted' === $actual && null !== $record && 'interrupted' === $record->primary_outcome && FailureReason::CLEANUP_ALSO_FAILED === $record->reason && $record->cleanup_failed, 'a fenced failure with a failing cleanup records interrupted as the replaced outcome' );
+
 // A prepared archive whose custody breaks fails both the check and its cleanup: the custody cause is kept.
 // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- This test-only fault-injection double shares one standalone behavioral proof.
 final class RAN_WP_Branch_Updater_ReasonTamperingArchives implements AdmittedArchiveSource {
@@ -541,6 +587,16 @@ foreach ( $ambiguous as $label => [$thrown_failure, $expected_reason] ) {
 	[$outcome, $record, $journal, , $thrown] = RAN_WP_Branch_Updater_ReasonFixtures::run( array( 'lock_failure' => $thrown_failure ) );
 	$assert( 'thrown' === $outcome && $thrown === $thrown_failure && array() === $journal->finished, $label . ': the ambiguous failure still escapes and nothing is finished' );
 	$assert( null !== $record && $expected_reason === $record->reason && null === $record->detail, $label . ': last_reason names the ambiguous cause without its message' );
+}
+
+// A failure before the runner exists (the journal cannot begin) must not leave a stale reason behind.
+$standalone = new StandaloneBranchRunner( new GitHubFixtureProvider( '', 'abc123' ), new FileAttemptStore( $root ), new RecordingExecutor(), $root . '/custody', new FileMutationLock( $root . '/standalone.lock' ) );
+( new ReflectionProperty( $standalone, 'last_reason' ) )->setValue( $standalone, new AdmittedFailureReason( FailureReason::LOCK_HELD ) );
+try {
+	$standalone->execute( new BranchDeploymentDeclaration( 'standalone-begin', 'plugin', 'demo', 'acme/demo', 'fixture-1', 'main', 'abc123', 'update', null, 'demo/demo.php' ) );
+	$assert( false, 'an unusable journal must refuse to begin' );
+} catch ( RuntimeException ) {
+	$assert( null === $standalone->last_reason(), 'a stale reason is cleared when the journal cannot begin' );
 }
 
 // Remove only this fixture's temporary tree.

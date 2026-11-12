@@ -26,6 +26,7 @@ final class StandaloneBranchRunner {
 
 	/** Returns the closed terminal outcome; normal failures remain terminal outcomes. */
 	public function execute( BranchDeploymentDeclaration $deployment ): string {
+		$this->last_reason = null;
 		$this->attempts->begin( $deployment );
 		$target = new StandaloneTargetFacts( $this->executor );
 		$runner = new AdmittedBranchRunner(
