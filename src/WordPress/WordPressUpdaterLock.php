@@ -7,6 +7,8 @@ namespace RAN\WPBranchUpdater\V1\WordPress;
 use RAN\WPBranchUpdater\V1\Contract\MutationLock;
 use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentLockReleaseFailure;
 use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentLockStorageFailure;
+use RAN\WPBranchUpdater\V1\Runtime\FailureReason;
+use RAN\WPBranchUpdater\V1\Runtime\ReasonedFailure;
 use RuntimeException;
 use Throwable;
 
@@ -14,6 +16,8 @@ use Throwable;
 class WordPressUpdaterLock implements MutationLock {
 	private const NAME    = 'auto_updater.lock';
 	private const TIMEOUT = 3600;
+
+	private ?FailureReason $contention_reason = null;
 
 	public function run( callable $operation ): mixed {
 		$token = $this->acquire();
@@ -59,11 +63,14 @@ class WordPressUpdaterLock implements MutationLock {
 		}
 		$stored = $wpdb->get_var( $wpdb->prepare( 'SELECT option_value FROM %i WHERE option_name = %s', $wpdb->options, self::NAME ) );
 		$this->assert_database();
-		if ( ! is_string( $stored )
-			|| 1 !== preg_match( '/^\d+$/D', $stored )
-			|| (int) $stored > time() - self::TIMEOUT
-			|| ! $this->release( $stored )
-			|| ! $this->insert( $token ) ) {
+		$this->contention_reason = match ( true ) {
+			! is_string( $stored ) || 1 !== preg_match( '/^\d+$/D', $stored ) => FailureReason::LOCK_TOKEN_INVALID,
+			(int) $stored > time() - self::TIMEOUT => FailureReason::LOCK_HELD,
+			! $this->release( $stored ) => FailureReason::LOCK_STALE_RELEASE_FAIL,
+			! $this->insert( $token ) => FailureReason::LOCK_STALE_REINSERT_FAIL,
+			default => null,
+		};
+		if ( null !== $this->contention_reason ) {
 			throw $this->contention_failure();
 		}
 		return $token;
@@ -84,7 +91,8 @@ class WordPressUpdaterLock implements MutationLock {
 
 	/** Core retains its established diagnostic without retaining the algorithm. */
 	protected function contention_failure(): RuntimeException {
-		return new RuntimeException( 'WordPress updater is already running.' );
+		// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- A closed reason id is recorded outcome data, not rendered output.
+		return new ReasonedFailure( 'WordPress updater is already running.', ( $this->contention_reason ?? FailureReason::LOCK_HELD )->value );
 	}
 
 	private function insert( string $token ): bool {

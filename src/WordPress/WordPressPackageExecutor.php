@@ -9,6 +9,8 @@ use RAN\WPBranchUpdater\V1\Contract\PackageExecutor;
 use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionFailure;
 use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionResult;
+use RAN\WPBranchUpdater\V1\Runtime\FailureReason;
+use RAN\WPBranchUpdater\V1\Runtime\ReasonedFailure;
 use RuntimeException;
 
 /** Thin real-WordPress executor: WP owns installation; this package supplies one local ZIP. */
@@ -38,17 +40,21 @@ final class WordPressPackageExecutor implements PackageExecutor {
 	 */
 	public function preflight( BranchDeploymentDeclaration $d, PreparedArchive $archive ): array {
 		if ( is_multisite() ) {
-			throw new RuntimeException( 'Branch deployment supports single-site WordPress only.' );
+			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- A closed reason id is recorded outcome data, not rendered output.
+			throw new ReasonedFailure( 'Branch deployment supports single-site WordPress only.', FailureReason::PREFLIGHT_MULTISITE->value );
 		}
 		if ( ! wp_is_file_mod_allowed( 'ran-branch-deployment' ) ) {
-			throw new RuntimeException( 'WordPress file modifications are disabled.' );
+			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- A closed reason id is recorded outcome data, not rendered output.
+			throw new ReasonedFailure( 'WordPress file modifications are disabled.', FailureReason::PREFLIGHT_FILE_MODS_DISABLED->value );
 		}
 		require_once ABSPATH . 'wp-admin/includes/file.php';
 		if ( 'direct' !== get_filesystem_method() ) {
-			throw new RuntimeException( 'The WordPress direct filesystem method is required.' );
+			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- A closed reason id is recorded outcome data, not rendered output.
+			throw new ReasonedFailure( 'The WordPress direct filesystem method is required.', FailureReason::PREFLIGHT_FILESYSTEM_NOT_DIRECT->value );
 		}
 		if ( file_exists( ABSPATH . '.maintenance' ) || is_link( ABSPATH . '.maintenance' ) ) {
-			throw new RuntimeException( 'WordPress maintenance mode is active.' );
+			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- A closed reason id is recorded outcome data, not rendered output.
+			throw new ReasonedFailure( 'WordPress maintenance mode is active.', FailureReason::PREFLIGHT_MAINTENANCE_ACTIVE->value );
 		}
 		require_once ABSPATH . 'wp-admin/includes/plugin.php';
 		require_once ABSPATH . 'wp-admin/includes/theme.php';

@@ -23,7 +23,7 @@ final readonly class StandalonePackageExecutor implements AdmittedPackageExecuto
 
 	public function execute( BranchDeploymentDeclaration $deployment, ?array $baseline, AdmittedBranchArtifact $artifact ): CorePackageExecutionResult {
 		if ( ! $artifact instanceof PreparedArchive ) {
-			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::INVALID_REQUEST );
+			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::INVALID_REQUEST, 'artifact_unsupported' );
 		}
 		if ( $this->executor instanceof WordPressPackageExecutor ) {
 			$result = $this->executor->execute_core( $deployment, $artifact );

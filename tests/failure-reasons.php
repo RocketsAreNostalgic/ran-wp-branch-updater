@@ -310,6 +310,15 @@ $check(
 );
 $check( 'selected commit differs from the resolved ref', array( 'selected_commit' => str_repeat( 'b', 40 ) ), 'provider_failed', FailureReason::REF_MISMATCH );
 
+// Lock and preflight reasons reach the record through the runner; a plain failure stays reason-less.
+$check( 'held lock', array( 'lock_failure' => new ReasonedFailure( 'Mutation lock is held.', 'lock_held' ) ), 'lock_unavailable', FailureReason::LOCK_HELD );
+$check( 'multisite preflight', array( 'preflight_failure' => new ReasonedFailure( 'private text', 'preflight_multisite' ) ), 'preflight_failed', FailureReason::PREFLIGHT_MULTISITE );
+$check( 'unsafe detail on a reasoned failure', array( 'preflight_failure' => new ReasonedFailure( 'private text', 'preflight_multisite', '/var/www/private' ) ), 'preflight_failed', FailureReason::PREFLIGHT_MULTISITE );
+[$outcome, $record] = RAN_WP_Branch_Updater_ReasonFixtures::run( array( 'preflight_failure' => new RuntimeException( 'plain failure with /var/www/private' ) ) );
+$assert( 'preflight_failed' === $outcome && null === $record, 'a plain RuntimeException keeps its outcome and records no reason or message' );
+[$outcome, $record] = RAN_WP_Branch_Updater_ReasonFixtures::run( array( 'lock_failure' => new RuntimeException( 'plain lock failure' ) ) );
+$assert( 'lock_unavailable' === $outcome && null === $record, 'a plain lock RuntimeException keeps its outcome and records no reason' );
+
 // Archive validation causes through the real ProviderArchiveSource and ArchiveValidator.
 $root = __DIR__ . '/build/failure-reasons-' . bin2hex( random_bytes( 4 ) );
 // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_mkdir -- This standalone fixture owns its isolated temporary directory.
