@@ -24,21 +24,23 @@ final class ProviderArchiveSource implements AdmittedArchiveSource {
 	public function prepare( BranchDeploymentDeclaration $deployment, ?array $baseline ): AdmittedBranchArtifact {
 		try {
 			if ( null !== $deployment->selected_commit && ! $this->provider->supports_selected_commit() ) {
-				throw new AdmittedBranchStageFailure( 'provider_failed' );
+				throw new AdmittedBranchStageFailure( 'provider_failed', FailureReason::SELECTED_COMMIT_UNSUPPORTED->value );
 			}
 			$offer = $this->provider->prepare( $deployment );
 			if ( ! hash_equals( $deployment->repository_id, $offer->repository_id ) ) {
-				throw new AdmittedBranchStageFailure( 'provider_failed' );
+				throw new AdmittedBranchStageFailure( 'provider_failed', FailureReason::REPOSITORY_MISMATCH->value );
 			}
 			if ( null !== ( $deployment->selected_commit ?? $deployment->expected_head ) && ! hash_equals( $deployment->selected_commit ?? $deployment->expected_head, $offer->resolved_ref ) ) {
-				throw new AdmittedBranchStageFailure( 'provider_failed' );
+				throw new AdmittedBranchStageFailure( 'provider_failed', FailureReason::REF_MISMATCH->value );
 			}
 			$this->offer         = $offer;
 			$this->verify_source = null !== $deployment->expected_head || null !== $deployment->selected_commit;
 		} catch ( AdmittedBranchStageFailure $failure ) {
 			throw $failure;
 		} catch ( RuntimeException $failure ) {
-			throw new AdmittedBranchStageFailure( 'provider_failed' );
+			// A provider's convention of an HTTP status as the exception code is passed on; its message never is.
+			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- A closed reason id and a screened bounded detail are recorded outcome data, not rendered output.
+			throw new AdmittedBranchStageFailure( 'provider_failed', FailureReason::PROVIDER_ERROR->value, $failure->getCode() >= 100 && $failure->getCode() <= 599 ? 'http_' . $failure->getCode() : null );
 		}
 		try {
 			return PreparedArchive::download_and_validate(
@@ -48,7 +50,9 @@ final class ProviderArchiveSource implements AdmittedArchiveSource {
 				$this->maximum_artifact_bytes
 			);
 		} catch ( RuntimeException $failure ) {
-			throw new AdmittedBranchStageFailure( 'archive_integrity_failed' );
+			$cause = ReasonedFailure::find( $failure );
+			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- A closed reason id and a screened bounded detail are recorded outcome data, not rendered output.
+			throw new AdmittedBranchStageFailure( 'archive_integrity_failed', $cause->reason ?? FailureReason::ARCHIVE_PREPARE_FAILED->value, $cause?->detail );
 		}
 	}
 
