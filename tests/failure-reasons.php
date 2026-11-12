@@ -470,6 +470,66 @@ foreach ( array(
 	$assert( 'provider_failed' === $outcome && null !== $record && FailureReason::PROVIDER_ERROR === $record->reason && $expected_detail === $record->detail, 'provider status ' . $http_status . ' passes only a bounded status code' );
 }
 
+// Class C: a failing cleanup beside another cause records both and never replaces the primary cause.
+$cleanup = new RuntimeException( 'cleanup failed at /var/www/private ' . hash( 'sha256', 'x' ) );
+$both    = static function ( string $label, array $options, string $outcome, FailureReason $reason, ?string $detail, string $primary ) use ( $assert, $cleanup ): void {
+	$aware                      = new RAN_WP_Branch_Updater_ReasonAwareJournal();
+	[$actual, $record, $legacy] = RAN_WP_Branch_Updater_ReasonFixtures::run( array_merge( array( 'cleanup_failure' => $cleanup ), $options ) );
+	$assert( $outcome === $actual && array( $outcome ) === $legacy->finished, $label . ': the outcome code is unchanged (' . $actual . ') for a journal that ignores reasons' );
+	$assert( null !== $record && $reason === $record->reason && $detail === $record->detail && $primary === $record->primary_outcome && $record->cleanup_failed, $label . ': the primary reason ' . $reason->value . ', superseded outcome ' . $primary . ' and the cleanup failure are all recorded' );
+	RAN_WP_Branch_Updater_ReasonFixtures::run(
+		array_merge(
+			array(
+				'cleanup_failure' => $cleanup,
+				'journal'         => $aware,
+			),
+			$options
+		)
+	);
+	$assert( 1 === count( $aware->reasoned ) && $outcome === $aware->reasoned[0][0] && $primary === $aware->reasoned[0][1]->primary_outcome, $label . ': a reason-aware journal receives the same record' );
+};
+$both( 'cleanup after a reasoned stage failure', array( 'preflight_failure' => new ReasonedFailure( 'private text', 'preflight_multisite' ) ), 'archive_cleanup_failed', FailureReason::PREFLIGHT_MULTISITE, null, 'preflight_failed' );
+$both( 'cleanup after a plain stage failure', array( 'preflight_failure' => new RuntimeException( 'plain' ) ), 'archive_cleanup_failed', FailureReason::CLEANUP_ALSO_FAILED, null, 'preflight_failed' );
+$both( 'cleanup after a held lock', array( 'lock_failure' => new ReasonedFailure( 'held', 'lock_held' ) ), 'archive_cleanup_failed', FailureReason::LOCK_HELD, null, 'lock_unavailable' );
+$both( 'cleanup after a core failure', array( 'result' => CorePackageExecutionResult::failed( CorePackageExecutionFailure::WORDPRESS_FAILED, 'copy_failed' ) ), 'interrupted', FailureReason::CORE_WORDPRESS_FAILED, 'copy_failed', 'upgrader_failed' );
+$both( 'cleanup after a successful deployment', array(), 'interrupted', FailureReason::CLEANUP_ALSO_FAILED, null, 'deployed' );
+$both( 'cleanup after a pre-fence policy failure', array( 'selected_commit' => str_repeat( 'b', 40 ) ), 'archive_cleanup_failed', FailureReason::REF_MISMATCH, null, 'provider_failed' );
+[$actual, $record, $journal, , $thrown] = RAN_WP_Branch_Updater_ReasonFixtures::run(
+	array(
+		'cleanup_failure' => $cleanup,
+		'lock_failure'    => new BranchDeploymentLockReleaseFailure( 'release' ),
+	)
+);
+$assert( 'thrown' === $actual && array() === $journal->finished && $thrown instanceof BranchDeploymentLockReleaseFailure, 'an ambiguous failure still escapes when cleanup also fails' );
+$assert( null !== $record && FailureReason::LOCK_RELEASE === $record->reason && $record->cleanup_failed, 'the ambiguous cause and the cleanup failure are both recorded' );
+$dump = null === $record ? '' : $record->reason->value . '|' . $record->detail . '|' . $record->primary_outcome;
+$assert( ! str_contains( $dump, 'private' ) && ! str_contains( $dump, 'var/www' ), 'the cleanup failure message never enters the record' );
+
+// A prepared archive whose custody breaks fails both the check and its cleanup: the custody cause is kept.
+// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- This test-only fault-injection double shares one standalone behavioral proof.
+final class RAN_WP_Branch_Updater_ReasonTamperingArchives implements AdmittedArchiveSource {
+	public function __construct( private ProviderArchiveSource $source ) {}
+	public function prepare( BranchDeploymentDeclaration $deployment, ?array $baseline ): AdmittedBranchArtifact {
+		$artifact = $this->source->prepare( $deployment, $baseline );
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_chmod -- Break the prepared archive's custody identity for the proof.
+		chmod( ( new ReflectionProperty( $artifact, 'path' ) )->getValue( $artifact ), 0644 );
+		return $artifact;
+	}
+	public function verify_current_head(): void {
+		$this->source->verify_current_head();
+	}
+}
+$tampered                    = $make_zip( array( 'repository/demo/demo.php' => $plugin_source() ) );
+[$actual, $record, $journal] = RAN_WP_Branch_Updater_ReasonFixtures::run(
+	array(
+		'operation'    => 'install',
+		'subdirectory' => 'demo',
+		'archives'     => new RAN_WP_Branch_Updater_ReasonTamperingArchives( new ProviderArchiveSource( new GitHubFixtureProvider( $tampered, 'abc123' ), $root . '/custody' ) ),
+	)
+);
+$assert( 'archive_cleanup_failed' === $actual && array( 'archive_cleanup_failed' ) === $journal->finished, 'broken custody keeps the archive_cleanup_failed outcome for an old journal' );
+$assert( null !== $record && FailureReason::ARCHIVE_CUSTODY_CHANGED === $record->reason && 'identity' === $record->detail && 'archive_integrity_failed' === $record->primary_outcome && $record->cleanup_failed, 'broken custody records the custody cause, its closed detail and the superseded outcome' );
+
 // Ambiguous durability failures still escape, and their reason is available from last_reason().
 $ambiguous = array(
 	'lock storage' => array( new BranchDeploymentLockStorageFailure( 'private storage text' ), FailureReason::LOCK_STORAGE ),
