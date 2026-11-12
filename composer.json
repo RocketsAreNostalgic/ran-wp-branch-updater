@@ -45,6 +45,7 @@
     "test:journal": "@php tests/journal-invariants.php",
     "test:identifier": "@php tests/installed-package-identifier.php",
     "test:error-code": "@php tests/core-package-error-code.php",
+    "test:screening": "@php tests/failure-detail-screening.php",
     "standards": "phpcs --standard=.phpcs.xml -s && phpcs --standard=.phpcs-cli-compat.xml -s",
     "standards:fix": "bash -c 'for ruleset in .phpcs.xml .phpcs-cli-compat.xml; do phpcbf --standard=\"$ruleset\" --report=summary; result=$?; if [ \"$result\" -gt 1 ]; then exit \"$result\"; fi; done'",
     "analyze": [
@@ -74,6 +75,7 @@
       "@test:journal",
       "@test:identifier",
       "@test:error-code",
+      "@test:screening",
       "@test:release-control"
     ],
     "test:naming": "@php tests/naming-enforcement.php",
