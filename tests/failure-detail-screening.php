@@ -59,6 +59,10 @@ $unsafe = array(
 	'digest prefix'              => 'sha256 abc',
 	'digest prefix dash'         => 'sha512-abc',
 	'short git id'               => 'abc1234',
+	'short github token'         => 'ghp_abc',
+	'short slack token'          => 'xoxb-1234',
+	'short gitlab token'         => 'glpat-abc123',
+	'short secret key'           => 'sk-abc',
 	'partial hash'               => substr( $digest, 0, 20 ),
 	'base64 32 bytes'            => 'ypeBEsobvcr6wjGzmiPcTaeG7/gUfE5yuYB3ha/uSLs',
 	'base64url 48 bytes'         => 'VKWbnyKwuAiA2EJ-VIt8I6vYc0huHwNdzpzWl-hRdQM8qojm1XvDXvrgta_TFF8x',
@@ -121,6 +125,101 @@ $inner = new ReasonedFailure( 'inner', 'zip_invalid' );
 $outer = new RuntimeException( 'outer', 0, new RuntimeException( 'middle', 0, $inner ) );
 $assert( ReasonedFailure::find( $outer ) === $inner, 'find returns the nearest reasoned failure in the chain' );
 $assert( null === ReasonedFailure::find( new RuntimeException( 'plain' ) ), 'find returns null without a reasoned failure' );
+
+// Call-site guard: every detail origin in src/ is a closed literal or an explicitly allow-listed expression.
+// A new site that passes anything else (for example message text) fails here until it is reviewed.
+$allowed_origins = array(
+	'$header',
+	'$changed',
+	'$parent_failure',
+	'$cause?->detail',
+	'$result->get_detail()',
+	'$this->detail',
+	'$this->error_detail( $result )',
+	'$failure instanceof \Error ? \'php_error\' : \'exception\'',
+	'$failure instanceof ReasonedFailure ? \'archive_changed\' : \'input_invalid\'',
+	'$failure->getCode() >= 100 && $failure->getCode() <= 599 ? \'http_\' . $failure->getCode() : null',
+);
+// Argument index of the detail for each constructor or factory.
+$origin_calls = array(
+	'new ReasonedFailure'                => 2,
+	'new AdmittedBranchStageFailure'     => 2,
+	'new AdmittedFailureReason'          => 1,
+	'CorePackageExecutionResult::failed' => 1,
+);
+$split        = static function ( string $arguments ): array {
+	$parts   = array();
+	$depth   = 0;
+	$quote   = '';
+	$current = '';
+	foreach ( str_split( $arguments ) as $character ) {
+		if ( '' !== $quote ) {
+			$quote = $character === $quote ? '' : $quote;
+		} elseif ( "'" === $character || '"' === $character ) {
+			$quote = $character;
+		} elseif ( '(' === $character || '[' === $character ) {
+			++$depth;
+		} elseif ( ')' === $character || ']' === $character ) {
+			--$depth;
+		} elseif ( ',' === $character && 0 === $depth ) {
+			$parts[] = trim( $current );
+			$current = '';
+			continue;
+		}
+		$current .= $character;
+	}
+	$parts[] = trim( $current );
+	return $parts;
+};
+$checked      = 0;
+foreach ( new RecursiveIteratorIterator( new RecursiveDirectoryIterator( dirname( __DIR__ ) . '/src', FilesystemIterator::SKIP_DOTS ) ) as $file ) {
+	// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Scan local source for detail call sites.
+	$source = (string) file_get_contents( $file->getPathname() );
+	foreach ( $origin_calls as $call => $index ) {
+		$length = strlen( $source );
+		preg_match_all( '/' . preg_quote( $call . '(', '/' ) . '/', $source, $matches, PREG_OFFSET_CAPTURE );
+		$offset = 0;
+		foreach ( $matches[0] as [$matched, $found] ) {
+			if ( $found < $offset ) {
+				continue;
+			}
+			$start  = $found + strlen( $matched );
+			$depth  = 1;
+			$quote  = '';
+			$cursor = $start;
+			while ( $depth > 0 && $cursor < $length ) {
+				$character = $source[ $cursor ];
+				if ( '' !== $quote ) {
+					$quote = $character === $quote ? '' : $quote;
+				} elseif ( "'" === $character || '"' === $character ) {
+					$quote = $character;
+				} elseif ( '(' === $character ) {
+					++$depth;
+				} elseif ( ')' === $character ) {
+					--$depth;
+				}
+				++$cursor;
+			}
+			$offset    = $cursor;
+			$arguments = $split( substr( $source, $start, $cursor - $start - 1 ) );
+			$origin    = $arguments[ $index ] ?? null;
+			if ( null === $origin || '' === $origin || 'null' === $origin ) {
+				continue;
+			}
+			++$checked;
+			if ( 1 === preg_match( '/\A\'([^\'\\\\]*)\'\z/', $origin, $literal ) ) {
+				$assert( AdmittedFailureReason::screen_detail( $literal[1] ) === $literal[1], $file->getFilename() . ': literal detail survives the screen: ' . $literal[1] );
+				continue;
+			}
+			$assert( in_array( $origin, $allowed_origins, true ), $file->getFilename() . ': detail origin is not allow-listed: ' . $origin );
+			preg_match_all( '/\'([^\']*)\'/', $origin, $literals );
+			foreach ( $literals[1] as $literal_text ) {
+				$assert( 'http_' === $literal_text || AdmittedFailureReason::screen_detail( $literal_text ) === $literal_text, 'allow-listed literal survives the screen: ' . $literal_text );
+			}
+		}
+	}
+}
+$assert( $checked >= 14, 'the call-site guard found the detail call sites (' . $checked . ')' );
 
 // The documentation names every reason, and is linked from the README and agent guidance.
 // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Read local documentation to keep the vocabulary and its documentation in step.

@@ -16,6 +16,8 @@ consumer that ignores them sees exactly the behaviour it saw before.
 | `Contract\AdmittedAttemptReasonJournal` | Optional journal capability. The runner calls `finish_with_reason( $code, $reason )` instead of `finish( $code )` only when the journal implements it and a reason exists. The code passed is the same code `finish()` would receive. `FileAttemptJournal` does not implement it and its durable record is unchanged. |
 | `ReasonedFailure::find( Throwable )` | The nearest reason-carrying failure in an exception chain. A host that calls `PreparedArchive::download_and_validate()` itself (as Booster does) uses this on the exception it catches. |
 
+`finish_with_reason()` evolves by adding fields to the final readonly `AdmittedFailureReason`; changing its signature needs a new interface, not an edit of this one.
+
 `AdmittedFailureReason` has `reason` (`FailureReason`), `detail` (`?string`),
 `primary_outcome` (`?string`) and `cleanup_failed` (`bool`).
 `ADMITTED_API_VERSION` stays `3`: no existing signature changed.
@@ -27,6 +29,12 @@ consumer that ignores them sees exactly the behaviour it saw before.
   or renaming one is a breaking change.
 * `detail` is `null` or at most 64 characters of `[A-Za-z0-9 ._-]`. It is **untrusted
   text**: a consumer must still escape it for its output context.
+* **What the screener is, and is not.** `screen_detail()` is a charset allow-list
+  (`[A-Za-z0-9 ._-]`, ASCII) plus a best-effort, heuristic deny-list. It is not a proof that
+  arbitrary text is safe. Safety rests on callers passing only closed literals or allow-listed
+  values, never an exception, WP_Error or provider message; `tests/failure-detail-screening.php`
+  fails if a call site passes any other expression. The function is a stopgap that a shared
+  failure-text screener is to replace.
 * Every detail passes through the single function
   `AdmittedFailureReason::screen_detail()`, whichever way it was supplied. It screens the
   **complete** input first and bounds the length only afterwards. Unsafe input is dropped
@@ -45,10 +53,13 @@ consumer that ignores them sees exactly the behaviour it saw before.
   dropped too (for example `tokenizer_failed` or `session_expired`). A short hex-looking
   word under 7 characters, or hex without a digit, is not recognised as an id; none of the
   closed sources produces one.
-* A failing cleanup beside another cause never replaces that cause in the record: `reason`
-  is the primary reason (or `cleanup_also_failed` when the primary had none),
-  `primary_outcome` is the outcome the cleanup superseded, and `cleanup_failed` is `true`.
-  The outcome code itself is unchanged (`archive_cleanup_failed`, or `interrupted` once fenced).
+* A failing cleanup beside another cause is **recorded, not acted on**: the outcome code is
+  unchanged (`archive_cleanup_failed`, or `interrupted` once fenced) and the reason is recorded.
+  `reason` is the primary reason (or `cleanup_also_failed` when the primary had none),
+  `primary_outcome` is the outcome the cleanup replaced (`interrupted` when fenced, because
+  that is what the runner would have returned), and `cleanup_failed` is `true`. The runner
+  still returns `restoration_uncertain` or `interrupted` where it did before; this change
+  does not fix those outcomes, it only records why.
 
 ## Reason vocabulary
 
@@ -89,7 +100,7 @@ reason is recorded and tested; **documented** = deliberately unchanged, rational
 | E04 | `WordPress/WordPressCorePackageExecutor.php:361` | replace | WP_Error code and message | `WORDPRESS_FAILED` | B and A | `core_wordpress_failed` | message can hold paths: always dropped; code only if allow-listed | `error_detail()`; `tests/failure-reasons-wordpress.php` | fixed |
 | E05 | `WordPressCorePackageExecutor.php:74,114` | replace | Throwable class, code, message | `WORDPRESS_UNCERTAIN` | B and A | `core_wordpress_uncertain` | only `exception` or `php_error`; class and message may be foreign or hold paths | `tests/failure-reasons-wordpress.php` | fixed (coarse by design) |
 | E06 | `WordPressCorePackageExecutor.php:221-244` | replace | which of 5 source-selection failures | one WP_Error code | B | `core_wordpress_failed` | 4 closed causes in the WP_Error data | `invalid_package_source( $cause )`; `tests/failure-reasons-wordpress.php`, `tests/core-package-error-code.php` | fixed |
-| E07 | `Runtime/AdmittedBranchRunner.php:139,159` | cleanup | primary cause and cleanup failure | `archive_cleanup_failed` replaced the cause | C | primary reason or `cleanup_also_failed`, plus `primary_outcome`, `cleanup_failed` | cleanup message never read | `tests/failure-reasons.php` class C cases | fixed |
+| E07 | `Runtime/AdmittedBranchRunner.php:139,159` | cleanup | primary cause and cleanup failure | `archive_cleanup_failed` replaced the cause | C | primary reason or `cleanup_also_failed`, plus `primary_outcome`, `cleanup_failed` | cleanup message never read | `tests/failure-reasons.php` class C cases | reason recorded; outcome code unchanged |
 | E08 | `AdmittedBranchRunner.php:112-128` | postcondition | Core failure; baseline readable or changed | `restoration_uncertain` and others | B | `core_*`, `baseline_unreadable`, `baseline_changed` | closed ids | `tests/failure-reasons.php` | fixed |
 | E09 | `WordPress/WordPressPackageExecutor.php:41-57`, `AdmittedBranchRunner.php:153` | preflight | which of 4 preflight conditions | `preflight_failed` or stage | B | `preflight_*` | fixed internal messages, closed ids | `tests/failure-reasons-wordpress.php`, `tests/failure-reasons.php` | fixed; a plain `RuntimeException` from a foreign executor stays reason-less (text is untrusted) |
 | E10 | `Persistence/FileMutationLock.php:20`, `WordPress/WordPressUpdaterLock.php:66-95` | lock | held, malformed, release failed, re-insert failed | `lock_unavailable` | B | `lock_held`, `lock_token_invalid`, `lock_stale_release_failed`, `lock_stale_reinsert_failed` | closed ids | `tests/failure-reasons-wordpress.php`; an overriding `contention_failure()` keeps today's behaviour | fixed |
@@ -102,7 +113,7 @@ reason is recorded and tested; **documented** = deliberately unchanged, rational
 | E17 | `WordPressCorePackageExecutor.php:265` | replace | theme archive, parent invalid or missing | `INVALID_REQUEST` | B | `core_invalid_request` | closed causes only; the parent name is not passed | `tests/failure-reasons-wordpress.php`; `theme_parent_missing` needs real WordPress and is covered only by the installed lane | fixed |
 | E18 | `Runtime/BranchUpdater.php:92-93`, `Archive/PackageSubdirectory.php:28` | input | exact invalid field | fixed text | A | none | caller-input validation text is already specific enough | none | documented |
 | E19 | `Runtime/Admitted*Failure.php`, `Branch*Failure.php` | durability | previous chain | thrown out of `run()` | C | `durability_uncertain`, `journal_uncertain`, `lock_storage`, `lock_release` | closed ids | `last_reason()` is set before the escape; `tests/failure-reasons.php` | fixed here; the host must read it and log (consumer) |
-| E20 | `AdmittedBranchRunner.php:139` | cleanup | an outcome returned normally (for example `deployed`) | replaced by `interrupted` or `archive_cleanup_failed` | C | `cleanup_also_failed` and `primary_outcome` | none | `tests/failure-reasons.php` | fixed |
+| E20 | `AdmittedBranchRunner.php:139` | cleanup | an outcome returned normally (for example `deployed`) | replaced by `interrupted` or `archive_cleanup_failed` | C | `cleanup_also_failed` and `primary_outcome` | none | `tests/failure-reasons.php` | reason recorded; outcome code unchanged |
 
 ## What a host must change to consume this
 
