@@ -17,6 +17,11 @@ final readonly class BranchDeployment {
 		return $this->declaration->attempt_id;
 	}
 
+	/** The reason for the last deploy() outcome, if the runner recorded one. Detail is untrusted text: escape it. */
+	public function last_reason(): ?AdmittedFailureReason {
+		return $this->runner->last_reason();
+	}
+
 	/** Returns the runner's closed terminal outcome; ambiguous durability failures propagate. */
 	public function deploy( ?string $expected_commit = null, ?string $operation = null, ?string $selected_commit = null, ?string $expected_identifier = null ): string {
 		$deployment = new BranchDeploymentDeclaration(

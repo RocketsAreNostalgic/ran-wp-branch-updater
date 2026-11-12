@@ -6,12 +6,13 @@ namespace RAN\WPBranchUpdater\V1\Runtime;
 
 /** The bounded result of asking WordPress core to mutate one package. */
 final readonly class CorePackageExecutionResult {
-	private function __construct( private ?CorePackageExecutionFailure $failure ) {}
+	private function __construct( private ?CorePackageExecutionFailure $failure, private ?string $detail = null ) {}
 	public static function succeeded(): self {
 		return new self( null );
 	}
-	public static function failed( CorePackageExecutionFailure $failure ): self {
-		return new self( $failure );
+	/** @param ?string $detail Optional untrusted display text; the failure reason screens it before recording. */
+	public static function failed( CorePackageExecutionFailure $failure, ?string $detail = null ): self {
+		return new self( $failure, $detail );
 	}
 	/** @phpstan-assert-if-false CorePackageExecutionFailure $this->get_failure() */
 	public function is_successful(): bool {
@@ -22,5 +23,8 @@ final readonly class CorePackageExecutionResult {
 	}
 	public function get_failure(): ?CorePackageExecutionFailure {
 		return $this->failure;
+	}
+	public function get_detail(): ?string {
+		return $this->detail;
 	}
 }

@@ -13,6 +13,8 @@ use RAN\WPBranchUpdater\V1\Persistence\FileAttemptStore;
 
 /** Standalone consumer wiring around the shared admitted runner. */
 final class StandaloneBranchRunner {
+	private ?AdmittedFailureReason $last_reason = null;
+
 	public function __construct(
 		private readonly BranchProvider $provider,
 		private readonly FileAttemptStore $attempts,
@@ -33,6 +35,15 @@ final class StandaloneBranchRunner {
 			new StandalonePackageExecutor( $this->executor, $target ),
 			$this->lock
 		);
-		return $runner->run( $deployment );
+		try {
+			return $runner->run( $deployment );
+		} finally {
+			$this->last_reason = $runner->last_reason();
+		}
+	}
+
+	/** The reason for the last execute() outcome, if any. The file journal does not persist it. */
+	public function last_reason(): ?AdmittedFailureReason {
+		return $this->last_reason;
 	}
 }
