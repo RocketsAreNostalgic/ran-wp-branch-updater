@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace RAN\WPBranchUpdater\V1\Runtime;
 
+use RAN\UpdaterSupport\V1\FailureText;
+
 /**
  * Optional, bounded refinement of one terminal outcome code.
  *
@@ -12,7 +14,6 @@ namespace RAN\WPBranchUpdater\V1\Runtime;
  */
 final readonly class AdmittedFailureReason {
 	public const MAXIMUM_DETAIL_LENGTH = 64;
-	private const MAXIMUM_INPUT_LENGTH = 1024;
 
 	public ?string $detail;
 	public ?string $primary_outcome;
@@ -40,42 +41,18 @@ final readonly class AdmittedFailureReason {
 	 * input is then bounded to MAXIMUM_DETAIL_LENGTH. Unsafe input is dropped, never
 	 * redacted or partly kept.
 	 *
-	 * This is a charset allow-list ([A-Za-z0-9 ._-], ASCII only) plus a heuristic
-	 * deny-list (paths, markup, URLs, credential-looking words and prefixes, digest
-	 * shapes). The deny-list is best effort and a harmless word that matches it
-	 * (for example "tokenizer") is dropped too. Safety rests on callers passing only
-	 * closed literals or allow-listed values, never message text; a test guards the
-	 * call sites. This function is a stopgap for the shared failure-text screener.
+	 * The whole input must first be this caller's charset allow-list
+	 * ([A-Za-z0-9 ._-], ASCII only); any other character drops it. The shared
+	 * `FailureText::strict()` shape screen then runs on the whole input and bounds
+	 * the passing result to MAXIMUM_DETAIL_LENGTH. The shared screener is a
+	 * safety net by shape, not a proof. The real control is that every call site
+	 * passes only closed literals or allow-listed values, never message text; a test
+	 * guards the call sites.
 	 */
 	public static function screen_detail( string $detail ): ?string {
-		if ( '' === $detail || strlen( $detail ) > self::MAXIMUM_INPUT_LENGTH ) {
-			return null;
-		}
 		if ( 1 !== preg_match( '/\A[A-Za-z0-9 ._-]+\z/D', $detail ) ) {
 			return null;
 		}
-		$unsafe = array(
-			'/[<>&:\/\\\\~@]|\.\./',
-			'/token|secret|passw|credential|bearer|authoriz|cookie|session|signature|api[ _.-]?key|private[ _.-]?key|\bkey\b|[_.-]key\b|\bkey[_.-]/i',
-			'/gh[pousr]_|github_pat|glpat|xox[abprs]|\beyJ|\bsk-|\b(?:AKIA|ASIA)[A-Z0-9]{12,}/i',
-			'/(?:sha|md)-?\d/i',
-			'/\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,}\b/i',
-		);
-		foreach ( $unsafe as $pattern ) {
-			if ( 1 === preg_match( $pattern, $detail ) ) {
-				return null;
-			}
-		}
-		if ( 1 === preg_match( '/[0-9a-f]{16}/i', str_replace( array( ' ', '.', '_', '-' ), '', $detail ) ) ) {
-			return null;
-		}
-		foreach ( (array) preg_split( '/[ .]+/', $detail ) as $word ) {
-			$word = (string) $word;
-			if ( ( strlen( $word ) >= 40 && 1 !== preg_match( '/\A[a-z]+(?:[_-][a-z]+)*\z/D', $word ) ) || ( strlen( $word ) >= 24 && 1 === preg_match( '/\d/', $word ) && 1 === preg_match( '/[A-Za-z]/', $word ) ) ) {
-				return null;
-			}
-		}
-		$bounded = rtrim( substr( $detail, 0, self::MAXIMUM_DETAIL_LENGTH ) );
-		return '' === $bounded ? null : $bounded;
+		return FailureText::strict( $detail, self::MAXIMUM_DETAIL_LENGTH );
 	}
 }

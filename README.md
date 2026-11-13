@@ -17,7 +17,7 @@ configure
 
 ## Install and configure
 
-While consuming the current prerelease line from GitHub, a root project must explicitly configure VCS repositories for both this package and `ran/updater-support`. Composer does not inherit repository declarations from dependencies. The root requires the branch updater; its compatible `ran/updater-support` constraint, `^1.0.0-beta.4`, is resolved transitively. Because that transitive support dependency is currently a beta release, the root must admit beta packages while preferring stable packages where available.
+While consuming the current prerelease line from GitHub, a root project must explicitly configure VCS repositories for both this package and `ran/updater-support`. Composer does not inherit repository declarations from dependencies. The root requires the branch updater; its compatible `ran/updater-support` constraint, `^1.0.0-beta.5`, is resolved transitively. Because that transitive support dependency is currently a beta release, the root must admit beta packages while preferring stable packages where available.
 
 ```json
 {

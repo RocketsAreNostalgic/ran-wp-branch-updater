@@ -33,7 +33,6 @@ $unsafe = array(
 	'windows path'               => 'C:\\Users\\demo\\site',
 	'windows path forward slash' => 'C:/Users/demo/site',
 	'home path'                  => '~/sites/demo',
-	'relative traversal'         => 'plugins..demo',
 	'path inside text'           => 'copy failed for /srv/demo',
 	'markup'                     => '<script>alert(1)</script>',
 	'entity'                     => 'fish &amp; chips',
@@ -45,7 +44,6 @@ $unsafe = array(
 	'api key word'               => 'api_key abc',
 	'secret word'                => 'client secret rejected',
 	'password word'              => 'password rejected',
-	'key word'                   => 'key rejected',
 	'jwt'                        => 'eyJhbGciOiJIUzI1NiJ9',
 	'aws key'                    => 'AKIAABCDEFGHIJKLMNOP',
 	'sha1 hex'                   => $digest,
@@ -58,7 +56,6 @@ $unsafe = array(
 	'md5 hex'                    => hash( 'md5', 'x' ),
 	'digest prefix'              => 'sha256 abc',
 	'digest prefix dash'         => 'sha512-abc',
-	'short git id'               => 'abc1234',
 	'short github token'         => 'ghp_abc',
 	'short slack token'          => 'xoxb-1234',
 	'short gitlab token'         => 'glpat-abc123',
@@ -74,7 +71,7 @@ $unsafe = array(
 	'non ascii'                  => 'caf' . "\u{E9}",
 	'invalid utf8'               => "a\xFF",
 	'empty'                      => '',
-	'oversized'                  => str_repeat( 'word ', 400 ),
+	'oversized'                  => str_repeat( 'x', 5000 ),
 );
 foreach ( $unsafe as $label => $input ) {
 	$assert( null === AdmittedFailureReason::screen_detail( $input ), 'unsafe detail is dropped: ' . $label );
@@ -87,13 +84,54 @@ $assert( null === AdmittedFailureReason::screen_detail( $padding . $digest ), 'a
 $assert( null === AdmittedFailureReason::screen_detail( substr( $padding, 0, 50 ) . $digest ), 'a digest straddling the bound drops the detail' );
 $assert( null === AdmittedFailureReason::screen_detail( substr( $padding, 0, 52 ) . '/etc/passwd' ), 'a path after the bound drops the detail' );
 $assert( null === AdmittedFailureReason::screen_detail( substr( $padding, 0, 50 ) . 'token=abc' ), 'a credential word after the bound drops the detail' );
-$bounded = AdmittedFailureReason::screen_detail( str_repeat( 'word ', 20 ) );
+$bounded = AdmittedFailureReason::screen_detail( str_repeat( 'archive failed ', 10 ) );
 $assert( null !== $bounded && strlen( $bounded ) <= AdmittedFailureReason::MAXIMUM_DETAIL_LENGTH, 'a safe long detail is bounded to 64 characters' );
 
-// Documented trade-off: screening is by shape, so harmless text that looks like a credential is dropped too.
-$assert( null === AdmittedFailureReason::screen_detail( 'tokenizer_failed' ), 'a tokenizer-style false positive is dropped (accepted over-blocking)' );
-$assert( null === AdmittedFailureReason::screen_detail( 'session_expired' ), 'a session-style false positive is dropped (accepted over-blocking)' );
+// The shared screener is by shape, so these are no longer dropped: the closed call-site
+// literals and the call-site guard below are the real control, not the screener.
+$assert( 'tokenizer_failed' === AdmittedFailureReason::screen_detail( 'tokenizer_failed' ), 'a harmless word that merely contains a credential word is kept' );
+$assert( 'session_expired' === AdmittedFailureReason::screen_detail( 'session_expired' ), 'a harmless session word is kept' );
 $assert( 'monkey' === AdmittedFailureReason::screen_detail( 'monkey' ), 'a word that only contains key survives' );
+$assert( 'key rejected' === AdmittedFailureReason::screen_detail( 'key rejected' ), 'a bare key word is not a shape the shared screener drops' );
+$assert( 'abc1234' === AdmittedFailureReason::screen_detail( 'abc1234' ), 'a short hex-looking word is below the shared hex shape' );
+$assert( 'plugins..demo' === AdmittedFailureReason::screen_detail( 'plugins..demo' ), 'a dot run without a path separator is not a shape the shared screener drops' );
+$assert( 'word word' === AdmittedFailureReason::screen_detail( 'word word' ), 'short repeated words are kept' );
+$assert( null === AdmittedFailureReason::screen_detail( str_repeat( 'word ', 20 ) ), 'six or more four-character words in a row look like an application password and are dropped' );
+// The caller allow-list also covers text past the 64 byte bound: a disallowed character there drops the whole detail.
+$assert( null === AdmittedFailureReason::screen_detail( str_repeat( 'a ', 40 ) . '!' ), 'a disallowed character past the bound drops the detail' );
+$assert( null === AdmittedFailureReason::screen_detail( 'plugin (beta)' ), 'a character outside the allow-list that the shared screener accepts is dropped' );
+$assert( 'archive failed' === AdmittedFailureReason::screen_detail( '  archive failed  ' ), 'surrounding spaces are trimmed' );
+
+// Every HTTP status detail the provider path can produce survives.
+foreach ( range( 100, 599 ) as $http_status ) {
+	$http_detail = 'http_' . $http_status;
+	$assert( AdmittedFailureReason::screen_detail( $http_detail ) === $http_detail, 'http status detail survives: ' . $http_detail );
+}
+
+// Shared corpus: the installed ran/updater-support dev copy is the pinned contract (composer.lock binds the tag).
+// Every hostile and strict-only entry is dropped through the record and the reasoned failure; every benign entry
+// that is inside this package's charset survives as the exact bounded prefix, and every one outside it is dropped.
+$corpus_path = dirname( __DIR__ ) . '/vendor/ran/updater-support/tests/fixtures/failure-text-corpus.php';
+$assert( is_file( $corpus_path ), 'the shared failure-text corpus is installed with the pinned package' );
+$corpus = require $corpus_path;
+$assert( count( $corpus['hostile'] ) >= 200 && count( $corpus['strict_only'] ) >= 40 && count( $corpus['benign'] ) >= 40, 'the shared corpus has its expected size' );
+$through_record = static fn( string $text ): ?string => ( new AdmittedFailureReason( FailureReason::PROVIDER_ERROR, $text ) )->detail;
+$through_stage  = static fn( string $text ): ?string => ( new ReasonedFailure( 'corpus', 'provider_error', $text ) )->detail;
+foreach ( array( 'hostile', 'strict_only' ) as $group ) {
+	foreach ( $corpus[ $group ] as $label => $text ) {
+		$assert( null === AdmittedFailureReason::screen_detail( $text ), $group . ' corpus entry is dropped: ' . $label );
+		$assert( null === $through_record( $text ) && null === $through_stage( $text ), $group . ' corpus entry is dropped through the record and reasoned failure: ' . $label );
+	}
+}
+$survivors = 0;
+foreach ( $corpus['benign'] as $label => $text ) {
+	$inside = 1 === preg_match( '/\A[A-Za-z0-9 ._-]+\z/D', $text );
+	$expect = $inside ? rtrim( substr( $text, 0, AdmittedFailureReason::MAXIMUM_DETAIL_LENGTH ) ) : null;
+	$assert( AdmittedFailureReason::screen_detail( $text ) === $expect, 'benign corpus entry is kept or dropped by the allow-list: ' . $label );
+	$assert( $through_record( $text ) === $expect && $through_stage( $text ) === $expect, 'benign corpus entry through the record and reasoned failure: ' . $label );
+	$survivors += $inside ? 1 : 0;
+}
+$assert( $survivors >= 30, 'the allow-list keeps the benign corpus entries it can represent (' . $survivors . ')' );
 
 // Reason values are validated against the closed list.
 $failure = new AdmittedBranchStageFailure( 'archive_integrity_failed', 'zip_invalid', 'Requires PHP' );

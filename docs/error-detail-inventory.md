@@ -29,30 +29,35 @@ consumer that ignores them sees exactly the behaviour it saw before.
   or renaming one is a breaking change.
 * `detail` is `null` or at most 64 characters of `[A-Za-z0-9 ._-]`. It is **untrusted
   text**: a consumer must still escape it for its output context.
-* **What the screener is, and is not.** `screen_detail()` is a charset allow-list
-  (`[A-Za-z0-9 ._-]`, ASCII) plus a best-effort, heuristic deny-list. It is not a proof that
-  arbitrary text is safe. Safety rests on callers passing only closed literals or allow-listed
-  values, never an exception, WP_Error or provider message; `tests/failure-detail-screening.php`
-  fails if a call site passes any other expression. The function is a stopgap that a shared
-  failure-text screener is to replace.
+* **What the screener is, and is not.** `screen_detail()` is the shared
+  `RAN\UpdaterSupport\V1\FailureText::strict( $detail, 64 )` shape screen plus this
+  package's own caller-side charset allow-list (`[A-Za-z0-9 ._-]`, ASCII). The whole
+  input must be inside the allow-list, else the detail is dropped whole; the shared
+  screener then screens the whole input and only afterwards bounds the result to 64
+  characters. It is a safety net by shape, not a proof that text is safe. The real
+  control is that every call site passes only a closed literal or an allow-listed value,
+  never an exception, WP_Error or provider message; `tests/failure-detail-screening.php`
+  fails if a call site passes any other expression. The shared rules and their dropped
+  benign shapes are documented in the ran-updater-support README (FailureText), and
+  the shared hostile/benign corpus from the pinned package is asserted through the
+  record and the reasoned failure in the same test.
 * Every detail passes through the single function
-  `AdmittedFailureReason::screen_detail()`, whichever way it was supplied. It screens the
-  **complete** input first and bounds the length only afterwards. Unsafe input is dropped
-  whole, never redacted or partly kept. Dropped: non-printable and non-ASCII text, markup
-  (`<`, `>`, `&`), paths (`/`, `\`, `~`, `..`, drive letters), URLs and userinfo (`:`, `@`),
-  credential-looking words (token, secret, password, credential, bearer, authorization,
-  cookie, session, signature, api/private key, `key` as a word, common key prefixes),
-  digest-shaped text (`sha`/`md` prefixes, any 16 or more hex characters with or without
-  separators, short hex ids that mix digits and letters, long mixed alphanumeric tokens)
-  and input over 1024 characters.
+  `AdmittedFailureReason::screen_detail()`, whichever way it was supplied. Unsafe input
+  is dropped whole, never redacted or partly kept. Dropped by the shared screener:
+  markup, paths and URL shapes, credential words followed by text, token and key
+  prefixes, digest and hex shapes, long mixed or encoded runs, and non-printable or
+  non-ASCII text.
 * No exception message, WP_Error message, provider message, response body, path, URL, token or
   digest is ever read into a reason or detail. Only closed ids, allow-listed WordPress
   upgrader error codes, header names, an HTTP status in 100-599 and this package's own
   closed causes are passed on.
-* Trade-off: screening is by shape, so harmless text that looks like a credential is
-  dropped too (for example `tokenizer_failed` or `session_expired`). A short hex-looking
-  word under 7 characters, or hex without a digit, is not recognised as an id; none of the
-  closed sources produces one.
+* Trade-off: screening is by shape, so harmless text that looks like a credential or an
+  application password is dropped too (for example six or more four-character words in
+  a row). Words that merely contain a credential word, such as `tokenizer_failed`, are
+  kept by the shared screener. Every closed source in this package passes unchanged:
+  the five header names, `http_100` to `http_599`, the allow-listed upgrader codes, the
+  source failures, the closed theme and archive causes, `php_error`, `exception` and the
+  custody causes.
 * A failing cleanup beside another cause is **recorded, not acted on**: the outcome code is
   unchanged (`archive_cleanup_failed`, or `interrupted` once fenced) and the reason is recorded.
   `reason` is the primary reason (or `cleanup_also_failed` when the primary had none),
