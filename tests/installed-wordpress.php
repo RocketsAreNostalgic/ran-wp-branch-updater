@@ -61,7 +61,7 @@ final class InstalledWordPressProof {
 		wp_clean_themes_cache();
 		$read_headers = new ReflectionMethod( ArchiveValidator::class, 'read_headers' );
 		$read_parent  = new ReflectionMethod( WordPressCorePackageExecutor::class, 'theme_parent_from_archive' );
-		$eligibility  = new ReflectionMethod( WordPressCorePackageExecutor::class, 'theme_parent_is_available' );
+		$eligibility  = new ReflectionMethod( WordPressCorePackageExecutor::class, 'theme_parent_failure' );
 		$executor     = new WordPressCorePackageExecutor();
 		try {
 			foreach ( array(
@@ -96,8 +96,8 @@ final class InstalledWordPressProof {
 							$artifact = PreparedArchive::download_and_validate( ( new GitHubFixtureProvider( $archive, 'abc123' ) )->prepare( $d ), $d, get_temp_dir() . 'ran-branch-proof-custody' );
 							$template = get_file_data( $source, array( 'Template' => 'Template' ) )['Template'];
 							self::check( $parent_slug === $template && $template === $read_parent->invoke( $executor, $artifact, 'demo' ), 'Template must match actual get_file_data for ' . $format );
-							self::check( true === $eligibility->invoke( $executor, $artifact, 'demo', 'demo' ), 'Existing synthetic parent must remain eligible.' );
-							self::check( false === $eligibility->invoke( $executor, $artifact, $parent_slug, 'demo' ), 'A theme must not use itself as parent.' );
+							self::check( null === $eligibility->invoke( $executor, $artifact, 'demo', 'demo' ), 'Existing synthetic parent must remain eligible.' );
+							self::check( 'theme_parent_invalid' === $eligibility->invoke( $executor, $artifact, $parent_slug, 'demo' ), 'A theme must not use itself as parent.' );
 							if ( 'lf' === $format ) {
 								$parent_theme = wp_get_theme( $parent_slug );
 								wp_delete_file( $parent_root . '/index.php' );
@@ -107,7 +107,7 @@ final class InstalledWordPressProof {
 								clearstatcache();
 								$parent_theme->cache_delete();
 								wp_clean_themes_cache();
-								self::check( false === $eligibility->invoke( $executor, $artifact, 'demo', 'demo' ), 'Unavailable synthetic parent must remain ineligible.' );
+								self::check( 'theme_parent_missing' === $eligibility->invoke( $executor, $artifact, 'demo', 'demo' ), 'Unavailable synthetic parent must remain ineligible.' );
 								self::check( wp_mkdir_p( $parent_root ), 'Restore only the synthetic parent for remaining formatting controls.' );
 								// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Restore only the synthetic parent before remaining formatting controls.
 								file_put_contents( $parent_root . '/style.css', "/* Theme Name: Header parent */\nVersion: 1.0.0" );
