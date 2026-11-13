@@ -8,7 +8,7 @@
     "ext-hash": "*",
     "ext-json": "*",
     "ext-zip": "*",
-    "ran/updater-support": "^1.0.0-beta.4"
+    "ran/updater-support": "^1.0.0-beta.5"
   },
   "require-dev": {
     "phpcompatibility/php-compatibility": "10.0.0-alpha2",
@@ -45,6 +45,9 @@
     "test:journal": "@php tests/journal-invariants.php",
     "test:identifier": "@php tests/installed-package-identifier.php",
     "test:error-code": "@php tests/core-package-error-code.php",
+    "test:screening": "@php tests/failure-detail-screening.php",
+    "test:reasons": "@php tests/failure-reasons.php",
+    "test:reasons-wordpress": "@php tests/failure-reasons-wordpress.php",
     "standards": "phpcs --standard=.phpcs.xml -s && phpcs --standard=.phpcs-cli-compat.xml -s",
     "standards:fix": "bash -c 'for ruleset in .phpcs.xml .phpcs-cli-compat.xml; do phpcbf --standard=\"$ruleset\" --report=summary; result=$?; if [ \"$result\" -gt 1 ]; then exit \"$result\"; fi; done'",
     "analyze": [
@@ -74,6 +77,9 @@
       "@test:journal",
       "@test:identifier",
       "@test:error-code",
+      "@test:screening",
+      "@test:reasons",
+      "@test:reasons-wordpress",
       "@test:release-control"
     ],
     "test:naming": "@php tests/naming-enforcement.php",

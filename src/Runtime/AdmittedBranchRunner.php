@@ -6,6 +6,7 @@ namespace RAN\WPBranchUpdater\V1\Runtime;
 
 use RAN\WPBranchUpdater\V1\Contract\AdmittedArchiveSource;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedAttemptJournal;
+use RAN\WPBranchUpdater\V1\Contract\AdmittedAttemptReasonJournal;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedPackageExecutor;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedTargetFacts;
 use RAN\WPBranchUpdater\V1\Contract\MutationLock;
@@ -15,7 +16,8 @@ use Throwable;
 
 /** Shared terminal sequencing for one already-admitted branch deployment. */
 final class AdmittedBranchRunner {
-	private bool $consumed = false;
+	private bool $consumed                      = false;
+	private ?AdmittedFailureReason $last_reason = null;
 	public function __construct(
 		private AdmittedAttemptJournal $journal,
 		private AdmittedArchiveSource $archives,
@@ -23,6 +25,16 @@ final class AdmittedBranchRunner {
 		private AdmittedPackageExecutor $executor,
 		private MutationLock $lock
 	) {}
+
+	/** The reason for the last run's outcome, if any; also set before an ambiguous failure escapes. */
+	public function last_reason(): ?AdmittedFailureReason {
+		return $this->last_reason;
+	}
+
+	/** Whether run() has already started; a consumed runner refuses every further call. */
+	public function is_consumed(): bool {
+		return $this->consumed;
+	}
 
 	/** Returns the closed outcome only after the attempt journal has finished. */
 	public function run( BranchDeploymentDeclaration $deployment ): string {
@@ -34,13 +46,16 @@ final class AdmittedBranchRunner {
 		$fenced            = false;
 		$cleanup_attempted = false;
 		$stage             = 'policy_blocked';
+		$reason            = null;
+		$primary_outcome   = null;
+		$cleanup_failed    = false;
 		try {
 			$this->target->assert_mutation_allowed();
 			$baseline = $this->target->frozen_target( $deployment, true );
 			$stage    = 'preflight_failed';
 			$artifact = $this->archives->prepare( $deployment, $baseline );
 			if ( null !== $deployment->selected_commit && ! hash_equals( $deployment->selected_commit, $artifact->resolved_ref() ) ) {
-				throw new AdmittedBranchStageFailure( 'provider_failed' );
+				throw new AdmittedBranchStageFailure( 'provider_failed', FailureReason::REF_MISMATCH->value );
 			}
 			if ( null !== $baseline && version_compare( $artifact->expected_version(), $baseline['version'], '<' ) ) {
 				throw new AdmittedBranchStageFailure( 'downgrade_blocked' );
@@ -49,8 +64,13 @@ final class AdmittedBranchRunner {
 			$this->journal->record_resolved_ref( $artifact->resolved_ref() );
 			$stage   = 'lock_unavailable';
 			$outcome = $this->lock->run(
-				function () use ( $deployment, $baseline, $artifact, &$fenced, &$cleanup_attempted, &$stage ): string {
-					$primary = null;
+				function () use ( $deployment, $baseline, $artifact, &$fenced, &$cleanup_attempted, &$stage, &$reason, &$primary_outcome, &$cleanup_failed ): string {
+					$primary  = null;
+					$returned = null;
+					$done     = static function ( string $code ) use ( &$returned ): string {
+						$returned = $code;
+						return $code;
+					};
 					try {
 						$stage            = 'policy_blocked';
 						$current_baseline = $this->target->frozen_target( $deployment, false );
@@ -63,7 +83,7 @@ final class AdmittedBranchRunner {
 						$artifact->assert_unchanged();
 						$stage = 'policy_blocked';
 						if ( $this->target->maintenance_active() ) {
-							return 'deployment_maintenance_active';
+							return $done( 'deployment_maintenance_active' );
 						}
 						$this->target->assert_mutation_allowed();
 						$this->executor->preflight( $deployment, $artifact );
@@ -71,7 +91,7 @@ final class AdmittedBranchRunner {
 						$fenced = true;
 						$result = $this->executor->execute( $deployment, $baseline, $artifact );
 						if ( $this->target->maintenance_active() ) {
-							return 'maintenance_remaining';
+							return $done( 'maintenance_remaining' );
 						}
 						if ( $result->is_successful() ) {
 							if ( 'update' === $deployment->operation ) {
@@ -79,71 +99,119 @@ final class AdmittedBranchRunner {
 							}
 							$installed = $this->target->installed( $deployment );
 							if ( null !== $deployment->expected_identifier && ! hash_equals( $deployment->expected_identifier, $installed['identifier'] ) ) {
-								return 'persistence_uncertain';
+								$reason = new AdmittedFailureReason( FailureReason::IDENTIFIER_MISMATCH );
+								return $done( 'persistence_uncertain' );
 							}
 							if ( ! hash_equals( $artifact->expected_version(), $installed['version'] ) ) {
-								return 'installed_version_mismatch';
+								return $done( 'installed_version_mismatch' );
 							}
 							if ( null !== $baseline && $baseline['active'] !== $installed['active'] ) {
-								return 'activation_state_changed';
+								return $done( 'activation_state_changed' );
 							}
 							if ( 'install' === $deployment->operation && $installed['active'] ) {
-								return 'activation_state_changed';
+								return $done( 'activation_state_changed' );
 							}
 							if ( 'install' === $deployment->operation && ! $this->target->adopt( $deployment ) ) {
-								return 'persistence_uncertain';
+								$reason = new AdmittedFailureReason( FailureReason::ADOPT_FAILED );
+								return $done( 'persistence_uncertain' );
 							}
-							return 'deployed';
+							return $done( 'deployed' );
 						}
+						$reason  = new AdmittedFailureReason( FailureReason::for_core( $result->get_failure() ), $result->get_detail() );
 						$current = null === $baseline ? null : $this->target->baseline_now( $deployment, $baseline );
-						if ( null === $current || $current['version'] !== $baseline['version'] || $current['active'] !== $baseline['active'] ) {
-							return 'restoration_uncertain';
+						if ( null === $baseline || null === $current || $current['version'] !== $baseline['version'] || $current['active'] !== $baseline['active'] ) {
+							if ( null !== $baseline ) {
+								$reason = new AdmittedFailureReason( null === $current ? FailureReason::BASELINE_UNREADABLE : FailureReason::BASELINE_CHANGED );
+							}
+							return $done( 'restoration_uncertain' );
 						}
-						return match ( $result->get_failure() ) {
-							CorePackageExecutionFailure::WORDPRESS_RESTORED => 'activation_failed',
-							CorePackageExecutionFailure::WORDPRESS_REFUSED,
-							CorePackageExecutionFailure::WORDPRESS_FAILED => 'upgrader_failed',
-							default => 'restoration_uncertain',
-						};
+						return $done(
+							match ( $result->get_failure() ) {
+								CorePackageExecutionFailure::WORDPRESS_RESTORED => 'activation_failed',
+								CorePackageExecutionFailure::WORDPRESS_REFUSED,
+								CorePackageExecutionFailure::WORDPRESS_FAILED => 'upgrader_failed',
+								default => 'restoration_uncertain',
+							}
+						);
 					} catch ( Throwable $failure ) {
 						$primary = $failure;
+						$reason  = $this->reason_of( $failure );
 						throw $failure;
 					} finally {
 						try {
 							$cleanup_attempted = true;
 							$artifact->cleanup();
 						} catch ( Throwable $cleanup_failure ) {
+							$cleanup_failed = true;
+							$reason       ??= new AdmittedFailureReason( FailureReason::CLEANUP_ALSO_FAILED );
 							if ( $primary instanceof AdmittedBranchDurabilityFailure || $this->is_ambiguous( $primary ) ) {
 								throw $primary;
 							}
-							$stage = 'archive_cleanup_failed';
+							// The failing cleanup supersedes the outcome below; keep the outcome it replaced.
+							$primary_outcome = null === $primary ? $returned : ( $fenced ? 'interrupted' : ( $primary instanceof AdmittedBranchStageFailure ? $primary->outcome_code : $stage ) );
+							$stage           = 'archive_cleanup_failed';
 							throw $cleanup_failure;
 						}
 					}
 				}
 			);
 		} catch ( Throwable $failure ) {
+			$reason ??= $this->reason_of( $failure );
 			if ( null !== $artifact && ! $cleanup_attempted ) {
 				try {
 					$cleanup_attempted = true;
 					$artifact->cleanup();
 				} catch ( Throwable $cleanup_failure ) {
+					$cleanup_failed = true;
 					if ( $failure instanceof AdmittedBranchDurabilityFailure ) {
+						$this->last_reason = $this->with_cleanup( $this->reason_of( $failure ), null, true );
 						throw $failure;
 					}
 					if ( ! $this->is_ambiguous( $failure ) ) {
-						$stage   = 'archive_cleanup_failed';
-						$failure = $cleanup_failure;
+						$primary_outcome = $fenced ? 'interrupted' : ( $failure instanceof AdmittedBranchStageFailure ? $failure->outcome_code : $stage );
+						$stage           = 'archive_cleanup_failed';
+						$failure         = $cleanup_failure;
 					}
 				}
 			}
 			if ( $this->is_ambiguous( $failure ) ) {
+				$this->last_reason = $this->with_cleanup( $this->reason_of( $failure ), null, $cleanup_failed );
 				throw $failure;
 			}
 			$outcome = $fenced ? 'interrupted' : ( $failure instanceof AdmittedBranchStageFailure ? $failure->outcome_code : $stage );
 		}
-		$this->journal->finish( $outcome );
+		$reason            = $this->with_cleanup( $reason, $primary_outcome, $cleanup_failed );
+		$this->last_reason = $reason;
+		try {
+			if ( null !== $reason && $this->journal instanceof AdmittedAttemptReasonJournal ) {
+				$this->journal->finish_with_reason( $outcome, $reason );
+			} else {
+				$this->journal->finish( $outcome );
+			}
+		} catch ( Throwable $terminal_failure ) {
+			if ( $this->is_ambiguous( $terminal_failure ) ) {
+				$this->last_reason = $this->with_cleanup( $this->reason_of( $terminal_failure ), null, $cleanup_failed );
+			}
+			throw $terminal_failure;
+		}
 		return $outcome;
+	}
+
+	/** A cleanup that failed beside another cause is recorded with it; it never replaces that cause. */
+	private function with_cleanup( ?AdmittedFailureReason $reason, ?string $primary_outcome, bool $cleanup_failed ): ?AdmittedFailureReason {
+		return $cleanup_failed ? ( $reason ?? new AdmittedFailureReason( FailureReason::CLEANUP_ALSO_FAILED ) )->with_cleanup( $primary_outcome ) : $reason;
+	}
+
+	/** Maps only the failure's own closed type or reason; a message is never read. */
+	private function reason_of( ?Throwable $failure ): ?AdmittedFailureReason {
+		return match ( true ) {
+			$failure instanceof ReasonedFailure => $failure->as_reason(),
+			$failure instanceof BranchDeploymentLockStorageFailure => new AdmittedFailureReason( FailureReason::LOCK_STORAGE ),
+			$failure instanceof BranchDeploymentLockReleaseFailure => new AdmittedFailureReason( FailureReason::LOCK_RELEASE ),
+			$failure instanceof BranchDeploymentJournalFailure => new AdmittedFailureReason( FailureReason::JOURNAL_UNCERTAIN ),
+			$failure instanceof AdmittedBranchDurabilityFailure => new AdmittedFailureReason( FailureReason::DURABILITY_UNCERTAIN ),
+			default => null,
+		};
 	}
 
 	/** @phpstan-assert-if-true AdmittedBranchDurabilityFailure|BranchDeploymentJournalFailure|BranchDeploymentLockReleaseFailure|BranchDeploymentLockStorageFailure $failure */

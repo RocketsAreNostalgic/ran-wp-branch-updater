@@ -5,8 +5,9 @@ namespace RAN\WPBranchUpdater\V1\Archive;
 
 use RAN\UpdaterSupport\V1\ArchiveSafety;
 use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
+use RAN\WPBranchUpdater\V1\Runtime\FailureReason;
+use RAN\WPBranchUpdater\V1\Runtime\ReasonedFailure;
 use RAN\WPBranchUpdater\V1\WordPress\InstalledPackageIdentifier;
-use RuntimeException;
 use ZipArchive;
 
 /** Inspects the exact local ZIP before WordPress receives it. */
@@ -40,6 +41,37 @@ final class ArchiveValidator {
 	public const CODE_THEME_IDENTITY_MISMATCH   = 1026;
 	public const CODE_FILE_PARENT_COLLISION     = 1027;
 	private const MAX_ENTRIES                   = 10000;
+	/** Stable grouping of the numeric causes into the closed FailureReason set. */
+	private const REASONS = array(
+		self::CODE_ZIP_UNAVAILABLE           => FailureReason::ZIP_UNAVAILABLE,
+		self::CODE_ZIP_INVALID               => FailureReason::ZIP_INVALID,
+		self::CODE_ENTRY_LIMIT               => FailureReason::ENTRY_LIMIT,
+		self::CODE_ENTRY_INVALID             => FailureReason::ENTRY_INVALID,
+		self::CODE_PATH_UNSAFE               => FailureReason::PATH_UNSAFE,
+		self::CODE_PATH_COLLISION            => FailureReason::PATH_COLLISION,
+		self::CODE_FILE_PARENT_COLLISION     => FailureReason::PATH_COLLISION,
+		self::CODE_LAYOUT_INVALID            => FailureReason::LAYOUT_INVALID,
+		self::CODE_MULTIPLE_ROOTS            => FailureReason::LAYOUT_INVALID,
+		self::CODE_ENTRY_UNSUPPORTED         => FailureReason::ENTRY_UNSUPPORTED,
+		self::CODE_ENTRY_ENCRYPTED           => FailureReason::ENTRY_ENCRYPTED,
+		self::CODE_COMPRESSED_TOO_LARGE      => FailureReason::COMPRESSED_TOO_LARGE,
+		self::CODE_EXPANDED_TOO_LARGE        => FailureReason::EXPANDED_TOO_LARGE,
+		self::CODE_ARCHIVE_INTEGRITY         => FailureReason::ARCHIVE_CORRUPT,
+		self::CODE_SUBDIRECTORY_MISSING      => FailureReason::SUBDIRECTORY_MISSING,
+		self::CODE_PACKAGE_DIRECTORY_MISSING => FailureReason::PACKAGE_DIR_MISSING,
+		self::CODE_PACKAGE_IDENTITY          => FailureReason::IDENTITY_MISMATCH,
+		self::CODE_THEME_IDENTITY_MISMATCH   => FailureReason::IDENTITY_MISMATCH,
+		self::CODE_HEADER_MISSING            => FailureReason::HEADER_MISSING,
+		self::CODE_HEADER_UNREADABLE         => FailureReason::HEADER_UNREADABLE,
+		self::CODE_VERSION_MISSING           => FailureReason::VERSION_MISSING,
+		self::CODE_VERSION_INVALID           => FailureReason::VERSION_INVALID,
+		self::CODE_COMPATIBILITY_INVALID     => FailureReason::COMPAT_INVALID,
+		self::CODE_REQUIRES_NEWER_PHP        => FailureReason::REQUIRES_NEWER_PHP,
+		self::CODE_REQUIRES_NEWER_WP         => FailureReason::REQUIRES_NEWER_WP,
+		self::CODE_PLUGIN_MISSING            => FailureReason::PLUGIN_MISSING,
+		self::CODE_THEME_MISSING             => FailureReason::THEME_MISSING,
+		self::CODE_MULTIPLE_PLUGINS          => FailureReason::MULTIPLE_PLUGINS,
+	);
 
 	/** @return array{expanded:int,expected_version:string} */
 	public function validate( string $path, BranchDeploymentDeclaration $d, ?string $installed, int $compressed_limit, int $expanded_limit, string $wordpress_version ): array {
@@ -258,7 +290,7 @@ final class ArchiveValidator {
 	private function read_headers( ZipArchive $zip, int $index, string $required, bool $required_file = true ): ?array {
 		$contents = $zip->getFromIndex( $index, 8192, ZipArchive::FL_UNCHANGED );
 		if ( false === $contents ) {
-			$this->fail( self::CODE_HEADER_UNREADABLE, 'The package header cannot be read.' );
+			$this->fail( self::CODE_HEADER_UNREADABLE, 'The package header cannot be read.', $required );
 		}
 		$contents = str_replace( "\r", "\n", $contents );
 		$headers  = array();
@@ -266,13 +298,13 @@ final class ArchiveValidator {
 			$pattern = '/^(?:[ \t]*<\?php)?[ \t\/*#@]*' . preg_quote( $header, '/' ) . ':(.*)$/mi';
 			$value   = preg_match( $pattern, $contents, $match ) === 1 && $match[1] ? trim( (string) preg_replace( '/\s*(?:\*\/|\?>).*/', '', $match[1] ) ) : '';
 			if ( strlen( $value ) > 64 || preg_match( '/[[:cntrl:]]/', $value ) === 1 ) {
-				$this->fail( 'Version' === $header ? self::CODE_VERSION_INVALID : ( $required === $header ? self::CODE_HEADER_UNREADABLE : self::CODE_COMPATIBILITY_INVALID ), 'The package header is invalid.' );
+				$this->fail( 'Version' === $header ? self::CODE_VERSION_INVALID : ( $required === $header ? self::CODE_HEADER_UNREADABLE : self::CODE_COMPATIBILITY_INVALID ), 'The package header is invalid.', $header );
 			}
 			$headers[ $header ] = $value;
 		}
 		if ( '' === $headers[ $required ] ) {
 			if ( $required_file ) {
-				$this->fail( self::CODE_HEADER_MISSING, 'The package header is missing.' );
+				$this->fail( self::CODE_HEADER_MISSING, 'The package header is missing.', $required );
 			}
 			return null;
 		}
@@ -282,30 +314,31 @@ final class ArchiveValidator {
 	private function version( array $headers ): string {
 		$version = $headers['Version'] ?? '';
 		if ( '' === $version ) {
-			$this->fail( self::CODE_VERSION_MISSING, 'The package version is missing.' );
+			$this->fail( self::CODE_VERSION_MISSING, 'The package version is missing.', 'Version' );
 		}
 		if ( preg_match( '/^[A-Za-z0-9][A-Za-z0-9._+-]*$/D', $version ) !== 1 ) {
-			$this->fail( self::CODE_VERSION_INVALID, 'The package version is invalid.' );
+			$this->fail( self::CODE_VERSION_INVALID, 'The package version is invalid.', 'Version' );
 		}
 		return $version;
 	}
 	/** @param array<string,string> $headers */
 	private function assert_compatibility( array $headers, string $wordpress_version ): void {
-		foreach ( array( $headers['Requires PHP'], $headers['Requires at least'] ) as $version ) {
+		foreach ( array( 'Requires PHP', 'Requires at least' ) as $name ) {
+			$version = $headers[ $name ];
 			if ( '' !== $version && preg_match( '/^[0-9]+(?:\\.[0-9]+){0,3}(?:[-+._][A-Za-z0-9.-]+)?$/D', $version ) !== 1 ) {
-				$this->fail( self::CODE_COMPATIBILITY_INVALID, 'The package compatibility header is invalid.' );
+				$this->fail( self::CODE_COMPATIBILITY_INVALID, 'The package compatibility header is invalid.', $name );
 			}
 		}
 		if ( '' !== $headers['Requires PHP'] && version_compare( PHP_VERSION, $headers['Requires PHP'], '<' ) ) {
-			$this->fail( self::CODE_REQUIRES_NEWER_PHP, 'The package requires a newer PHP version.' );
+			$this->fail( self::CODE_REQUIRES_NEWER_PHP, 'The package requires a newer PHP version.', 'Requires PHP' );
 		}
 		if ( '' !== $headers['Requires at least'] && ( '' === $wordpress_version || version_compare( $wordpress_version, $headers['Requires at least'], '<' ) ) ) {
-			$this->fail( self::CODE_REQUIRES_NEWER_WP, 'The package requires a newer WordPress version.' );
+			$this->fail( self::CODE_REQUIRES_NEWER_WP, 'The package requires a newer WordPress version.', 'Requires at least' );
 		}
 	}
 	/** @return never */
-	private function fail( int $code, string $message ): never {
+	private function fail( int $code, string $message, ?string $header = null ): never {
 		// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Preserve the bounded internal validation message and numeric error code; neither is rendered output.
-		throw new RuntimeException( $message, $code );
+		throw new ReasonedFailure( $message, self::REASONS[ $code ]->value, $header, $code );
 	}
 }

@@ -19,7 +19,7 @@ and diagnostic exceptions restricted to their annotated lines.
 
 Keep the package's actual contract local: PHP `^8.2`, the `RAN\WPBranchUpdater\V1` namespace, source paths, updater-specific tests, and justified runtime/security exceptions. Do not add a WordPress-version floor unless this package explicitly claims one, and do not copy shared rules back into local configuration.
 
-`composer check` is the ordinary deterministic PHP quality contract. It must retain strict Composer validation, shared PHPCS/PHPCompatibility checks, PHPStan, the existing architecture/archive/runner/journal/error-code and release workflow/classification tests, and the PHP syntax sweep. PHPCS governs all 52 tracked first-party PHP files, including the 15 test/fixture files and one maintenance script. The root ruleset discovers future PHP outside the earlier shipped roots; dependencies and generated proof output remain excluded. Standalone tests/scripts additionally use full PHPCompatibility through `.phpcs-cli-compat.xml`, without WordPress polyfill allowances. PHPStan checks both isolated production and all-maintained root profiles at level 8. Only root dependency directories are exempt from the maintained profile; tests and scripts are analyzed automatically. The effective file finder must match independently discovered PHP for each profile. New untracked root and nested product PHP are included automatically. The ordinary
+`composer check` is the ordinary deterministic PHP quality contract. It must retain strict Composer validation, shared PHPCS/PHPCompatibility checks, PHPStan, the existing architecture/archive/runner/journal/error-code and release workflow/classification tests, and the PHP syntax sweep. PHPCS governs all 62 tracked first-party PHP files, including the 21 test/fixture files and one maintenance script. The root ruleset discovers future PHP outside the earlier shipped roots; dependencies and generated proof output remain excluded. Standalone tests/scripts additionally use full PHPCompatibility through `.phpcs-cli-compat.xml`, without WordPress polyfill allowances. PHPStan checks both isolated production and all-maintained root profiles at level 8. Only root dependency directories are exempt from the maintained profile; tests and scripts are analyzed automatically. The effective file finder must match independently discovered PHP for each profile. New untracked root and nested product PHP are included automatically. The ordinary
 `test:analysis-bootstrap` regression exercises the real Composer analysis command
 with clean and deliberately invalid isolated bootstrap copies. PHPStan requires level 8 in both profiles. Preserve truthful array-shape contracts and explicit checks at native WordPress boundaries; do not hide diagnostics with broad exclusions or unchecked type assertions. The installed no-dev consumer proof remains a separate required CI lane.
 
@@ -38,6 +38,10 @@ Read [ARCHITECTURE.md](ARCHITECTURE.md) before changing production structure. Pr
 - Every PR needs independent review against its exact base and head SHAs.
 - Merging requires explicit owner authorization of the exact PR and merge method.
 - Keep credentials, local logs, vendor files, temporary transformation artifacts, and internal planning out of commits.
+
+## Failure reasons
+
+Outcome codes are a stable closed contract; reasons and details only refine them. Every detail must go through `AdmittedFailureReason::screen_detail()`; never read an exception, WP_Error or provider message into a reason or detail. A new reason is an additive `FailureReason` case and a new row in [docs/error-detail-inventory.md](docs/error-detail-inventory.md), with a test through the public admitted path. Do not add a reason that carries a path, URL, credential or digest, and do not bump `ADMITTED_API_VERSION` for an additive change.
 
 ## Development PHP profile
 

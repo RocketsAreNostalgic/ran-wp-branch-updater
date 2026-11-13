@@ -6,6 +6,8 @@ namespace RAN\WPBranchUpdater\V1\Archive;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedBranchArtifact;
 use RAN\WPBranchUpdater\V1\Contract\PreparedPackageArtifact;
 use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
+use RAN\WPBranchUpdater\V1\Runtime\FailureReason;
+use RAN\WPBranchUpdater\V1\Runtime\ReasonedFailure;
 use RuntimeException;
 
 /** Exact-byte custody from provider download through the WordPress boundary. */
@@ -128,8 +130,15 @@ final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchAr
 	}
 
 	public function assert_unchanged(): void {
-		if ( $this->cleaned || self::identity( $this->path ) !== $this->identity || ! hash_equals( $this->digest, (string) hash_file( 'sha256', $this->path ) ) ) {
-			throw new RuntimeException( 'Prepared archive changed before use.' );
+		$changed = match ( true ) {
+			$this->cleaned => 'cleaned',
+			self::identity( $this->path ) !== $this->identity => 'identity',
+			! hash_equals( $this->digest, (string) hash_file( 'sha256', $this->path ) ) => 'digest',
+			default => null,
+		};
+		if ( null !== $changed ) {
+			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- A closed reason id and closed cause are recorded outcome data, not rendered output.
+			throw new ReasonedFailure( 'Prepared archive changed before use.', FailureReason::ARCHIVE_CUSTODY_CHANGED->value, $changed );
 		}
 	}
 

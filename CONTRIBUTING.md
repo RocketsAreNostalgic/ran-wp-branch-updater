@@ -75,7 +75,7 @@ All shipped owned methods enter `RANOwnedMethods`, including declarations
 upstream WPCS skips because of inheritance. The connected cohort migrates the
 last 32 method declarations, 10 properties and 26 parameters with all owned
 callers. No owned-method naming deferrals remain. Variable naming is enforced
-across all 36 source files and `bootstrap.php`; three precise external
+across all 39 source files and `bootstrap.php`; three precise external
 `ZipArchive::$numFiles` exceptions preserve the PHP extension API.
 
 `composer test:naming`, included in `composer test` and `composer check`, runs
@@ -108,8 +108,8 @@ substitute for it.
 
 ## Standalone development PHP coverage
 
-Common standards now select all **53 tracked PHP files**, up from the former
-37 runtime files: 36 `src/` files, `bootstrap.php`, 15 test/fixture files and one
+Common standards now select all **62 tracked PHP files**, up from the former
+37 runtime files: 39 `src/` files, `bootstrap.php`, 21 test/fixture files and one
 consumer-fixture script. Root discovery includes future maintained PHP; vendor,
 node dependencies and generated `tests/build/` proof artifacts are excluded.
 The standalone compatibility ruleset selects tests/scripts at the same PHP 8.2
@@ -164,9 +164,9 @@ A production `src/tests/` directory remains included. The independent filesystem
 inventory is compared with locked PHPStan's effective file finder. The existing
 bootstrap regression also proves that new untracked root/nested/split contracts
 produce real analysis diagnostics. Uppercase extensions and PHP entrypoints outside lowercase `.php` fail for an explicit scope decision rather than disappearing.
-The 37 current production PHP files remain clean at required level 8. The second,
+The 40 current production PHP files remain clean at required level 8. The second,
 all-maintained profile also includes tests and scripts automatically, covering all
-53 maintained PHP files at level 8. Its only exclusions are root `vendor/`,
+62 maintained PHP files at level 8. Its only exclusions are root `vendor/`,
 `node_modules/` and Git metadata. Both profiles run through `composer analyze`;
 the maintained controls additionally prove diagnostics in new root, test and
 script PHP files and protect the reviewed analysis-exemption inventory. Both

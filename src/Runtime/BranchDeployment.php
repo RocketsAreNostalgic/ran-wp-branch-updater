@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace RAN\WPBranchUpdater\V1\Runtime;
 
-/** One immutable source declaration; deploy() is the only mutation entry point. */
-final readonly class BranchDeployment {
+/** One source declaration handle; deploy() is the only mutation entry point. */
+final class BranchDeployment {
+	/** This handle's own last reason; the runner is shared by every handle of an updater. */
+	private ?AdmittedFailureReason $last_reason = null;
+
 	public function __construct(
-		private StandaloneBranchRunner|AdmittedBranchRunner $runner,
-		private BranchDeploymentDeclaration $declaration,
-		private BranchDeploymentDeclaration|false $admitted
+		private readonly StandaloneBranchRunner|AdmittedBranchRunner $runner,
+		private readonly BranchDeploymentDeclaration $declaration,
+		private readonly BranchDeploymentDeclaration|false $admitted
 	) {}
 
 	/** The durable standalone journal key, stable before and after deploy(). */
@@ -17,9 +20,15 @@ final readonly class BranchDeployment {
 		return $this->declaration->attempt_id;
 	}
 
+	/** The reason for the last deploy() outcome, if the runner recorded one. Detail is untrusted text: escape it. */
+	public function last_reason(): ?AdmittedFailureReason {
+		return $this->last_reason;
+	}
+
 	/** Returns the runner's closed terminal outcome; ambiguous durability failures propagate. */
 	public function deploy( ?string $expected_commit = null, ?string $operation = null, ?string $selected_commit = null, ?string $expected_identifier = null ): string {
-		$deployment = new BranchDeploymentDeclaration(
+		$this->last_reason = null;
+		$deployment        = new BranchDeploymentDeclaration(
 			$this->declaration->attempt_id,
 			$this->declaration->package_type,
 			$this->declaration->slug,
@@ -36,8 +45,14 @@ final readonly class BranchDeployment {
 		if ( false !== $this->admitted && (array) $deployment !== (array) $this->admitted ) {
 			throw new \InvalidArgumentException( 'The admitted deployment terminal declaration does not match.' );
 		}
-		return $this->runner instanceof StandaloneBranchRunner
-			? $this->runner->execute( $deployment )
-			: $this->runner->run( $deployment );
+		// A refused call (an already consumed admitted runner) never ran, so it has no reason of its own.
+		$started = $this->runner instanceof StandaloneBranchRunner || ! $this->runner->is_consumed();
+		try {
+			return $this->runner instanceof StandaloneBranchRunner
+				? $this->runner->execute( $deployment )
+				: $this->runner->run( $deployment );
+		} finally {
+			$this->last_reason = $started ? $this->runner->last_reason() : null;
+		}
 	}
 }

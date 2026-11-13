@@ -10,6 +10,7 @@ use RAN\WPBranchUpdater\V1\Archive\PackageSubdirectory;
 use RAN\WPBranchUpdater\V1\Contract\PreparedPackageArtifact;
 use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionFailure;
 use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionResult;
+use RAN\WPBranchUpdater\V1\Runtime\ReasonedFailure;
 use Throwable;
 use WP_Error;
 
@@ -20,6 +21,14 @@ use WP_Error;
  * to the deployment runner. This class owns only the scoped WordPress call.
  */
 class WordPressCorePackageExecutor {
+	/**
+	 * The only WP_Error codes whose text is passed on as failure detail: stable, public WordPress upgrader
+	 * and filesystem codes. Any other code, and every WP_Error message (which can hold local paths), is dropped.
+	 */
+	private const UPGRADER_ERROR_CODES = array( 'incompatible_archive', 'incompatible_archive_empty', 'incompatible_archive_no_plugins', 'incompatible_archive_theme_no_style', 'incompatible_archive_theme_no_name', 'incompatible_archive_theme_no_template', 'incompatible_archive_theme_no_theme', 'fs_unavailable', 'fs_error', 'fs_no_root_dir', 'fs_no_content_dir', 'fs_no_plugins_dir', 'fs_no_themes_dir', 'fs_no_folder', 'mkdir_failed', 'mkdir_failed_destination', 'copy_failed', 'copy_failed_to_dest', 'files_not_writable', 'remove_old_failed', 'folder_exists', 'bad_request', 'no_package', 'download_failed', 'up_to_date', 'plugin_not_found', 'theme_not_found', 'plugin_update_fatal_error_rollback_successful' );
+	/** Closed causes carried as the data of this package's own source-selection WP_Error. */
+	private const SOURCE_FAILURES = array( 'source_invalid', 'subdirectory_missing', 'destination_exists', 'move_failed' );
+	private const SOURCE_ERROR    = 'ran_branch_deployment_invalid_package_source';
 	/** @var Closure(string, string, string, object|null): mixed|null */
 	private ?Closure $core_operation;
 	private string $offer_namespace;
@@ -48,8 +57,9 @@ class WordPressCorePackageExecutor {
 		if ( $inputs instanceof CorePackageExecutionResult ) {
 			return $inputs;
 		}
-		if ( 'theme' === $type && ! $this->theme_parent_is_available( $artifact, $inputs['slug'], $inputs['subdirectory'] ) ) {
-			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::INVALID_REQUEST );
+		$parent_failure = 'theme' === $type ? $this->theme_parent_failure( $artifact, $inputs['slug'], $inputs['subdirectory'] ) : null;
+		if ( null !== $parent_failure ) {
+			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::INVALID_REQUEST, $parent_failure );
 		}
 		$pre_download  = $this->pre_download_filter( $type, 'install', $artifact, null );
 		$source_filter = $this->source_selection_filter( $inputs['slug'], $inputs['subdirectory'], $type, 'install', null );
@@ -61,8 +71,8 @@ class WordPressCorePackageExecutor {
 		try {
 			$result = $this->run_core_operation( 'install', $type, $inputs['path'], null );
 			return $this->map_result( $result, $type, 'install', null, $completions );
-		} catch ( Throwable ) {
-			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::WORDPRESS_UNCERTAIN );
+		} catch ( Throwable $failure ) {
+			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::WORDPRESS_UNCERTAIN, $failure instanceof \Error ? 'php_error' : 'exception' );
 		} finally {
 			remove_filter( 'upgrader_pre_download', $pre_download, 10 );
 			remove_filter( 'upgrader_source_selection', $source_filter, 10 );
@@ -76,7 +86,7 @@ class WordPressCorePackageExecutor {
 			return $inputs;
 		}
 		if ( ( 'plugin' === $type && dirname( $inputs['identifier'] ) !== $inputs['slug'] ) || ( 'theme' === $type && $inputs['identifier'] !== $inputs['slug'] ) ) {
-			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::INVALID_REQUEST );
+			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::INVALID_REQUEST, 'identifier_mismatch' );
 		}
 		$offer            = $this->update_offer( $type, $artifact, $inputs['slug'], $inputs['identifier'] );
 		$transient_hook   = 'pre_site_transient_update_' . ( 'plugin' === $type ? 'plugins' : 'themes' );
@@ -89,7 +99,7 @@ class WordPressCorePackageExecutor {
 		$completions      = array();
 		$complete         = $this->completion_collector( $completions );
 		if ( false !== $core_auto_update && ! remove_action( 'wp_maybe_auto_update', 'wp_maybe_auto_update', $core_auto_update ) ) {
-			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::WORDPRESS_UNCERTAIN );
+			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::WORDPRESS_UNCERTAIN, 'hook_removal_failed' );
 		}
 		add_filter( $transient_hook, $transient_filter, 10, 1 );
 		add_filter( 'upgrader_pre_download', $pre_download, 10, 4 );
@@ -100,8 +110,8 @@ class WordPressCorePackageExecutor {
 		try {
 			$result = $this->run_core_operation( 'update', $type, $inputs['path'], $offer );
 			return $this->map_result( $result, $type, 'update', $inputs['identifier'], $completions );
-		} catch ( Throwable ) {
-			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::WORDPRESS_UNCERTAIN );
+		} catch ( Throwable $failure ) {
+			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::WORDPRESS_UNCERTAIN, $failure instanceof \Error ? 'php_error' : 'exception' );
 		} finally {
 			remove_filter( $transient_hook, $transient_filter, 10 );
 			remove_filter( 'upgrader_pre_download', $pre_download, 10 );
@@ -122,8 +132,8 @@ class WordPressCorePackageExecutor {
 			$slug         = PackageSubdirectory::normalize_slug( $package_slug );
 			$subdirectory = PackageSubdirectory::normalize( $subdirectory );
 			$identifier   = '' === $installed_identifier ? '' : InstalledPackageIdentifier::normalize( $installed_identifier );
-		} catch ( Throwable ) {
-			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::INVALID_REQUEST );
+		} catch ( Throwable $failure ) {
+			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::INVALID_REQUEST, $failure instanceof ReasonedFailure ? 'archive_changed' : 'input_invalid' );
 		}
 		return array(
 			'path'         => $artifact->get_path(),
@@ -208,18 +218,18 @@ class WordPressCorePackageExecutor {
 				return $source;
 			}
 			if ( ! is_string( $source ) || ! is_string( $remote_source ) ) {
-				return self::invalid_package_source();
+				return self::invalid_package_source( 'source_invalid' );
 			}
 			$source_root = realpath( $source );
 			$remote_root = realpath( $remote_source );
 			if ( false === $source_root || false === $remote_root || ! is_dir( $source_root ) || ! is_dir( $remote_root ) || ! self::is_canonical_child( $source_root, $remote_root ) ) {
-				return self::invalid_package_source();
+				return self::invalid_package_source( 'source_invalid' );
 			}
 			$selected_source = $source_root;
 			if ( null !== $subdirectory ) {
 				$selected_source = realpath( $source_root . DIRECTORY_SEPARATOR . $subdirectory );
 				if ( false === $selected_source || ! is_dir( $selected_source ) || ! self::is_canonical_child( $selected_source, $source_root ) ) {
-					return self::invalid_package_source();
+					return self::invalid_package_source( 'subdirectory_missing' );
 				}
 			}
 			$destination = $remote_root . DIRECTORY_SEPARATOR . $slug;
@@ -227,35 +237,46 @@ class WordPressCorePackageExecutor {
 				return trailingslashit( $selected_source );
 			}
 			if ( file_exists( $destination ) || is_link( $destination ) ) {
-				return self::invalid_package_source();
+				return self::invalid_package_source( 'destination_exists' );
 			}
 			global $wp_filesystem;
 			if ( ! $wp_filesystem instanceof \WP_Filesystem_Base || ! $wp_filesystem->move( $selected_source, $destination, false ) ) {
-				return self::invalid_package_source();
+				return self::invalid_package_source( 'move_failed' );
 			}
 			return trailingslashit( $destination );
 		};
 	}
 
-	private static function invalid_package_source(): WP_Error {
-		return new WP_Error( 'ran_branch_deployment_invalid_package_source' );
+	private static function invalid_package_source( string $cause = 'source_invalid' ): WP_Error {
+		return new WP_Error( self::SOURCE_ERROR, '', $cause );
 	}
 
-	private function theme_parent_is_available( PreparedPackageArtifact $artifact, string $slug, ?string $subdirectory ): bool {
+	/** Only an allow-listed code, or this package's own closed cause, becomes detail; the message never does. */
+	private function error_detail( WP_Error $error ): ?string {
+		$code = $error->get_error_code();
+		$data = $error->get_error_data();
+		if ( self::SOURCE_ERROR === $code ) {
+			return is_string( $data ) && in_array( $data, self::SOURCE_FAILURES, true ) ? $data : null;
+		}
+		return is_string( $code ) && in_array( $code, self::UPGRADER_ERROR_CODES, true ) ? $code : null;
+	}
+
+	/** Null when the theme has no missing parent; otherwise a closed cause. */
+	private function theme_parent_failure( PreparedPackageArtifact $artifact, string $slug, ?string $subdirectory ): ?string {
 		$parent = $this->theme_parent_from_archive( $artifact, $subdirectory );
 		if ( false === $parent ) {
-			return false;
+			return 'theme_archive_invalid';
 		}
 		if ( null === $parent ) {
-			return true;
+			return null;
 		}
 		if ( $slug === $parent || ! function_exists( 'wp_get_theme' ) ) {
-			return false;
+			return 'theme_parent_invalid';
 		}
 		try {
-			return wp_get_theme( $parent )->exists();
+			return wp_get_theme( $parent )->exists() ? null : 'theme_parent_missing';
 		} catch ( Throwable ) {
-			return false;
+			return 'theme_parent_missing';
 		}
 	}
 
@@ -337,7 +358,7 @@ class WordPressCorePackageExecutor {
 			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::WORDPRESS_RESTORED );
 		}
 		if ( $result instanceof WP_Error ) {
-			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::WORDPRESS_FAILED );
+			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::WORDPRESS_FAILED, $this->error_detail( $result ) );
 		}
 		return CorePackageExecutionResult::failed( CorePackageExecutionFailure::WORDPRESS_UNCERTAIN );
 	}
