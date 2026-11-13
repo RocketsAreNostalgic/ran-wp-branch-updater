@@ -177,10 +177,17 @@ final class AdmittedBranchRunner {
 		}
 		$reason            = $this->with_cleanup( $reason, $primary_outcome, $cleanup_failed );
 		$this->last_reason = $reason;
-		if ( null !== $reason && $this->journal instanceof AdmittedAttemptReasonJournal ) {
-			$this->journal->finish_with_reason( $outcome, $reason );
-		} else {
-			$this->journal->finish( $outcome );
+		try {
+			if ( null !== $reason && $this->journal instanceof AdmittedAttemptReasonJournal ) {
+				$this->journal->finish_with_reason( $outcome, $reason );
+			} else {
+				$this->journal->finish( $outcome );
+			}
+		} catch ( Throwable $terminal_failure ) {
+			if ( $this->is_ambiguous( $terminal_failure ) ) {
+				$this->last_reason = $this->with_cleanup( $this->reason_of( $terminal_failure ), null, $cleanup_failed );
+			}
+			throw $terminal_failure;
 		}
 		return $outcome;
 	}

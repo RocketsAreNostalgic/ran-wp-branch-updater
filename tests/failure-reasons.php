@@ -61,6 +61,22 @@ final class RAN_WP_Branch_Updater_ReasonAwareJournal extends RAN_WP_Branch_Updat
 }
 
 // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- These test-only fault-injection doubles share one standalone behavioral proof.
+class RAN_WP_Branch_Updater_ReasonFailingJournal extends RAN_WP_Branch_Updater_ReasonJournal {
+	public function finish( string $code ): void {
+		// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Test-only fixed fault text; the failure is never rendered.
+		throw new BranchDeploymentJournalFailure( 'private terminal journal text ' . strlen( $code ) );
+	}
+}
+
+// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- These test-only fault-injection doubles share one standalone behavioral proof.
+final class RAN_WP_Branch_Updater_ReasonAwareFailingJournal extends RAN_WP_Branch_Updater_ReasonFailingJournal implements AdmittedAttemptReasonJournal {
+	public function finish_with_reason( string $code, AdmittedFailureReason $reason ): void {
+		// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Test-only fixed fault text; the failure is never rendered.
+		throw new AdmittedBranchDurabilityFailure( 'private terminal durability text ' . strlen( $code ) . strlen( $reason->reason->value ) );
+	}
+}
+
+// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- These test-only fault-injection doubles share one standalone behavioral proof.
 final class RAN_WP_Branch_Updater_ReasonArtifact implements AdmittedBranchArtifact {
 	public int $cleanups = 0;
 	public function __construct( private ?Throwable $cleanup_failure = null, private ?Throwable $custody_failure = null ) {}
@@ -588,6 +604,27 @@ foreach ( $ambiguous as $label => [$thrown_failure, $expected_reason] ) {
 	$assert( 'thrown' === $outcome && $thrown === $thrown_failure && array() === $journal->finished, $label . ': the ambiguous failure still escapes and nothing is finished' );
 	$assert( null !== $record && $expected_reason === $record->reason && null === $record->detail, $label . ': last_reason names the ambiguous cause without its message' );
 }
+
+// A terminal journal write that fails ambiguously still exposes its cause, on both finish paths.
+[$outcome, $record, , , $thrown] = RAN_WP_Branch_Updater_ReasonFixtures::run( array( 'journal' => new RAN_WP_Branch_Updater_ReasonFailingJournal() ) );
+$assert( 'thrown' === $outcome && $thrown instanceof BranchDeploymentJournalFailure && null !== $record && FailureReason::JOURNAL_UNCERTAIN === $record->reason, 'a terminal finish() journal failure is recorded and still escapes' );
+[$outcome, $record, , , $thrown] = RAN_WP_Branch_Updater_ReasonFixtures::run(
+	array(
+		'journal'         => new RAN_WP_Branch_Updater_ReasonAwareFailingJournal(),
+		'prepare_failure' => new ReasonedFailure( 'x', 'zip_invalid' ),
+	)
+);
+$assert( 'thrown' === $outcome && $thrown instanceof AdmittedBranchDurabilityFailure && null !== $record && FailureReason::DURABILITY_UNCERTAIN === $record->reason && null === $record->detail, 'a terminal finish_with_reason() durability failure is recorded and still escapes' );
+
+// Two handles from one standalone updater keep their own reasons.
+$shared_updater = BranchUpdater::for_standalone( new StandaloneBranchRunner( new GitHubFixtureProvider( '', 'abc123' ), new FileAttemptStore( $root . '/handles' ), new RecordingExecutor(), $root . '/handle-custody', new FileMutationLock( $root . '/handles.lock' ) ) );
+$handle_a       = $shared_updater->plugin( 'acme/demo', 'fixture-1', 'main', 'demo/demo.php' );
+$handle_b       = $shared_updater->theme( 'acme/other', 'fixture-2', 'main', 'other' );
+$handle_a->deploy( 'abc123' );
+$a_reason = $handle_a->last_reason();
+$assert( null !== $a_reason && null === $handle_b->last_reason(), 'a handle that has not deployed has no reason, whatever another handle did' );
+$handle_b->deploy( 'abc123' );
+$assert( $handle_a->last_reason() === $a_reason, 'a later deploy of another handle does not change this handle\'s reason' );
 
 // A failure before the runner exists (the journal cannot begin) must not leave a stale reason behind.
 $standalone = new StandaloneBranchRunner( new GitHubFixtureProvider( '', 'abc123' ), new FileAttemptStore( $root ), new RecordingExecutor(), $root . '/custody', new FileMutationLock( $root . '/standalone.lock' ) );
