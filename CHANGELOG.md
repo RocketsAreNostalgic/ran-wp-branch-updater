@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0-beta.15](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.14...v1.0.0-beta.15) (2026-11-13)
+
+
+### Features
+
+* **errors:** add failure reasons and screened detail ([#122](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/122)) ([9289fbe](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/commit/9289fbea6f65f063469039d272e3989ce2805cd1))
+
 ## [1.0.0-beta.14](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.13...v1.0.0-beta.14) (2026-11-03)
 
 
