@@ -5,6 +5,7 @@ declare(strict_types=1);
 require dirname( __DIR__ ) . '/vendor/autoload.php';
 
 use RAN\WPBranchUpdater\V1\Runtime\AdmittedBranchStageFailure;
+use RAN\WPBranchUpdater\V1\WordPress\WordPressCorePackageExecutor;
 use RAN\WPBranchUpdater\V1\Runtime\AdmittedFailureReason;
 use RAN\WPBranchUpdater\V1\Runtime\FailureReason;
 use RAN\WPBranchUpdater\V1\Runtime\ReasonedFailure;
@@ -168,6 +169,8 @@ $assert( null === ReasonedFailure::find( new RuntimeException( 'plain' ) ), 'fin
 // A new site that passes anything else (for example message text) fails here until it is reviewed.
 $allowed_origins = array(
 	'$header',
+	'$required',
+	'$name',
 	'$changed',
 	'$parent_failure',
 	'$cause?->detail',
@@ -178,14 +181,34 @@ $allowed_origins = array(
 	'$failure instanceof ReasonedFailure ? \'archive_changed\' : \'input_invalid\'',
 	'$failure->getCode() >= 100 && $failure->getCode() <= 599 ? \'http_\' . $failure->getCode() : null',
 );
-// Argument index of the detail for each constructor or factory.
+// Argument index of the detail for each constructor, factory or wrapper helper. Class names match
+// `new X(` however it is qualified; subclasses found in src/ and `new self(` / `new static(` inside a
+// tracked class are covered too.
 $origin_calls = array(
-	'new ReasonedFailure'                => 2,
-	'new AdmittedBranchStageFailure'     => 2,
-	'new AdmittedFailureReason'          => 1,
+	'ReasonedFailure'                    => 2,
+	'AdmittedBranchStageFailure'         => 2,
+	'AdmittedFailureReason'              => 1,
 	'CorePackageExecutionResult::failed' => 1,
+	'$this->fail'                        => 2,
+	'self::invalid_package_source'       => 0,
 );
-$split        = static function ( string $arguments ): array {
+$class_calls  = array( 'ReasonedFailure', 'AdmittedBranchStageFailure', 'AdmittedFailureReason' );
+$src_files    = array();
+foreach ( new RecursiveIteratorIterator( new RecursiveDirectoryIterator( dirname( __DIR__ ) . '/src', FilesystemIterator::SKIP_DOTS ) ) as $source_file ) {
+	// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Scan local source for detail call sites.
+	$src_files[ $source_file->getPathname() ] = (string) file_get_contents( $source_file->getPathname() );
+}
+do {
+	$grew = false;
+	foreach ( $src_files as $source_text ) {
+		if ( 1 === preg_match( '/\bclass\s+(\w+)\s+extends\s+\\\\?(?:\w+\\\\)*(' . implode( '|', $class_calls ) . ')\b/', $source_text, $subclass ) && ! in_array( $subclass[1], $class_calls, true ) ) {
+			$class_calls[]                = $subclass[1];
+			$origin_calls[ $subclass[1] ] = $origin_calls[ $subclass[2] ];
+			$grew                         = true;
+		}
+	}
+} while ( $grew );
+$split   = static function ( string $arguments ): array {
 	$parts   = array();
 	$depth   = 0;
 	$quote   = '';
@@ -209,13 +232,17 @@ $split        = static function ( string $arguments ): array {
 	$parts[] = trim( $current );
 	return $parts;
 };
-$checked      = 0;
-foreach ( new RecursiveIteratorIterator( new RecursiveDirectoryIterator( dirname( __DIR__ ) . '/src', FilesystemIterator::SKIP_DOTS ) ) as $file ) {
-	// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Scan local source for detail call sites.
-	$source = (string) file_get_contents( $file->getPathname() );
+$checked = 0;
+foreach ( $src_files as $source_path => $source ) {
+	$file = new SplFileInfo( $source_path );
 	foreach ( $origin_calls as $call => $index ) {
 		$length = strlen( $source );
-		preg_match_all( '/' . preg_quote( $call . '(', '/' ) . '/', $source, $matches, PREG_OFFSET_CAPTURE );
+		if ( in_array( $call, $class_calls, true ) ) {
+			$pattern = '/\bnew\s+(?:\\\\?(?:\w+\\\\)*' . preg_quote( $call, '/' ) . ( 1 === preg_match( '/\bclass\s+' . preg_quote( $call, '/' ) . '\b/', $source ) ? '|self|static' : '' ) . ')\s*\(/';
+		} else {
+			$pattern = '/' . preg_quote( $call, '/' ) . '\s*\(/';
+		}
+		preg_match_all( $pattern, $source, $matches, PREG_OFFSET_CAPTURE );
 		$offset = 0;
 		foreach ( $matches[0] as [$matched, $found] ) {
 			if ( $found < $offset ) {
@@ -246,6 +273,9 @@ foreach ( new RecursiveIteratorIterator( new RecursiveDirectoryIterator( dirname
 			}
 			++$checked;
 			if ( 1 === preg_match( '/\A\'([^\'\\\\]*)\'\z/', $origin, $literal ) ) {
+				if ( 'self::invalid_package_source' === $call ) {
+					$assert( in_array( $literal[1], ( new ReflectionClassConstant( WordPressCorePackageExecutor::class, 'SOURCE_FAILURES' ) )->getValue(), true ), 'invalid_package_source takes only a SOURCE_FAILURES cause: ' . $literal[1] );
+				}
 				$assert( AdmittedFailureReason::screen_detail( $literal[1] ) === $literal[1], $file->getFilename() . ': literal detail survives the screen: ' . $literal[1] );
 				continue;
 			}
@@ -257,7 +287,7 @@ foreach ( new RecursiveIteratorIterator( new RecursiveDirectoryIterator( dirname
 		}
 	}
 }
-$assert( $checked >= 14, 'the call-site guard found the detail call sites (' . $checked . ')' );
+$assert( $checked >= 28, 'the call-site guard found the detail call sites (' . $checked . ')' );
 
 // The documentation names every reason, and is linked from the README and agent guidance.
 // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Read local documentation to keep the vocabulary and its documentation in step.

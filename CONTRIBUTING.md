@@ -166,7 +166,7 @@ bootstrap regression also proves that new untracked root/nested/split contracts
 produce real analysis diagnostics. Uppercase extensions and PHP entrypoints outside lowercase `.php` fail for an explicit scope decision rather than disappearing.
 The 40 current production PHP files remain clean at required level 8. The second,
 all-maintained profile also includes tests and scripts automatically, covering all
-53 maintained PHP files at level 8. Its only exclusions are root `vendor/`,
+62 maintained PHP files at level 8. Its only exclusions are root `vendor/`,
 `node_modules/` and Git metadata. Both profiles run through `composer analyze`;
 the maintained controls additionally prove diagnostics in new root, test and
 script PHP files and protect the reviewed analysis-exemption inventory. Both

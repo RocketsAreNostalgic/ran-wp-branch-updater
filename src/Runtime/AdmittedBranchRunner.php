@@ -31,6 +31,11 @@ final class AdmittedBranchRunner {
 		return $this->last_reason;
 	}
 
+	/** Whether run() has already started; a consumed runner refuses every further call. */
+	public function is_consumed(): bool {
+		return $this->consumed;
+	}
+
 	/** Returns the closed outcome only after the attempt journal has finished. */
 	public function run( BranchDeploymentDeclaration $deployment ): string {
 		if ( $this->consumed ) {

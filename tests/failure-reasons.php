@@ -69,6 +69,14 @@ class RAN_WP_Branch_Updater_ReasonFailingJournal extends RAN_WP_Branch_Updater_R
 }
 
 // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- These test-only fault-injection doubles share one standalone behavioral proof.
+final class RAN_WP_Branch_Updater_ReasonPlainFailingJournal extends RAN_WP_Branch_Updater_ReasonJournal {
+	public function finish( string $code ): void {
+		// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Test-only fixed fault text; the failure is never rendered.
+		throw new RuntimeException( 'plain terminal journal text ' . strlen( $code ) );
+	}
+}
+
+// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- These test-only fault-injection doubles share one standalone behavioral proof.
 final class RAN_WP_Branch_Updater_ReasonAwareFailingJournal extends RAN_WP_Branch_Updater_ReasonFailingJournal implements AdmittedAttemptReasonJournal {
 	public function finish_with_reason( string $code, AdmittedFailureReason $reason ): void {
 		// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Test-only fixed fault text; the failure is never rendered.
@@ -625,6 +633,66 @@ $a_reason = $handle_a->last_reason();
 $assert( null !== $a_reason && null === $handle_b->last_reason(), 'a handle that has not deployed has no reason, whatever another handle did' );
 $handle_b->deploy( 'abc123' );
 $assert( $handle_a->last_reason() === $a_reason, 'a later deploy of another handle does not change this handle\'s reason' );
+
+// A non-ambiguous terminal journal failure leaves the run's own reason in place.
+$wordpress_failed                = CorePackageExecutionResult::failed( CorePackageExecutionFailure::WORDPRESS_FAILED, 'incompatible_archive' );
+[$outcome, $record, , , $thrown] = RAN_WP_Branch_Updater_ReasonFixtures::run(
+	array(
+		'journal' => new RAN_WP_Branch_Updater_ReasonPlainFailingJournal(),
+		'result'  => $wordpress_failed,
+	)
+);
+$assert( 'thrown' === $outcome && $thrown instanceof RuntimeException && null !== $record && FailureReason::CORE_WORDPRESS_FAILED === $record->reason, 'a plain terminal journal failure keeps the run reason' );
+
+// A durability failure whose cleanup also fails records both, and the failure still escapes.
+[$outcome, $record, , , $thrown] = RAN_WP_Branch_Updater_ReasonFixtures::run(
+	array(
+		'lock_failure'    => new AdmittedBranchDurabilityFailure( 'private durability text' ),
+		'cleanup_failure' => new RuntimeException( 'private cleanup text' ),
+	)
+);
+$assert( 'thrown' === $outcome && $thrown instanceof AdmittedBranchDurabilityFailure && null !== $record && FailureReason::DURABILITY_UNCERTAIN === $record->reason && $record->cleanup_failed, 'a durability failure with a failing cleanup records the cause and the cleanup failure' );
+
+// Handles of one admitted updater: only the handle whose call actually ran has a reason.
+$admitted_updater = static function () use ( $wordpress_failed ): BranchUpdater {
+	$o = array();
+	return BranchUpdater::for_admitted_attempt(
+		new BranchDeploymentDeclaration( 'reason-handles', 'plugin', 'demo', 'acme/demo', 'fixture-1', 'main', 'abc123', 'update', null, 'demo/demo.php' ),
+		new RAN_WP_Branch_Updater_ReasonJournal(),
+		new RAN_WP_Branch_Updater_ReasonArchives( new RAN_WP_Branch_Updater_ReasonArtifact(), null ),
+		new RAN_WP_Branch_Updater_ReasonTarget( RAN_WP_Branch_Updater_ReasonFixtures::BASELINE, $o ),
+		new RAN_WP_Branch_Updater_ReasonExecutor( $wordpress_failed, null, null ),
+		new RAN_WP_Branch_Updater_ReasonLock( null )
+	);
+};
+$admitted_shared  = $admitted_updater();
+$admitted_a       = $admitted_shared->plugin( 'acme/demo', 'fixture-1', 'main', package_slug: 'demo' );
+$admitted_b       = $admitted_shared->plugin( 'acme/demo', 'fixture-1', 'main', package_slug: 'demo' );
+$admitted_a->deploy();
+$a_reason = $admitted_a->last_reason();
+$assert( null !== $a_reason && FailureReason::CORE_WORDPRESS_FAILED === $a_reason->reason && null === $admitted_b->last_reason(), 'an admitted handle that never ran has no reason' );
+try {
+	$admitted_b->deploy();
+	$assert( false, 'a consumed admitted runner must refuse another handle' );
+} catch ( RuntimeException ) {
+	$assert( null === $admitted_b->last_reason(), 'a refused admitted deploy() does not inherit another handle\'s reason' );
+}
+$assert( $admitted_a->last_reason() === $a_reason, 'the refused call did not change the first handle' );
+try {
+	$admitted_a->deploy();
+	$assert( false, 'a consumed admitted runner must refuse a reused handle' );
+} catch ( RuntimeException ) {
+	$assert( null === $admitted_a->last_reason(), 'a reused handle drops the reason of the call that no longer applies' );
+}
+$admitted_c = $admitted_updater()->plugin( 'acme/demo', 'fixture-1', 'main', package_slug: 'demo' );
+$admitted_c->deploy();
+$assert( null !== $admitted_c->last_reason(), 'the control handle ran and has a reason' );
+try {
+	$admitted_c->deploy( 'zzz' );
+	$assert( false, 'a mismatched terminal declaration must be rejected' );
+} catch ( InvalidArgumentException ) {
+	$assert( null === $admitted_c->last_reason(), 'a rejected terminal declaration leaves no stale reason' );
+}
 
 // A failure before the runner exists (the journal cannot begin) must not leave a stale reason behind.
 $standalone = new StandaloneBranchRunner( new GitHubFixtureProvider( '', 'abc123' ), new FileAttemptStore( $root ), new RecordingExecutor(), $root . '/custody', new FileMutationLock( $root . '/standalone.lock' ) );
