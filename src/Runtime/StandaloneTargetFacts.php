@@ -15,6 +15,10 @@ final class StandaloneTargetFacts implements AdmittedTargetFacts {
 
 	public function __construct( private readonly PackageExecutor $executor ) {}
 
+	public function target_directory( BranchDeploymentDeclaration $deployment ): string {
+		return $this->executor->target_directory( $deployment );
+	}
+
 	public function assert_mutation_allowed(): void {}
 
 	public function frozen_target( BranchDeploymentDeclaration $deployment, bool $defer_existing ): ?array {

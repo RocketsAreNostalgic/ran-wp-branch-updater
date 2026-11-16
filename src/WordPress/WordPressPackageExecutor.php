@@ -16,6 +16,10 @@ use RuntimeException;
 /** Thin real-WordPress executor: WP owns installation; this package supplies one local ZIP. */
 final class WordPressPackageExecutor implements PackageExecutor {
 	public function __construct( private readonly WordPressCorePackageExecutor $core = new WordPressCorePackageExecutor() ) {}
+	public function target_directory( BranchDeploymentDeclaration $deployment ): string {
+		return ( 'plugin' === $deployment->package_type ? WP_PLUGIN_DIR : get_theme_root( $deployment->installed_identifier ?? $deployment->slug ) ) . '/' . $deployment->slug;
+	}
+
 	public function execute( BranchDeploymentDeclaration $d, PreparedArchive $archive ): void {
 		$result = $this->execute_core( $d, $archive );
 		if ( ! $result->is_successful() ) {

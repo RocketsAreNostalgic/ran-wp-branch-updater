@@ -14,7 +14,11 @@ final class RecordingExecutor implements PackageExecutor {
 	/** @var list<array{id:string,path:string,version:string}> */
 	public array $calls = array();
 
-	public function __construct( private readonly bool $fail = false ) {}
+	public function __construct( private readonly bool $fail = false, private readonly ?string $directory = null ) {}
+
+	public function target_directory( BranchDeploymentDeclaration $deployment ): string {
+		return $this->directory ?? dirname( __DIR__ ) . '/build/absent-target/' . $deployment->slug;
+	}
 
 	/**
 	 * @return array{}

@@ -20,7 +20,8 @@ consumer that ignores them sees exactly the behaviour it saw before.
 
 `AdmittedFailureReason` has `reason` (`FailureReason`), `detail` (`?string`),
 `primary_outcome` (`?string`) and `cleanup_failed` (`bool`).
-`ADMITTED_API_VERSION` stays `3`: no existing signature changed.
+Failure reasons alone do not change the admitted API. The target-directory
+contract now requires admitted API `4`; see [MIGRATING.md](../MIGRATING.md).
 
 ## Guarantees
 
@@ -74,6 +75,7 @@ consumer that ignores them sees exactly the behaviour it saw before.
 | Archive | `archive_prepare_failed` (a failure that is not an archive validation), `archive_custody_changed` | custody: `cleaned`, `identity` or `digest` |
 | Validator | `zip_unavailable`, `zip_invalid`, `entry_limit`, `entry_invalid`, `path_unsafe`, `path_collision`, `layout_invalid`, `entry_unsupported`, `entry_encrypted`, `compressed_too_large`, `expanded_too_large`, `archive_corrupt`, `subdirectory_missing`, `package_dir_missing`, `identity_mismatch`, `header_missing`, `header_unreadable`, `version_missing`, `version_invalid`, `compat_invalid`, `requires_newer_php`, `requires_newer_wp`, `plugin_missing`, `theme_missing`, `multiple_plugins` | header failures: `Plugin Name`, `Theme Name`, `Version`, `Requires PHP` or `Requires at least` |
 | Preflight | `preflight_multisite`, `preflight_file_mods_disabled`, `preflight_filesystem_not_direct`, `preflight_maintenance_active` | none |
+| Target policy | `target_is_working_copy` | none |
 | Lock | `lock_held`, `lock_token_invalid` (missing or malformed token), `lock_stale_release_failed`, `lock_stale_reinsert_failed`, `lock_storage`, `lock_release` | none |
 | WordPress Core | `core_invalid_request`, `core_runtime_unsupported`, `core_wordpress_refused`, `core_wordpress_failed`, `core_wordpress_restored`, `core_wordpress_uncertain`, `core_operation_mismatch` | an allow-listed upgrader WP_Error code, or a closed cause (see below) |
 | Postcondition | `baseline_unreadable`, `baseline_changed`, `identifier_mismatch`, `adopt_failed` | none |
@@ -119,6 +121,7 @@ reason is recorded and tested; **documented** = deliberately unchanged, rational
 | E18 | `Runtime/BranchUpdater.php:92-93`, `Archive/PackageSubdirectory.php:28` | input | exact invalid field | fixed text | A | none | caller-input validation text is already specific enough | none | documented |
 | E19 | `Runtime/Admitted*Failure.php`, `Branch*Failure.php` | durability | previous chain | thrown out of `run()` | C | `durability_uncertain`, `journal_uncertain`, `lock_storage`, `lock_release` | closed ids | `last_reason()` is set before the escape; `tests/failure-reasons.php` | fixed here; the host must read it and log (consumer) |
 | E20 | `AdmittedBranchRunner.php:139` | cleanup | an outcome returned normally (for example `deployed`) | replaced by `interrupted` or `archive_cleanup_failed` | C | `cleanup_also_failed` and `primary_outcome` | none | `tests/failure-reasons.php` | reason recorded; outcome code unchanged |
+| E21 | `Runtime/AdmittedBranchRunner.php:91` | locked policy | target has a VCS marker | `policy_blocked` | B | `target_is_working_copy` | no path, marker contents or other detail leaves the check | `tests/failure-reasons.php` public admitted marker matrix and late-lock marker; `tests/contract.php` standalone journal/override | fixed |
 
 ## What a host must change to consume this
 

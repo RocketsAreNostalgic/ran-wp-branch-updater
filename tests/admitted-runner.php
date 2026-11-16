@@ -67,6 +67,10 @@ final class RAN_WP_Branch_Updater_RunnerFixtureArchives implements AdmittedArchi
 
 // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- These test-only fault-injection doubles share one standalone behavioral proof.
 final class RAN_WP_Branch_Updater_RunnerFixtureTarget implements AdmittedTargetFacts {
+	public function target_directory( BranchDeploymentDeclaration $deployment ): string {
+		return __DIR__ . '/build/absent-target/' . $deployment->slug;
+	}
+
 	public int $adoptions = 0;
 	public function __construct( private ?\Throwable $first_frozen_failure = null, private bool $installed_active = false, private string $identifier = 'demo' ) {}
 	public function assert_mutation_allowed(): void {}
@@ -144,6 +148,20 @@ foreach ( array(
 	} catch ( InvalidArgumentException $failure ) {
 		$assert( 'The admitted deployment terminal declaration does not match.' === $failure->getMessage(), 'exact initial target remains immutable' );
 	}
+}
+
+// Per-call overrides cannot broaden or narrow an immutable admitted declaration.
+foreach ( array( false, true ) as $admitted_override ) {
+	$guarded = new BranchDeploymentDeclaration( 'immutable-override', 'plugin', 'demo', 'acme/demo', 'fixture-1', 'main', 'abc123', allow_working_copy: $admitted_override );
+	$journal = new RAN_WP_Branch_Updater_RunnerFixtureJournal();
+	$bound   = \RAN\WPBranchUpdater\V1\Runtime\BranchUpdater::for_admitted_attempt( $guarded, $journal, new RAN_WP_Branch_Updater_RunnerFixtureArchives( new RAN_WP_Branch_Updater_RunnerFixtureArtifact() ), new RAN_WP_Branch_Updater_RunnerFixtureTarget(), new RAN_WP_Branch_Updater_RunnerFixtureExecutor(), new RAN_WP_Branch_Updater_RunnerFixtureLock() )->plugin( 'acme/demo', 'fixture-1', 'main', package_slug: 'demo' );
+	try {
+		$bound->deploy( allow_working_copy: ! $admitted_override );
+		$assert( false, 'terminal calls cannot change admitted working-copy policy' );
+	} catch ( InvalidArgumentException $failure ) {
+		$assert( 'The admitted deployment terminal declaration does not match.' === $failure->getMessage() && 0 === $journal->finish_calls, 'override mismatch refuses before the runner starts' );
+	}
+	$assert( 'deployed' === $bound->deploy(), 'refused override does not consume the admitted runner' );
 }
 
 $historical = new BranchDeploymentDeclaration( 'historical', 'plugin', 'demo', 'acme/demo', 'fixture-1', 'main', null, selected_commit: str_repeat( 'a', 40 ) );

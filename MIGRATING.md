@@ -210,3 +210,28 @@ supported. The runner checks the installed identity before adoption; mismatch
 retains an uncertain outcome. Standalone `deploy()` accepts the same final optional
 argument. The strict journal records and validates the nullable target. Existing
 historical selection behavior remains available under admitted API 3.
+
+## Working-copy protection (admitted API 4)
+
+`AdmittedTargetFacts` and standalone `PackageExecutor` implementations must now
+provide `target_directory(BranchDeploymentDeclaration $deployment): string`.
+Return the absolute directory that execution will overwrite, including the
+intended path for an absent install target. The runner reads it inside the
+mutation lock, after final preflight and before the mutation fence; it must match
+the executor's actual destination. The default WordPress executor uses
+`WP_PLUGIN_DIR/slug` or `get_theme_root(installed_identifier ?? slug)/slug`.
+`StandaloneTargetFacts` delegates to its executor. This required interface
+addition advances `BranchUpdater::ADMITTED_API_VERSION` to `4`; the additive
+failure reason alone does not require a version change. Qualify matching host
+implementations before released adoption.
+
+`BranchDeploymentDeclaration` appends `bool $allow_working_copy = false`.
+`BranchDeployment::deploy()` appends nullable `allow_working_copy`; omission
+preserves the declaration. Standalone callers opt in for one call with `true`.
+Admitted hosts must authorize the flag on the immutable admitted declaration;
+a terminal call that changes it is rejected before execution. This flag is
+execution policy and does not alter the file journal's persisted shape.
+
+Without the override, a target working copy returns `policy_blocked` with
+`FailureReason::TARGET_IS_WORKING_COPY`, no detail, no mutation fence and no
+executor call. Existing cleanup, terminal journaling and lock release apply.

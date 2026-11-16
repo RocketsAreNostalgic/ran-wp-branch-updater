@@ -8,6 +8,9 @@ use RAN\WPBranchUpdater\V1\Archive\PreparedArchive;
 use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 
 interface PackageExecutor {
+	/** Absolute directory WordPress/the executor will overwrite, including an absent install target. */
+	public function target_directory( BranchDeploymentDeclaration $deployment ): string;
+
 	/**
 	 * Run target/maintenance/version admission before the durable mutation fence.
 	 *
