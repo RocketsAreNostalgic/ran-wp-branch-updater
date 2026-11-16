@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace RAN\WPBranchUpdater\V1\Runtime;
 
+use RAN\UpdaterSupport\V1\TargetWorkingCopy;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedArchiveSource;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedAttemptJournal;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedAttemptReasonJournal;
@@ -87,6 +88,10 @@ final class AdmittedBranchRunner {
 						}
 						$this->target->assert_mutation_allowed();
 						$this->executor->preflight( $deployment, $artifact );
+						if ( ! $deployment->allow_working_copy && TargetWorkingCopy::is_working_copy( $this->target->target_directory( $deployment ) ) ) {
+							$reason = new AdmittedFailureReason( FailureReason::TARGET_IS_WORKING_COPY );
+							return $done( 'policy_blocked' );
+						}
 						$this->journal->mark_mutation_started();
 						$fenced = true;
 						$result = $this->executor->execute( $deployment, $baseline, $artifact );

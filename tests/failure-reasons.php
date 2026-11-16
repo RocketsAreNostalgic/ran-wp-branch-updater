@@ -42,10 +42,13 @@ $assert = static function ( bool $actual, string $message ): void {
 
 // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- These test-only fault-injection doubles share one standalone behavioral proof.
 class RAN_WP_Branch_Updater_ReasonJournal implements AdmittedAttemptJournal {
+	public int $fences = 0;
 	/** @var list<string> */
 	public array $finished = array();
 	public function record_resolved_ref( string $ref ): void {}
-	public function mark_mutation_started(): void {}
+	public function mark_mutation_started(): void {
+		++$this->fences;
+	}
 	public function finish( string $code ): void {
 		$this->finished[] = $code;
 	}
@@ -130,6 +133,9 @@ final class RAN_WP_Branch_Updater_ReasonArchives implements AdmittedArchiveSourc
 
 // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- These test-only fault-injection doubles share one standalone behavioral proof.
 final class RAN_WP_Branch_Updater_ReasonTarget implements AdmittedTargetFacts {
+	public function target_directory( BranchDeploymentDeclaration $deployment ): string {
+		return $this->o['target_directory'] ?? __DIR__ . '/build/reason-target-absent/demo';
+	}
 	/**
 	 * @param array{identifier:string,version:string,active:bool}|null $baseline
 	 * @param array<string,mixed> $o
@@ -160,6 +166,7 @@ final class RAN_WP_Branch_Updater_ReasonTarget implements AdmittedTargetFacts {
 
 // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- These test-only fault-injection doubles share one standalone behavioral proof.
 final class RAN_WP_Branch_Updater_ReasonExecutor implements AdmittedPackageExecutor {
+	public int $executions = 0;
 	public function __construct( private CorePackageExecutionResult $result, private ?Throwable $preflight, private ?Throwable $execution = null ) {}
 	public function preflight( BranchDeploymentDeclaration $deployment, AdmittedBranchArtifact $artifact ): void {
 		if ( null !== $this->preflight ) {
@@ -167,6 +174,7 @@ final class RAN_WP_Branch_Updater_ReasonExecutor implements AdmittedPackageExecu
 		}
 	}
 	public function execute( BranchDeploymentDeclaration $deployment, ?array $baseline, AdmittedBranchArtifact $artifact ): CorePackageExecutionResult {
+		++$this->executions;
 		if ( null !== $this->execution ) {
 			throw $this->execution;
 		}
@@ -204,14 +212,14 @@ final class RAN_WP_Branch_Updater_ReasonFixtures {
 		$artifact = new RAN_WP_Branch_Updater_ReasonArtifact( $o['cleanup_failure'] ?? null, $o['custody_failure'] ?? null );
 		$baseline = array_key_exists( 'baseline', $o ) ? $o['baseline'] : ( 'install' === ( $o['operation'] ?? 'update' ) ? null : self::BASELINE );
 		$theme    = 'theme' === ( $o['package_type'] ?? 'plugin' );
-		$declared = new BranchDeploymentDeclaration( 'reason-attempt', $theme ? 'theme' : 'plugin', 'demo', 'acme/demo', 'fixture-1', 'main', isset( $o['selected_commit'] ) ? null : 'abc123', $o['operation'] ?? 'update', $o['subdirectory'] ?? null, $o['declared_identifier'] ?? ( $theme ? 'demo' : 'demo/demo.php' ), $o['selected_commit'] ?? null, $o['expected_identifier'] ?? null );
+		$declared = new BranchDeploymentDeclaration( 'reason-attempt', $theme ? 'theme' : 'plugin', 'demo', 'acme/demo', 'fixture-1', 'main', isset( $o['selected_commit'] ) ? null : 'abc123', $o['operation'] ?? 'update', $o['subdirectory'] ?? null, $o['declared_identifier'] ?? ( $theme ? 'demo' : 'demo/demo.php' ), $o['selected_commit'] ?? null, $o['expected_identifier'] ?? null, $o['allow_working_copy'] ?? false );
 		$bound    = BranchUpdater::for_admitted_attempt(
 			$declared,
 			$journal,
 			$o['archives'] ?? new RAN_WP_Branch_Updater_ReasonArchives( $artifact, $o['prepare_failure'] ?? null ),
 			new RAN_WP_Branch_Updater_ReasonTarget( $baseline, $o ),
-			new RAN_WP_Branch_Updater_ReasonExecutor( $o['result'] ?? CorePackageExecutionResult::succeeded(), $o['preflight_failure'] ?? null, $o['execute_failure'] ?? null ),
-			new RAN_WP_Branch_Updater_ReasonLock( $o['lock_failure'] ?? null )
+			$o['executor'] ?? new RAN_WP_Branch_Updater_ReasonExecutor( $o['result'] ?? CorePackageExecutionResult::succeeded(), $o['preflight_failure'] ?? null, $o['execute_failure'] ?? null ),
+			$o['lock'] ?? new RAN_WP_Branch_Updater_ReasonLock( $o['lock_failure'] ?? null )
 		);
 		$bound    = $theme ? $bound->theme( 'acme/demo', 'fixture-1', 'main', 'demo', $o['subdirectory'] ?? null ) : $bound->plugin( 'acme/demo', 'fixture-1', 'main', package_slug: 'demo', subdirectory: $o['subdirectory'] ?? null );
 		$thrown   = null;
@@ -248,6 +256,116 @@ RAN_WP_Branch_Updater_ReasonFixtures::run( array( 'journal' => $aware_success ) 
 $assert( array( 'deployed' ) === $aware_success->finished && array() === $aware_success->reasoned, 'success and reason-less outcomes use finish() even for a reason-aware journal' );
 [$outcome, $record] = RAN_WP_Branch_Updater_ReasonFixtures::run();
 $assert( 'deployed' === $outcome && null === $record, 'success carries no reason' );
+
+// Real target markers through the admitted public path, independent of WordPress or a host.
+$working_root = __DIR__ . '/build/working-copy-' . bin2hex( random_bytes( 4 ) );
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_mkdir -- Create only this standalone fixture's isolated target.
+mkdir( $working_root . '/demo', 0700, true );
+try {
+	foreach ( array( 'plugin', 'theme' ) as $package_type ) {
+		foreach ( array( '.git', '.svn', '.hg', '.bzr' ) as $marker ) {
+			foreach ( array( 'file', 'directory', 'symlink', 'dangling' ) as $kind ) {
+				$marker_path = $working_root . '/demo/' . $marker;
+				if ( 'directory' === $kind ) {
+					// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_mkdir -- Create only this fixture's version-control marker.
+					mkdir( $marker_path, 0700 );
+				} elseif ( 'file' === $kind ) {
+					// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Create only this fixture's version-control marker.
+					file_put_contents( $marker_path, 'controlled marker' );
+				} else {
+					symlink( 'symlink' === $kind ? __FILE__ : $working_root . '/missing', $marker_path );
+				}
+				try {
+					$aware                                    = new RAN_WP_Branch_Updater_ReasonAwareJournal();
+					$executor                                 = new RAN_WP_Branch_Updater_ReasonExecutor( CorePackageExecutionResult::succeeded(), null );
+					[$outcome, $record, , $artifact, $thrown] = RAN_WP_Branch_Updater_ReasonFixtures::run(
+						array(
+							'package_type'     => $package_type,
+							'target_directory' => $working_root . '/demo',
+							'journal'          => $aware,
+							'executor'         => $executor,
+						)
+					);
+					$assert( 'policy_blocked' === $outcome && null === $thrown, 'working copy refuses safely: ' . $package_type . '/' . $marker . '/' . $kind );
+					$assert( null !== $record && 'target_is_working_copy' === $record->reason->value && null === $record->detail, 'working-copy refusal has only its stable closed reason' );
+					$assert( 0 === $aware->fences && 0 === $executor->executions && 1 === $artifact->cleanups, 'working-copy refusal cleans without mutation' );
+					$assert( 1 === count( $aware->reasoned ) && array( 'policy_blocked', $record ) === $aware->reasoned[0], 'working-copy refusal finishes once with the same reason' );
+					$assert( file_exists( $marker_path ) || is_link( $marker_path ), 'refusal preserves the marker' );
+					[$outcome, $record, $override_journal] = RAN_WP_Branch_Updater_ReasonFixtures::run(
+						array(
+							'package_type'       => $package_type,
+							'target_directory'   => $working_root . '/demo',
+							'allow_working_copy' => true,
+						)
+					);
+					$assert( 'deployed' === $outcome && null === $record && 1 === $override_journal->fences, 'explicit admitted override survives declaration copies' );
+				} finally {
+					if ( 'directory' === $kind ) {
+						// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Remove only this fixture's empty marker directory.
+						rmdir( $marker_path );
+					} else {
+						// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Remove only this fixture's marker file or link.
+						unlink( $marker_path );
+					}
+				}
+			}
+		}
+	}
+
+	foreach ( array( '.git', '.svn', '.hg', '.bzr', 'composer.json' ) as $non_target_marker ) {
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Ancestor metadata is a negative control owned by this fixture.
+		file_put_contents( $working_root . '/' . $non_target_marker, '{}' );
+		foreach ( array( 'demo', 'absent' ) as $target_slug ) {
+			[$outcome, $record] = RAN_WP_Branch_Updater_ReasonFixtures::run(
+				array(
+					'operation'        => 'install',
+					'target_directory' => $working_root . '/' . $target_slug,
+				)
+			);
+			$assert( 'deployed' === $outcome && null === $record, 'ancestor metadata and absent install targets do not refuse' );
+		}
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Remove only this fixture's ancestor control.
+		unlink( $working_root . '/' . $non_target_marker );
+	}
+	// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Composer metadata in the target is a negative control.
+	file_put_contents( $working_root . '/demo/composer.json', '{}' );
+	[$outcome] = RAN_WP_Branch_Updater_ReasonFixtures::run( array( 'target_directory' => $working_root . '/demo' ) );
+	$assert( 'deployed' === $outcome, 'target composer metadata is not a working-copy marker' );
+	// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Remove only this fixture's metadata control.
+	unlink( $working_root . '/demo/composer.json' );
+
+	$mutation_lock                     = new FileMutationLock( $working_root . '/mutation.lock' );
+	$late_lock                         = new class( $mutation_lock, $working_root ) implements MutationLock {
+		public function __construct( private FileMutationLock $lock, private string $root ) {}
+		public function run( callable $operation ): mixed {
+			return $this->lock->run(
+				function () use ( $operation ): mixed {
+					// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Insert a marker only after the real mutation lock is held.
+					file_put_contents( $this->root . '/demo/.git', 'late marker' );
+					return $operation();
+				}
+			);
+		}
+	};
+	[$outcome, $record, $late_journal] = RAN_WP_Branch_Updater_ReasonFixtures::run(
+		array(
+			'target_directory' => $working_root . '/demo',
+			'lock'             => $late_lock,
+		)
+	);
+	$assert( 'policy_blocked' === $outcome && null !== $record && FailureReason::TARGET_IS_WORKING_COPY === $record->reason && 0 === $late_journal->fences, 'marker introduced at lock acquisition refuses before the fence' );
+	$assert( true === $mutation_lock->run( static fn(): bool => true ), 'working-copy refusal releases the real mutation lock' );
+	// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Remove only this fixture's late marker and lock file.
+	unlink( $working_root . '/demo/.git' );
+	// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Remove only this fixture's released lock file.
+	unlink( $working_root . '/mutation.lock' );
+
+} finally {
+	// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Remove only this fixture's empty target.
+	rmdir( $working_root . '/demo' );
+	// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Remove only this fixture's empty root.
+	rmdir( $working_root );
+}
 
 // Core results: one reason per CorePackageExecutionFailure, detail passes through the screen.
 $core_outcomes = array(

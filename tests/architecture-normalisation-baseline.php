@@ -84,6 +84,10 @@ final class RAN_WP_Branch_Updater_ArchitectureBaselineArchives implements Admitt
 
 // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- These test-only fault-injection doubles share one standalone behavioral proof.
 final class RAN_WP_Branch_Updater_ArchitectureBaselineTarget implements AdmittedTargetFacts {
+	public function target_directory( BranchDeploymentDeclaration $deployment ): string {
+		return __DIR__ . '/build/absent-target/' . $deployment->slug;
+	}
+
 	private int $policy_calls      = 0;
 	private int $maintenance_calls = 0;
 	/**

@@ -434,6 +434,7 @@ final class InstalledWordPressProof {
 		$d          = new BranchDeploymentDeclaration( 'identity-' . $slug, $type, $slug, 'fixture/repository', 'fixture', 'main', null, 'install', 'packages/target', null, null, $identifier );
 		$path       = 'plugin' === $type ? WP_PLUGIN_DIR . '/' . $slug : get_theme_root() . '/' . $slug;
 		self::check( ! file_exists( $path ), 'Identity proof requires an absent destination.' );
+		self::check( ( new WordPressPackageExecutor() )->target_directory( $d ) === $path, 'Target fact must match the actual WordPress destination.' );
 		self::check( array() === glob( get_temp_dir() . 'ran-branch-proof-custody/*' ), 'Identity proof requires empty archive custody.' );
 		$journal  = new class() implements AdmittedAttemptJournal {
 			public int $fences     = 0;
@@ -447,6 +448,10 @@ final class InstalledWordPressProof {
 			}
 		};
 		$target   = new class() implements AdmittedTargetFacts {
+			public function target_directory( BranchDeploymentDeclaration $deployment ): string {
+				return ( new WordPressPackageExecutor() )->target_directory( $deployment );
+			}
+
 			public int $adoptions = 0;
 			public function assert_mutation_allowed(): void {}
 			public function frozen_target( BranchDeploymentDeclaration $deployment, bool $defer_existing ): ?array {
@@ -549,6 +554,7 @@ final class InstalledWordPressProof {
 			self::check( $before === $this->hooks(), 'Executor hooks must be restored after success.' );
 		}
 		$this->refused_update( $type, $slug );
+		$this->working_copy( $type, $slug );
 		$this->failures( $type );
 		if ( 'theme' === $type ) {
 			$this->missing_theme_version( $slug );
@@ -587,6 +593,46 @@ final class InstalledWordPressProof {
 		} finally {
 			remove_filter( 'auto_update_' . $type, $refuse );
 			$artifact->cleanup();
+		}
+	}
+
+	private function working_copy( string $type, string $slug ): void {
+		$wordpress = new WordPressPackageExecutor();
+		$d         = new BranchDeploymentDeclaration( 'working-copy', $type, $slug, 'fixture/repository', 'fixture', 'main', null, 'update', 'packages/target', 'plugin' === $type ? $slug . '/' . $slug . '.php' : $slug );
+		$directory = $wordpress->target_directory( $d );
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Create only this installed fixture's version-control marker.
+		file_put_contents( $directory . '/.git', 'controlled marker' );
+		foreach ( array( false, true ) as $allow_working_copy ) {
+			$d        = new BranchDeploymentDeclaration( 'working-copy', $type, $slug, 'fixture/repository', 'fixture', 'main', null, 'update', 'packages/target', $d->installed_identifier, allow_working_copy: $allow_working_copy );
+			$artifact = $this->artifact( $d, '3.0.0' );
+			$archives = new class( $artifact ) implements AdmittedArchiveSource {
+				public function __construct( private PreparedArchive $artifact ) {}
+				public function prepare( BranchDeploymentDeclaration $deployment, ?array $baseline ): AdmittedBranchArtifact {
+					InstalledWordPressProof::check( 'update' === $deployment->operation && null !== $baseline && '2.0.0' === $baseline['version'], 'Working-copy admission must retain the existing installed baseline.' );
+					return $this->artifact;
+				}
+				public function verify_current_head(): void {}
+			};
+			$journal  = new class() implements AdmittedAttemptJournal {
+				public int $fences     = 0;
+				public string $outcome = '';
+				public function record_resolved_ref( string $ref ): void {}
+				public function mark_mutation_started(): void {
+					++$this->fences;
+				}
+				public function finish( string $code ): void {
+					$this->outcome = $code;
+				}
+			};
+			$target   = new \RAN\WPBranchUpdater\V1\Runtime\StandaloneTargetFacts( $wordpress );
+			$runner   = new \RAN\WPBranchUpdater\V1\Runtime\AdmittedBranchRunner( $journal, $archives, $target, new \RAN\WPBranchUpdater\V1\Runtime\StandalonePackageExecutor( $wordpress, $target ), new WordPressUpdaterLock() );
+			$outcome  = $runner->run( $d );
+			self::check( ( $allow_working_copy ? 'deployed' : 'policy_blocked' ) === $outcome && $journal->outcome === $outcome, 'Installed working-copy policy must finish with its exact outcome.' );
+			self::check( ( $allow_working_copy ? 1 : 0 ) === $journal->fences && ( $allow_working_copy ? '3.0.0' : '2.0.0' ) === $wordpress->installed_facts( $d )['version'], 'Only an explicit override may fence and replace the installed package.' );
+			if ( ! $allow_working_copy ) {
+				self::check( \RAN\WPBranchUpdater\V1\Runtime\FailureReason::TARGET_IS_WORKING_COPY === $runner->last_reason()?->reason && is_file( $directory . '/.git' ), 'Refusal must retain the marker and typed reason.' );
+			}
+			self::check( false === get_option( 'auto_updater.lock' ) && ! file_exists( ABSPATH . '.maintenance' ) && array() === glob( get_temp_dir() . 'ran-branch-proof-custody/*' ), 'Installed working-copy refusal/override must release lock, maintenance and archive custody.' );
 		}
 	}
 

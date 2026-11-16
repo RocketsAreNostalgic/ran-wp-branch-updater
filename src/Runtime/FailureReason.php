@@ -48,6 +48,8 @@ enum FailureReason: string {
 	case PREFLIGHT_FILE_MODS_DISABLED    = 'preflight_file_mods_disabled';
 	case PREFLIGHT_FILESYSTEM_NOT_DIRECT = 'preflight_filesystem_not_direct';
 	case PREFLIGHT_MAINTENANCE_ACTIVE    = 'preflight_maintenance_active';
+	// Target policy.
+	case TARGET_IS_WORKING_COPY = 'target_is_working_copy';
 	// Mutation lock.
 	case LOCK_HELD                = 'lock_held';
 	case LOCK_TOKEN_INVALID       = 'lock_token_invalid';

@@ -118,6 +118,20 @@ Admitted corrupt entries still report integrity error 1010. This avoids
 inflating an already-over-limit entry without claiming a measured deployment
 speedup.
 
+## Working-copy protection
+
+The runner refuses `policy_blocked` with reason `target_is_working_copy` when the
+actual target contains `.git`, `.svn`, `.hg` or `.bzr`, including files,
+directories and dangling links. It checks only the target, under the mutation
+lock after final preflight and before the journal's mutation fence. Missing
+install targets, ancestor markers and Composer metadata do not trigger it.
+
+Standalone callers may explicitly pass `deploy(allow_working_copy: true)` for
+one call. Admitted hosts must set `allow_working_copy: true` on the admitted
+`BranchDeploymentDeclaration`; `deploy()` cannot change that admission. There
+is no global override. See [MIGRATING.md](MIGRATING.md) for admitted API 4 and the
+required destination fact. WordPress's separate VCS-context filter is unchanged.
+
 ## Failure reasons
 
 Outcome codes are unchanged. A failure can also carry a closed reason and a screened, bounded detail, read from `BranchDeployment::last_reason()`. The vocabulary, its precise guarantees, and the inventory of every audited site are in [docs/error-detail-inventory.md](docs/error-detail-inventory.md).

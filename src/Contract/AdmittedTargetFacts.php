@@ -7,6 +7,8 @@ namespace RAN\WPBranchUpdater\V1\Contract;
 use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 
 interface AdmittedTargetFacts {
+	/** Absolute directory WordPress/the executor will overwrite, including an absent install target. */
+	public function target_directory( BranchDeploymentDeclaration $deployment ): string;
 
 	public function assert_mutation_allowed(): void;
 	/** @return array{identifier:string,version:string,active:bool}|null */

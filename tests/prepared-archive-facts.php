@@ -115,6 +115,10 @@ $assert( ! glob( $root . '/archives/*' ), 'successful prepared archive cleanup r
 $prepared = ( new ProviderArchiveSource( new GitHubFixtureProvider( $source, 'abc123', 'repository-id' ), $root . '/archives' ) )->prepare( $deployment, null );
 $assert( $prepared instanceof PreparedArchive, 'provider source returns its validated archive owner directly' );
 $executor = new class() implements PackageExecutor {
+	public function target_directory( BranchDeploymentDeclaration $deployment ): string {
+		return __DIR__ . '/build/absent-target/' . $deployment->slug;
+	}
+
 	public ?PreparedArchive $preflight_archive = null;
 	public ?PreparedArchive $executed_archive  = null;
 

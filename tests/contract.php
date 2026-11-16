@@ -75,6 +75,27 @@ try {
 	$assert( 'Invalid expected installation identifier.' === $expected->getMessage(), 'target field is initial-install only' );
 }
 
+// Standalone override is per call; refused attempts finish unfenced and release their lock.
+$working_directory = $root . '/working-target';
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_mkdir -- Create only the isolated standalone working-copy target.
+mkdir( $working_directory, 0700 );
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Create only this fixture's working-copy marker.
+file_put_contents( $working_directory . '/.git', 'controlled marker' );
+$working_store    = new FileAttemptStore( $root . '/working-attempts.json' );
+$working_executor = new RecordingExecutor( directory: $working_directory );
+$working_updater  = $bootstrap( new GitHubFixtureProvider( $zip, 'abc123' ), $working_store, $root . '/archives', $working_executor, $lock );
+foreach ( array( false, true, false ) as $allow_working_copy ) {
+	$working_handle = $working_updater->plugin( 'acme/demo', 'fixture-1', 'main', 'demo/demo.php', subdirectory: 'demo' );
+	$outcome        = $working_handle->deploy( expected_commit: 'abc123', allow_working_copy: $allow_working_copy );
+	$record         = $working_store->get( $working_handle->attempt_id() );
+	$assert( ( $allow_working_copy ? 'deployed' : 'policy_blocked' ) === $outcome, 'standalone working-copy override applies only to this call' );
+	$assert( ( $allow_working_copy ? 'succeeded' : 'failed' ) === $record['state'] && ( ( null !== $record['mutation_started_at'] ) === $allow_working_copy ), 'working-copy journal has a clean terminal state and correct fence' );
+	$assert( $allow_working_copy ? null === $working_handle->last_reason() : \RAN\WPBranchUpdater\V1\Runtime\FailureReason::TARGET_IS_WORKING_COPY === $working_handle->last_reason()?->reason, 'standalone handle exposes the typed refusal' );
+	$assert( true === $lock->run( static fn(): bool => true ) && ! glob( $root . '/archives/*' ), 'standalone refusal releases the lock and cleans custody' );
+}
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Read only this fixture's preserved marker.
+$assert( 1 === count( $working_executor->calls ) && 'controlled marker' === file_get_contents( $working_directory . '/.git' ), 'only the explicit override reaches the executor' );
+
 $bitbucket_store    = new FileAttemptStore( $root . '/bitbucket-attempts.json' );
 $bitbucket_executor = new RecordingExecutor();
 $bitbucket_result   = $bootstrap( new BitbucketFixtureProvider( $zip, 'abc123' ), $bitbucket_store, $root . '/archives', $bitbucket_executor, $lock )->plugin( repository: 'acme/demo', repository_id: 'fixture-1', branch: 'main', plugin_file: 'demo/demo.php', subdirectory: 'demo' )->deploy( expected_commit: 'abc123' );

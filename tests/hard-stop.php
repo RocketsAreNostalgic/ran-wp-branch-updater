@@ -12,6 +12,10 @@ use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 use RAN\WPBranchUpdater\V1\Runtime\StandaloneBranchRunner;
 
 final class RAN_WP_Branch_Updater_RAN_BranchDeploymentHardStopExecutor implements PackageExecutor {
+	public function target_directory( BranchDeploymentDeclaration $deployment ): string {
+		return __DIR__ . '/build/absent-target/' . $deployment->slug;
+	}
+
 	/**
 	 * @return array{}
 	 */

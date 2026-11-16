@@ -20,7 +20,8 @@ final readonly class BranchDeploymentDeclaration {
 		public ?string $subdirectory = null,
 		public ?string $installed_identifier = null,
 		public ?string $selected_commit = null,
-		public ?string $expected_identifier = null
+		public ?string $expected_identifier = null,
+		public bool $allow_working_copy = false
 	) {
 		if ( null !== $expected_identifier && ( strlen( $expected_identifier ) > 191 || 'install' !== $operation || ( 'theme' === $package_type
 			? $expected_identifier !== $slug

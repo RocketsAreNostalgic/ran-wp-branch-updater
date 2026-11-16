@@ -4,20 +4,20 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "de2835df00102b89602f6ca4d7345119",
+    "content-hash": "8da2f943021b9a307c6bda39c8babe57",
     "packages": [
         {
             "name": "ran/updater-support",
-            "version": "v1.0.0-beta.5",
+            "version": "v1.0.0-beta.8",
             "source": {
                 "type": "git",
                 "url": "https://github.com/RocketsAreNostalgic/ran-updater-support.git",
-                "reference": "548e4d29856797ce827e349fe013b42e32e050a6"
+                "reference": "70e7cf533c04bc5bf770589903243033ad37ee1f"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/RocketsAreNostalgic/ran-updater-support/zipball/548e4d29856797ce827e349fe013b42e32e050a6",
-                "reference": "548e4d29856797ce827e349fe013b42e32e050a6",
+                "url": "https://api.github.com/repos/RocketsAreNostalgic/ran-updater-support/zipball/70e7cf533c04bc5bf770589903243033ad37ee1f",
+                "reference": "70e7cf533c04bc5bf770589903243033ad37ee1f",
                 "shasum": ""
             },
             "require": {
@@ -53,6 +53,9 @@
                 "test:contract": [
                     "php tests/contract.php"
                 ],
+                "test:working-copy": [
+                    "php tests/working-copy.php"
+                ],
                 "test:failure-text": [
                     "php tests/failure-text.php"
                 ],
@@ -78,6 +81,7 @@
                 "test": [
                     "@test:analysis-coverage",
                     "@test:contract",
+                    "@test:working-copy",
                     "@test:failure-text",
                     "@test:failure-text-mutation",
                     "@test:standards",
@@ -102,7 +106,7 @@
                 "security": "https://github.com/RocketsAreNostalgic/ran-updater-support/security/advisories/new",
                 "source": "https://github.com/RocketsAreNostalgic/ran-updater-support"
             },
-            "time": "2026-11-13T00:41:49+00:00"
+            "time": "2026-11-16T18:00:06+00:00"
         }
     ],
     "packages-dev": [

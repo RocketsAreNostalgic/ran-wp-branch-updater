@@ -26,7 +26,7 @@ final class BranchDeployment {
 	}
 
 	/** Returns the runner's closed terminal outcome; ambiguous durability failures propagate. */
-	public function deploy( ?string $expected_commit = null, ?string $operation = null, ?string $selected_commit = null, ?string $expected_identifier = null ): string {
+	public function deploy( ?string $expected_commit = null, ?string $operation = null, ?string $selected_commit = null, ?string $expected_identifier = null, ?bool $allow_working_copy = null ): string {
 		$this->last_reason = null;
 		$deployment        = new BranchDeploymentDeclaration(
 			$this->declaration->attempt_id,
@@ -40,7 +40,8 @@ final class BranchDeployment {
 			$this->declaration->subdirectory,
 			$this->declaration->installed_identifier,
 			$selected_commit ?? $this->declaration->selected_commit,
-			$expected_identifier ?? $this->declaration->expected_identifier
+			$expected_identifier ?? $this->declaration->expected_identifier,
+			$allow_working_copy ?? $this->declaration->allow_working_copy
 		);
 		if ( false !== $this->admitted && (array) $deployment !== (array) $this->admitted ) {
 			throw new \InvalidArgumentException( 'The admitted deployment terminal declaration does not match.' );
