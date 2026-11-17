@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace RAN\WPBranchUpdater\V1\Runtime;
 
-use RAN\WPBranchUpdater\V1\Archive\PackageSubdirectory;
+use RAN\UpdaterSupport\V1\PackageDirectory;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedArchiveSource;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedAttemptJournal;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedPackageExecutor;
@@ -72,7 +72,7 @@ final class BranchUpdater {
 			$branch,
 			$bound ? $this->admitted->expected_head : null,
 			$bound ? $this->admitted->operation : 'update',
-			PackageSubdirectory::normalize( $subdirectory ),
+			PackageDirectory::normalize( $subdirectory ),
 			$installed_identifier,
 			$bound ? $this->admitted->selected_commit : null,
 			$bound ? $this->admitted->expected_identifier : null,
@@ -96,10 +96,6 @@ final class BranchUpdater {
 		if ( 1 !== substr_count( $plugin_file, '/' ) || preg_match( '/^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*\.php$/Di', $plugin_file ) !== 1 ) {
 			throw new \InvalidArgumentException( 'The plugin file is invalid.' );
 		}
-		$slug = dirname( $plugin_file );
-		if ( '.' === $slug || str_contains( $slug, '/' ) ) {
-			throw new \InvalidArgumentException( 'The plugin file must be in its package directory.' );
-		}
-		return PackageSubdirectory::normalize_slug( $slug );
+		return PackageDirectory::installed_slug( 'plugin', $plugin_file );
 	}
 }

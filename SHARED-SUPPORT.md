@@ -6,7 +6,14 @@ The extraction rule is intentionally strict. A rule belongs in `ran/updater-supp
 
 ## Result
 
-No additional extraction is justified at this point.
+The original assessment below is superseded for package directories by #127: the
+published `PackageDirectory` now centralizes the identical Core/branch path rules
+and the shared folder-name predicate. Release updates use the folder predicate;
+repository subdirectories remain outside the release domain.
+
+The library requires `ran/updater-support` under `^1.0.0-beta.9`. Its development
+lock qualifies published beta.9; consuming roots lock and qualify their own
+selected compatible helper version.
 
 `RAN\UpdaterSupport\V1\ArchiveSafety` remains the correct shared boundary. It centralizes the low-level archive rules that are genuinely identical across the updater family: ZIP path normalization, entry-type classification, and path collision/file-parent collision detection.
 
@@ -15,7 +22,7 @@ The remaining apparent similarities do not meet the full extraction threshold.
 | Candidate | Decision | Reason |
 | --- | --- | --- |
 | Full archive scanning / validation | Keep domain-local | Both packages use shared `ArchiveSafety`, but their surrounding archive policies differ. The release scanner owns release-specific inventory/root/compression-limit projection; the branch validator also owns branch package identity, header/version compatibility, CRC/content verification and different size/admission semantics. |
-| Repository package-subdirectory normalization | Keep in branch `Archive` | This is a branch declaration/install-shape rule. The release updater does not implement the same repository-subdirectory contract. |
+| Repository package-subdirectory normalization | Share `PackageDirectory` with Core | Identical pure Core/branch path semantics now have a published shared contract. Release consumes only the folder-name rule. |
 | Installed-package identity | Keep in each `WordPress` domain | Branch normalization validates its installed identifier contract. Release resolution verifies an installed absolute WordPress target across configured roots, symlink/race conditions, headers and compatibility. These are not the same semantic operation. |
 | Temporary artifact/file identity custody | Keep domain-local | Both are security-sensitive, but lifecycle ownership differs materially. Branch `PreparedArchive` creates/acquires and retains exact downloaded-byte custody through deployment. Release temporary-artifact custody includes selected-runtime liveness, inspection/busy state, destructor/discard semantics and richer identity evidence. A common abstraction would either weaken one contract or encode domain-specific policy. |
 | Mutation locking | Keep domain-local | Branch locking protects one synchronous deployment and includes the WordPress updater lock adapter. Release state/locking participates in a callback-spanning binding/CAS model. |
@@ -43,4 +50,4 @@ The normalized branch-updater tree was checked against the architectural constra
 - remaining PHPCS suppressions are tied to actual filesystem, test-fixture, or justified diagnostic-boundary behavior rather than obsolete production file-structure exceptions;
 - no temporary transformation script or rollout artifact is required by the runtime tree.
 
-Accordingly, no `ran/updater-support` code change or further production refactor is justified by this review.
+The other domain-local boundaries above remain unchanged.

@@ -44,7 +44,6 @@ $cases         = array(
 	array( 'src/WordPress/WordPressUpdaterLock.php', 'function contention_failure(', 'function contentionFailure(', $method_code ),
 	array( 'src/Persistence/FileAttemptJournal.php', 'function record_resolved_ref(', 'function recordResolvedRef(', $method_code ),
 	array( 'src/Persistence/FileMutationLock.php', 'function run(', 'function regressionProbe(', $method_code ),
-	array( 'src/Archive/PackageSubdirectory.php', '$provider_slug', '$providerSlug', $variable_code ),
 	array( 'src/Persistence/FileAttemptJournal.php', '$attempt_id', '$attemptId', $variable_code ),
 );
 

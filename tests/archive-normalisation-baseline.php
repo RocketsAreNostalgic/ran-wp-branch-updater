@@ -5,7 +5,7 @@ declare(strict_types=1);
 require dirname( __DIR__ ) . '/vendor/autoload.php';
 
 use RAN\WPBranchUpdater\V1\Archive\ArchiveValidator;
-use RAN\WPBranchUpdater\V1\Archive\PackageSubdirectory;
+use RAN\UpdaterSupport\V1\PackageDirectory;
 use RAN\WPBranchUpdater\V1\Archive\PreparedArchive;
 use RAN\WPBranchUpdater\V1\GitHubFixtureProvider;
 use RAN\WPBranchUpdater\V1\HeaderFormattingFixtures;
@@ -19,17 +19,17 @@ $assert = static function ( bool $actual, string $message ): void {
 	}
 };
 
-$assert( null === PackageSubdirectory::normalize( null ), 'optional package subdirectory remains nullable' );
-$assert( null === PackageSubdirectory::normalize( '   ' ), 'blank package subdirectory remains nullable' );
-$assert( 'packages/demo' === PackageSubdirectory::normalize( '  packages/demo/  ' ), 'shared path primitive preserves normalization behavior' );
-$assert( 'demo' === PackageSubdirectory::slug( 'packages/demo' ), 'package subdirectory slug remains the final path segment' );
-$assert( 'demo' === PackageSubdirectory::normalize_slug( 'demo' ), 'single-segment slug normalization remains local' );
-$assert( 'demo' === PackageSubdirectory::installation_slug( 'provider-name', 'packages/demo' ), 'subdirectory remains installation-slug authority when present' );
-$assert( 'provider-name' === PackageSubdirectory::installation_slug( 'provider-name', null ), 'provider slug remains installation fallback' );
-$assert( 'mixed' === PackageSubdirectory::deployment_slug( 'MiXeD', null ), 'deployment slug remains lowercase' );
-$assert( 'packages/C%3A-name' === PackageSubdirectory::normalize( 'packages/C%3A-name' ), 'encoded colon outside the first segment remains valid' );
+$assert( null === PackageDirectory::normalize( null ), 'optional package subdirectory remains nullable' );
+$assert( null === PackageDirectory::normalize( '   ' ), 'blank package subdirectory remains nullable' );
+$assert( 'packages/demo' === PackageDirectory::normalize( '  packages/demo/  ' ), 'shared path primitive preserves normalization behavior' );
+$assert( 'demo' === PackageDirectory::slug( 'packages/demo' ), 'package subdirectory slug remains the final path segment' );
+$assert( 'demo' === PackageDirectory::normalize_slug( 'demo' ), 'single-segment slug normalization remains local' );
+$assert( 'demo' === PackageDirectory::installation_slug( 'provider-name', 'packages/demo' ), 'subdirectory remains installation-slug authority when present' );
+$assert( 'provider-name' === PackageDirectory::installation_slug( 'provider-name', null ), 'provider slug remains installation fallback' );
+$assert( 'mixed' === PackageDirectory::deployment_slug( 'MiXeD', null ), 'deployment slug remains lowercase' );
+$assert( 'packages/C%3A-name' === PackageDirectory::normalize( 'packages/C%3A-name' ), 'encoded colon outside the first segment remains valid' );
 $assert(
-	'packages/%' . str_repeat( '25', 7 ) . '41' === PackageSubdirectory::normalize( 'packages/%' . str_repeat( '25', 7 ) . '41' ),
+	'packages/%' . str_repeat( '25', 7 ) . '41' === PackageDirectory::normalize( 'packages/%' . str_repeat( '25', 7 ) . '41' ),
 	'shared bounded decode depth remains accepted at the supported boundary'
 );
 
@@ -43,7 +43,7 @@ $invalid_subdirectories = array(
 );
 foreach ( $invalid_subdirectories as $label => $value ) {
 	try {
-		PackageSubdirectory::normalize( $value );
+		PackageDirectory::normalize( $value );
 		$assert( false, 'unsafe package subdirectory unexpectedly normalized: ' . $label );
 	} catch ( InvalidArgumentException $expected ) {
 		$assert(
@@ -54,7 +54,7 @@ foreach ( $invalid_subdirectories as $label => $value ) {
 }
 
 try {
-	PackageSubdirectory::normalize_slug( 'packages/demo' );
+	PackageDirectory::normalize_slug( 'packages/demo' );
 	$assert( false, 'nested path must not become a provider slug' );
 } catch ( InvalidArgumentException $expected ) {
 	$assert( 'The package subdirectory must be a normalized relative path.' === $expected->getMessage(), 'slug exception mapping remains stable' );

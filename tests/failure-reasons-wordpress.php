@@ -197,8 +197,16 @@ foreach ( $expectations as $label => [$outcome, $failure, $detail] ) {
 $core         = new WordPressCorePackageExecutor( static fn(): bool => true );
 $result       = $core->install_plugin( $artifact, 'bad/slug', 'demo' );
 $assert( CorePackageExecutionFailure::INVALID_REQUEST === $result->get_failure() && 'input_invalid' === $result->get_detail(), 'an invalid slug is input_invalid' );
-$result = $core->update_plugin( $artifact, 'demo', 'demo', 'other/demo.php' );
-$assert( CorePackageExecutionFailure::INVALID_REQUEST === $result->get_failure() && 'identifier_mismatch' === $result->get_detail(), 'a foreign installed identifier is identifier_mismatch' );
+$before = RAN_WP_Branch_Updater_WordPressState::$hook_calls;
+foreach ( array( 'other/demo.php', 'Demo/demo.php', 'x/demo/demo.php' ) as $identifier ) {
+	$result = $core->update_plugin( $artifact, 'demo', 'demo', $identifier );
+	$assert( CorePackageExecutionFailure::INVALID_REQUEST === $result->get_failure() && 'identifier_mismatch' === $result->get_detail(), 'foreign, case-only and nested plugin identifiers are identifier_mismatch' );
+}
+foreach ( array( 'other', 'Demo', 'x/demo' ) as $identifier ) {
+	$result = $core->update_theme( $artifact, 'demo', 'demo', $identifier );
+	$assert( CorePackageExecutionFailure::INVALID_REQUEST === $result->get_failure() && 'identifier_mismatch' === $result->get_detail(), 'foreign, case-only and nested theme identifiers are identifier_mismatch' );
+}
+$assert( RAN_WP_Branch_Updater_WordPressState::$hook_calls === $before, 'mismatched updates refuse before WordPress hook registration or execution' );
 $archive_path = $artifact->get_path();
 // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_chmod -- Change the fixture archive mode to break custody.
 chmod( $archive_path, 0644 );

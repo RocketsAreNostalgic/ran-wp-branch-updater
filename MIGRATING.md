@@ -235,3 +235,26 @@ execution policy and does not alter the file journal's persisted shape.
 Without the override, a target working copy returns `policy_blocked` with
 `FailureReason::TARGET_IS_WORKING_COPY`, no detail, no mutation fence and no
 executor call. Existing cleanup, terminal journaling and lock release apply.
+
+## Shared package directory rules
+
+Replace `RAN\WPBranchUpdater\V1\Archive\PackageSubdirectory` with
+`RAN\UpdaterSupport\V1\PackageDirectory` from
+`ran/updater-support` under `^1.0.0-beta.9`. The local class is removed without an alias;
+its five methods and fixed-message `InvalidArgumentException` behavior remain
+available on the shared class. Direct callers must update their imports.
+The manifest requires the minimum compatible version that provides the class.
+This repository's lock qualifies published beta.9; consuming roots select and
+qualify their own exact compatible helper version through their lock files.
+
+Declarations now admit mixed-case folder names, retaining the 191-byte limit.
+Installed folders remain case-sensitive identities; update execution still
+requires the exact plugin `dirname()` or theme stylesheet to match the slug,
+including refusal of nested plugin identifiers. New-install callers continue
+to use `deployment_slug()` for lower-case destinations. The expected initial
+identifier retains its exact folder binding, one-level PHP filename syntax and
+191-byte total limit.
+
+`BranchUpdater::ADMITTED_API_VERSION` remains `4`: no admitted interface, field,
+wire shape or outcome changes. Core must adopt a published branch-updater release
+and the shared support dependency in its coordinated consumer update.
