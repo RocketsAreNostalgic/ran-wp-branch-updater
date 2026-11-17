@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.0-beta.16](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.15...v1.0.0-beta.16) (2026-11-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* **runner:** refuse to overwrite a version-control working copy ([#125](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/125))
+
+### Features
+
+* **runner:** refuse to overwrite a version-control working copy ([#125](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/125)) ([ec4cd1b](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/commit/ec4cd1ba3322963ea8a450e688ce7edf203914b6))
+
 ## [1.0.0-beta.15](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.14...v1.0.0-beta.15) (2026-11-13)
 
 
