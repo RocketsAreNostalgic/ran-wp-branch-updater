@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.0-beta.17](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.16...v1.0.0-beta.17) (2026-11-17)
+
+
+### ⚠ BREAKING CHANGES
+
+* **runtime:** replace RAN\WPBranchUpdater\V1\Archive\PackageSubdirectory imports with RAN\UpdaterSupport\V1\PackageDirectory. The admitted API remains version 4.
+
+### Bug Fixes
+
+* **runtime:** admit mixed-case folders with shared directory rules ([#128](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/128)) ([4bd52ab](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/commit/4bd52ab89bc2cce4a1a85a56309aa2cc3c5d427f))
+
 ## [1.0.0-beta.16](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.15...v1.0.0-beta.16) (2026-11-16)
 
 
