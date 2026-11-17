@@ -545,13 +545,16 @@ final class InstalledWordPressProof {
 			try {
 				$this->preflight_admission( $executor, $declaration, $artifact );
 				if ( $mixed_case && 'update' === $operation ) {
-					$configure = require dirname( __DIR__ ) . '/bootstrap.php';
-					$store     = new FileAttemptStore( get_temp_dir() . 'ran-case-' . wp_generate_uuid4() . '.json' );
-					$updater   = $configure( new GitHubFixtureProvider( $artifact->get_path(), 'local' ), $store, get_temp_dir() . 'ran-branch-proof-custody' );
-					$pending   = 'plugin' === $type
+					$temp_permissions = fileperms( get_temp_dir() );
+					$configure        = require dirname( __DIR__ ) . '/bootstrap.php';
+					$store            = new FileAttemptStore( get_temp_dir() . 'ran-case-' . wp_generate_uuid4() . '/attempts.json' );
+					$updater          = $configure( new GitHubFixtureProvider( $artifact->get_path(), 'local' ), $store, get_temp_dir() . 'ran-branch-proof-custody' );
+					$pending          = 'plugin' === $type
 						? $updater->plugin( 'fixture/repository', 'fixture', 'main', $declaration->installed_identifier, subdirectory: $subdirectory )
 						: $updater->theme( 'fixture/repository', 'fixture', 'main', $slug, $subdirectory );
 					self::check( 'deployed' === $pending->deploy( expected_commit: 'local' ), 'Mixed-case update must pass public admission and the real WordPress mutation.' );
+					clearstatcache( true, get_temp_dir() );
+					self::check( fileperms( get_temp_dir() ) === $temp_permissions, 'Private journal setup must not change permissions of the shared temporary directory.' );
 					$record = $store->get( $pending->attempt_id() );
 					self::check( $record['slug'] === $slug && 'succeeded' === $record['state'] && null !== $record['mutation_started_at'], 'Mixed-case update must persist its exact folder and terminal success.' );
 				} else {
