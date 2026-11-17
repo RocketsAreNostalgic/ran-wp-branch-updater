@@ -19,7 +19,7 @@ require $autoload;
 if ( ! class_exists( RAN\WPBranchUpdater\V1\Runtime\BranchUpdater::class ) ) {
 	throw new RuntimeException( 'Composer did not load the branch updater source.' );
 }
-if ( ! class_exists( RAN\UpdaterSupport\V1\ArchiveSafety::class ) || ! class_exists( RAN\UpdaterSupport\V1\TargetWorkingCopy::class ) ) {
+if ( ! class_exists( RAN\UpdaterSupport\V1\ArchiveSafety::class ) || ! class_exists( RAN\UpdaterSupport\V1\TargetWorkingCopy::class ) || ! class_exists( RAN\UpdaterSupport\V1\PackageDirectory::class ) ) {
 	throw new RuntimeException( 'Composer did not load updater support.' );
 }
 $archive_contract = new ReflectionClass( RAN\WPBranchUpdater\V1\Archive\PreparedArchive::class );
@@ -40,7 +40,7 @@ if (
 	throw new RuntimeException( 'Consumer installation loaded test-only fixture classes.' );
 }
 
-foreach ( array( RAN\WPBranchUpdater\V1\Runtime\BranchUpdater::class, RAN\UpdaterSupport\V1\ArchiveSafety::class, RAN\UpdaterSupport\V1\TargetWorkingCopy::class ) as $class ) {
+foreach ( array( RAN\WPBranchUpdater\V1\Runtime\BranchUpdater::class, RAN\UpdaterSupport\V1\ArchiveSafety::class, RAN\UpdaterSupport\V1\TargetWorkingCopy::class, RAN\UpdaterSupport\V1\PackageDirectory::class ) as $class ) {
 	$file = ( new ReflectionClass( $class ) )->getFileName();
 	if ( ! is_string( $file ) || ! str_starts_with( $file, $consumer . '/vendor/' ) || is_link( $file ) ) {
 		throw new RuntimeException( 'Composer did not load an installed regular package file.' );

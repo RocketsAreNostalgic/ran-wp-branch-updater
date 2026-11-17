@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace RAN\WPBranchUpdater\V1\Tests;
 
+use RAN\UpdaterSupport\V1\PackageDirectory;
+use RAN\WPBranchUpdater\V1\Persistence\FileAttemptStore;
 use RAN\WPBranchUpdater\V1\Archive\ArchiveOffer;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedArchiveSource;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedAttemptJournal;
@@ -45,6 +47,7 @@ final class InstalledWordPressProof {
 		$this->header_compatibility();
 		foreach ( array( 'plugin', 'theme' ) as $type ) {
 			$this->package( $type );
+			$this->package( $type, true );
 			$this->initial_identity( $type, false );
 			$this->initial_identity( $type, true );
 		}
@@ -519,29 +522,46 @@ final class InstalledWordPressProof {
 		self::check( array() === glob( get_temp_dir() . 'ran-branch-proof-custody/*' ), 'Accepted and rejected archives must leave no custody files.' );
 	}
 
-	private function package( string $type ): void {
-		$slug     = 'ran-branch-proof-' . $type;
+	private function package( string $type, bool $mixed_case = false ): void {
+		// The mixed-case install seeds an existing folder; its public operation under test is update.
+		$source_slug  = ( $mixed_case ? 'Ran-Mixed-Proof-' : 'Ran-Branch-Proof-' ) . $type;
+		$subdirectory = 'packages/' . $source_slug;
+		$slug         = $mixed_case ? $source_slug : PackageDirectory::deployment_slug( '', $subdirectory );
+		self::check( $mixed_case || 'ran-branch-proof-' . $type === $slug, 'New installs from capitalized subdirectories must use the lower-case folder.' );
 		$executor = new WordPressPackageExecutor();
 		foreach ( array( 'install', 'update' ) as $operation ) {
 			$version     = 'install' === $operation ? '1.0.0' : '2.0.0';
-			$declaration = new BranchDeploymentDeclaration( 'installed-proof', $type, $slug, 'fixture/repository', 'fixture', 'main', null, $operation, 'packages/target', 'plugin' === $type ? $slug . '/' . $slug . '.php' : $slug );
+			$declaration = new BranchDeploymentDeclaration( 'installed-proof', $type, $slug, 'fixture/repository', 'fixture', 'main', null, $operation, $subdirectory, 'plugin' === $type ? $slug . '/' . $slug . '.php' : $slug );
 			$artifact    = $this->artifact( $declaration, $version );
 			$before      = $this->hooks();
 			$observed    = false;
 			$observer    = static function ( mixed $reply, mixed $package, mixed $upgrader, array $extra ) use ( &$observed, $artifact, $type, $operation ): mixed {
 				if ( ( $extra['type'] ?? null ) === $type && ( $extra['action'] ?? null ) === $operation ) {
-					$observed = $reply === $artifact->get_path() && $package === $artifact->get_path();
+					$observed = is_string( $reply ) && $reply === $package && hash_file( 'sha256', $reply ) === hash_file( 'sha256', $artifact->get_path() );
 				}
 				return $reply;
 			};
 			add_filter( 'upgrader_pre_download', $observer, 20, 4 );
 			try {
 				$this->preflight_admission( $executor, $declaration, $artifact );
-				$result = $executor->execute_core( $declaration, $artifact );
-				self::check( $result->is_successful(), $type . ' ' . $operation . ' must succeed through the default adapter.' );
+				if ( $mixed_case && 'update' === $operation ) {
+					$configure = require dirname( __DIR__ ) . '/bootstrap.php';
+					$store     = new FileAttemptStore( get_temp_dir() . 'ran-case-' . wp_generate_uuid4() . '.json' );
+					$updater   = $configure( new GitHubFixtureProvider( $artifact->get_path(), 'local' ), $store, get_temp_dir() . 'ran-branch-proof-custody' );
+					$pending   = 'plugin' === $type
+						? $updater->plugin( 'fixture/repository', 'fixture', 'main', $declaration->installed_identifier, subdirectory: $subdirectory )
+						: $updater->theme( 'fixture/repository', 'fixture', 'main', $slug, $subdirectory );
+					self::check( 'deployed' === $pending->deploy( expected_commit: 'local' ), 'Mixed-case update must pass public admission and the real WordPress mutation.' );
+					$record = $store->get( $pending->attempt_id() );
+					self::check( $record['slug'] === $slug && 'succeeded' === $record['state'] && null !== $record['mutation_started_at'], 'Mixed-case update must persist its exact folder and terminal success.' );
+				} else {
+					$result = $executor->execute_core( $declaration, $artifact );
+					self::check( $result->is_successful(), $type . ' ' . $operation . ' must succeed through the default adapter.' );
+				}
 				$facts = $executor->installed_facts( $declaration );
 				self::check( $version === $facts['version'] && false === $facts['active'], 'Installed bytes/version and inactive state must match.' );
 				$path = 'plugin' === $type ? WP_PLUGIN_DIR . '/' . $slug : get_theme_root() . '/' . $slug;
+				self::check( basename( (string) realpath( $path ) ) === $slug, 'Actual installed directory case must match the admitted destination.' );
 				// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Read local installed fixture bytes, never a remote URL.
 				self::check( file_get_contents( $path . '/proof.txt' ) === $version, 'Selected nested source must replace the installed payload.' );
 				self::check( ! file_exists( $path . '/outside.txt' ), 'Repository siblings must not enter the installed package.' );
@@ -552,6 +572,9 @@ final class InstalledWordPressProof {
 				$artifact->cleanup();
 			}
 			self::check( $before === $this->hooks(), 'Executor hooks must be restored after success.' );
+		}
+		if ( $mixed_case ) {
+			return;
 		}
 		$this->refused_update( $type, $slug );
 		$this->working_copy( $type, $slug );
@@ -684,7 +707,7 @@ final class InstalledWordPressProof {
 		$source = wp_tempnam( 'branch-proof.zip' );
 		$zip    = new ZipArchive();
 		self::check( true === $zip->open( $source, ZipArchive::CREATE | ZipArchive::OVERWRITE ), 'Fixture ZIP must open.' );
-		$prefix = 'repository/packages/target/';
+		$prefix = 'repository/' . ( $d->subdirectory ?? 'packages/target' ) . '/';
 		if ( 'plugin' === $d->package_type ) {
 			$zip->addFromString( $prefix . ( $main_file ?? $d->slug . '.php' ), "<?php\n/*\nPlugin Name: Branch proof\nVersion: " . $version . "\n*/\n" );
 		} else {

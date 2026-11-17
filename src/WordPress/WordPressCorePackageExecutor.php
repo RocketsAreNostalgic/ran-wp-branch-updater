@@ -6,7 +6,7 @@ namespace RAN\WPBranchUpdater\V1\WordPress;
 
 use Closure;
 use InvalidArgumentException;
-use RAN\WPBranchUpdater\V1\Archive\PackageSubdirectory;
+use RAN\UpdaterSupport\V1\PackageDirectory;
 use RAN\WPBranchUpdater\V1\Contract\PreparedPackageArtifact;
 use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionFailure;
 use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionResult;
@@ -129,8 +129,8 @@ class WordPressCorePackageExecutor {
 	private function validate_inputs( PreparedPackageArtifact $artifact, string $package_slug, ?string $subdirectory, string $installed_identifier = '' ): array|CorePackageExecutionResult {
 		try {
 			$artifact->assert_unchanged();
-			$slug         = PackageSubdirectory::normalize_slug( $package_slug );
-			$subdirectory = PackageSubdirectory::normalize( $subdirectory );
+			$slug         = PackageDirectory::normalize_slug( $package_slug );
+			$subdirectory = PackageDirectory::normalize( $subdirectory );
 			$identifier   = '' === $installed_identifier ? '' : InstalledPackageIdentifier::normalize( $installed_identifier );
 		} catch ( Throwable $failure ) {
 			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::INVALID_REQUEST, $failure instanceof ReasonedFailure ? 'archive_changed' : 'input_invalid' );
@@ -319,7 +319,7 @@ class WordPressCorePackageExecutor {
 			return null;
 		}
 		try {
-			return PackageSubdirectory::normalize_slug( $parent );
+			return PackageDirectory::normalize_slug( $parent );
 		} catch ( InvalidArgumentException ) {
 			return false;
 		}
