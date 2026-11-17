@@ -239,12 +239,13 @@ executor call. Existing cleanup, terminal journaling and lock release apply.
 ## Shared package directory rules
 
 Replace `RAN\WPBranchUpdater\V1\Archive\PackageSubdirectory` with
-`RAN\UpdaterSupport\V1\PackageDirectory` from the exactly pinned
-`ran/updater-support` 1.0.0-beta.9. The local class is removed without an alias;
+`RAN\UpdaterSupport\V1\PackageDirectory` from
+`ran/updater-support` under `^1.0.0-beta.9`. The local class is removed without an alias;
 its five methods and fixed-message `InvalidArgumentException` behavior remain
 available on the shared class. Direct callers must update their imports.
-The manifest's closed interval has identical beta.9 endpoints: it admits only
-that version while retaining strict Composer validation.
+The manifest requires the minimum compatible version that provides the class.
+This repository's lock qualifies published beta.9; consuming roots select and
+qualify their own exact compatible helper version through their lock files.
 
 Declarations now admit mixed-case folder names, retaining the 191-byte limit.
 Installed folders remain case-sensitive identities; update execution still

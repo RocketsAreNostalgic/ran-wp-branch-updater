@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "b0c57fcc1f8f148ba30c5ee3a0e29e45",
+    "content-hash": "03b273c570d0864b15abf25356d536d3",
     "packages": [
         {
             "name": "ran/updater-support",

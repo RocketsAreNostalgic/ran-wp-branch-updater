@@ -11,6 +11,10 @@ published `PackageDirectory` now centralizes the identical Core/branch path rule
 and the shared folder-name predicate. Release updates use the folder predicate;
 repository subdirectories remain outside the release domain.
 
+The library requires `ran/updater-support` under `^1.0.0-beta.9`. Its development
+lock qualifies published beta.9; consuming roots lock and qualify their own
+selected compatible helper version.
+
 `RAN\UpdaterSupport\V1\ArchiveSafety` remains the correct shared boundary. It centralizes the low-level archive rules that are genuinely identical across the updater family: ZIP path normalization, entry-type classification, and path collision/file-parent collision detection.
 
 The remaining apparent similarities do not meet the full extraction threshold.
