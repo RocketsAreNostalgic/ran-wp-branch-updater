@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0-beta.18](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.17...v1.0.0-beta.18) (2026-11-20)
+
+
+### Bug Fixes
+
+* **runtime:** treat case-only folder names as one target ([#131](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/131)) ([6115083](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/commit/61150836c1d823f39817b1b14102a37fc093a658))
+
 ## [1.0.0-beta.17](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.16...v1.0.0-beta.17) (2026-11-17)
 
 
