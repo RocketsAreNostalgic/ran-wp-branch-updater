@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace RAN\WPBranchUpdater\V1\Persistence;
 
+use RAN\UpdaterSupport\V1\PackageDirectory;
 use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 use RuntimeException;
 use Throwable;
@@ -30,7 +31,7 @@ final class FileAttemptStore {
 					throw new RuntimeException( 'Attempt already exists.' );
 				}
 				foreach ( $records as $record ) {
-					if ( in_array( $record['state'], array( 'running', 'needs_attention' ), true ) && $record['package_type'] === $d->package_type && $record['slug'] === $d->slug ) {
+					if ( in_array( $record['state'], array( 'running', 'needs_attention' ), true ) && $record['package_type'] === $d->package_type && PackageDirectory::names_collide( $record['slug'], $d->slug ) ) {
 						throw new RuntimeException( 'Target already has an unresolved execution.' );
 					}
 				}

@@ -260,4 +260,19 @@ foreach ( array( '01', '00', '-01', '-0', '+1', '1.0', '1e3', (string) PHP_INT_M
 	}
 }
 
+// One unresolved run per target follows the shared collision rule: a case-only spelling is the same folder.
+$collision_store = new FileAttemptStore( $root . '/collision.json' );
+$collision_store->begin( new BranchDeploymentDeclaration( 'first', 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', null ) );
+foreach ( array( 'Demo', 'demo' ) as $target_slug ) {
+	try {
+		$collision_store->begin( new BranchDeploymentDeclaration( 'second-' . $target_slug, 'plugin', $target_slug, 'acme/demo', 'repository-id', 'main', null ) );
+		throw new RuntimeException( 'Case-only target collision was admitted.' );
+	} catch ( RuntimeException $expected ) {
+		if ( 'Target already has an unresolved execution.' !== $expected->getMessage() ) {
+			throw $expected;
+		}
+	}
+}
+$collision_store->begin( new BranchDeploymentDeclaration( 'other-type', 'theme', 'demo', 'acme/demo', 'repository-id', 'main', null ) );
+
 echo "PASS persisted journal state invariants and custom attempt ID admission\n";

@@ -11,7 +11,12 @@ published `PackageDirectory` now centralizes the identical Core/branch path rule
 and the shared folder-name predicate. Release updates use the folder predicate;
 repository subdirectories remain outside the release domain.
 
-The library requires `ran/updater-support` under `^1.0.0-beta.9`. Its development
+Folder collisions use `PackageDirectory::names_collide()`: one unresolved run per
+target and a theme that names itself as its parent. Comparisons of the declared
+slug with the installed folder stay exact, because the slug is the installed folder
+and its case is authoritative. Archive entry paths belong to `ArchiveSafety`.
+
+The library requires `ran/updater-support` under `^1.0.0-beta.10`. Its development
 lock qualifies published beta.9; consuming roots lock and qualify their own
 selected compatible helper version.
 

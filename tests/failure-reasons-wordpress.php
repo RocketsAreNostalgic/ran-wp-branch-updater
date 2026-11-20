@@ -239,9 +239,10 @@ try {
 
 // wp_get_theme() is not stubbed: a parent theme cannot be looked up here, so theme_parent_missing is covered by the installed WordPress lane.
 foreach ( array(
-	'parent is itself' => array( "Template: demo\n", 'theme_parent_invalid' ),
-	'parent unknown'   => array( "Template: parent\n", 'theme_parent_invalid' ),
-	'invalid parent'   => array( "Template: bad/parent\n", 'theme_archive_invalid' ),
+	'parent is itself'               => array( "Template: demo\n", 'theme_parent_invalid' ),
+	'parent is itself in other case' => array( "Template: Demo\n", 'theme_parent_invalid' ),
+	'parent unknown'                 => array( "Template: parent\n", 'theme_parent_invalid' ),
+	'invalid parent'                 => array( "Template: bad/parent\n", 'theme_archive_invalid' ),
 ) as $label => [$template, $expected_detail] ) {
 	[, $artifact] = $prepared( 'theme', $theme_zip( $template ) );
 	$result       = ( new WordPressCorePackageExecutor( static fn(): bool => true ) )->install_theme( $artifact, 'demo', 'demo' );
