@@ -135,6 +135,7 @@ final class ArchiveValidator {
 		if ( null === $installed ) {
 			return;
 		}
+		// Exact on purpose: the slug is the installed folder, so its case is authoritative and nothing is folded.
 		if ( 'theme' === $d->package_type && ! hash_equals( $d->slug, $installed ) ) {
 			$this->fail( self::CODE_THEME_IDENTITY_MISMATCH, 'The installed theme identity does not match the deployment.' );
 		}

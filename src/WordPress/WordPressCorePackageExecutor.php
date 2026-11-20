@@ -85,6 +85,7 @@ class WordPressCorePackageExecutor {
 		if ( $inputs instanceof CorePackageExecutionResult ) {
 			return $inputs;
 		}
+		// Exact on purpose: the slug is the installed folder, so its case is authoritative and nothing is folded.
 		if ( ( 'plugin' === $type && dirname( $inputs['identifier'] ) !== $inputs['slug'] ) || ( 'theme' === $type && $inputs['identifier'] !== $inputs['slug'] ) ) {
 			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::INVALID_REQUEST, 'identifier_mismatch' );
 		}
@@ -270,7 +271,7 @@ class WordPressCorePackageExecutor {
 		if ( null === $parent ) {
 			return null;
 		}
-		if ( $slug === $parent || ! function_exists( 'wp_get_theme' ) ) {
+		if ( PackageDirectory::names_collide( $slug, $parent ) || ! function_exists( 'wp_get_theme' ) ) {
 			return 'theme_parent_invalid';
 		}
 		try {
