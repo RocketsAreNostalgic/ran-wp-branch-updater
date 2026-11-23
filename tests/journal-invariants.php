@@ -275,7 +275,7 @@ foreach ( array( 'Demo', 'demo' ) as $target_slug ) {
 }
 $collision_store->begin( new BranchDeploymentDeclaration( 'other-type', 'theme', 'demo', 'acme/demo', 'repository-id', 'main', null ) );
 
-// Journal and lock files must enforce 0600 permissions and reject symlinked paths.
+// Journal and lock files must enforce 0600 permissions and reject symlinked or hard-linked paths.
 clearstatcache( true, $root . '/collision.json' );
 clearstatcache( true, $root . '/collision.json.lock' );
 $journal_perms = fileperms( $root . '/collision.json' );
@@ -284,26 +284,107 @@ if ( false === $journal_perms || ( $journal_perms & 0777 ) !== 0600 || false ===
 	throw new RuntimeException( 'Journal and lock files must enforce 0600 permissions.' );
 }
 
-$symlink_target = $root . '/external-target.json';
-// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Create fixture target for symlink refusal checks.
-file_put_contents( $symlink_target, '{}' );
+$symlink_target = $root . '/external-valid-journal.json';
+if ( ! copy( $root . '/collision.json', $symlink_target ) ) {
+	throw new RuntimeException( 'Could not create valid journal fixture for symlink checks.' );
+}
 
 $symlink_journal = $root . '/symlink-journal.json';
 symlink( $symlink_target, $symlink_journal );
+$symlink_journal_error = null;
 try {
 	( new FileAttemptStore( $symlink_journal ) )->begin( new BranchDeploymentDeclaration( 'sym-target', 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', null ) );
-	throw new RuntimeException( 'Symlinked journal path was accepted.' );
-// phpcs:ignore Generic.CodeAnalysis.EmptyStatement.DetectedCatch -- Reaching this catch proves the expected rejection.
-} catch ( BranchDeploymentJournalFailure ) {
+} catch ( BranchDeploymentJournalFailure $expected ) {
+	$symlink_journal_error = $expected;
+}
+if ( ! $symlink_journal_error instanceof BranchDeploymentJournalFailure || 'Journal path is unsafe.' !== $symlink_journal_error->getMessage() ) {
+	throw new RuntimeException( 'Symlinked journal path must fail with exact unsafe-path refusal.' );
 }
 
 $symlink_lock_base = $root . '/symlink-lock.json';
 symlink( $symlink_target, $symlink_lock_base . '.lock' );
+$symlink_lock_error = null;
 try {
 	( new FileAttemptStore( $symlink_lock_base ) )->begin( new BranchDeploymentDeclaration( 'sym-lock', 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', null ) );
-	throw new RuntimeException( 'Symlinked lock path was accepted.' );
-// phpcs:ignore Generic.CodeAnalysis.EmptyStatement.DetectedCatch -- Reaching this catch proves the expected rejection.
-} catch ( BranchDeploymentJournalFailure ) {
+} catch ( BranchDeploymentJournalFailure $expected ) {
+	$symlink_lock_error = $expected;
+}
+if ( ! $symlink_lock_error instanceof BranchDeploymentJournalFailure || 'Journal lock path is unsafe.' !== $symlink_lock_error->getMessage() ) {
+	throw new RuntimeException( 'Symlinked lock path must fail with exact unsafe-lock-path refusal.' );
+}
+
+$hardlink_other = $root . '/unrelated-file.txt';
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Create fixture file to prove hard-linked lock rejection preserves external file mode.
+file_put_contents( $hardlink_other, 'preserve-mode' );
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_chmod -- Set distinct non-0600 mode to prove hard-linked lock rejection does not chmod the shared inode.
+chmod( $hardlink_other, 0644 );
+$hardlink_lock_base = $root . '/hardlink-lock.json';
+link( $hardlink_other, $hardlink_lock_base . '.lock' );
+$hardlink_lock_error = null;
+try {
+	( new FileAttemptStore( $hardlink_lock_base ) )->begin( new BranchDeploymentDeclaration( 'hardlink-lock', 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', null ) );
+} catch ( BranchDeploymentJournalFailure $expected ) {
+	$hardlink_lock_error = $expected;
+}
+clearstatcache( true, $hardlink_other );
+$preserved_perms = fileperms( $hardlink_other );
+if ( ! $hardlink_lock_error instanceof BranchDeploymentJournalFailure
+	|| 'Journal lock path is unsafe.' !== $hardlink_lock_error->getMessage()
+	|| false === $preserved_perms
+	|| ( $preserved_perms & 0777 ) !== 0644
+) {
+	throw new RuntimeException( 'Hard-linked lock path must be rejected without modifying the linked file permissions.' );
+}
+
+// Entropy failure during temporary journal allocation must classify as BranchDeploymentJournalFailure (journal_uncertain).
+$autoload_path = dirname( __DIR__ ) . '/vendor/autoload.php';
+$entropy_path  = $root . '/entropy-journal.json';
+$descriptors   = array(
+	0 => array( 'pipe', 'r' ),
+	1 => array( 'pipe', 'w' ),
+	2 => array( 'pipe', 'w' ),
+);
+$child_code    = <<<'PHP'
+namespace RAN\WPBranchUpdater\V1\Persistence {
+	function random_bytes( int $length ): string {
+		throw new \Random\RandomException( 'Entropy unavailable.' );
+	}
+}
+namespace {
+	require $argv[1];
+	$store = new \RAN\WPBranchUpdater\V1\Persistence\FileAttemptStore( $argv[2] );
+	$decl  = new \RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration( 'entropy-journal', 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', null );
+	$error = null;
+	try {
+		$store->begin( $decl );
+	} catch ( \RAN\WPBranchUpdater\V1\Persistence\BranchDeploymentJournalFailure $e ) {
+		$error = $e;
+	}
+	if ( ! $error instanceof \RAN\WPBranchUpdater\V1\Persistence\BranchDeploymentJournalFailure
+		|| ! $error->getPrevious() instanceof \Random\RandomException
+	) {
+		fwrite( STDERR, 'Unexpected journal entropy failure classification' );
+		exit( 1 );
+	}
+	echo 'OK';
+}
+PHP;
+// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.system_calls_proc_open -- Run an isolated PHP process to test namespace-scoped entropy failure classification.
+$process = proc_open( array( PHP_BINARY, '-r', $child_code, '--', $autoload_path, $entropy_path ), $descriptors, $pipes );
+if ( ! is_resource( $process ) ) {
+	throw new RuntimeException( 'Could not start isolated journal entropy proof.' );
+}
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Close unused child stdin pipe.
+fclose( $pipes[0] );
+$stdout = trim( (string) stream_get_contents( $pipes[1] ) );
+$stderr = trim( (string) stream_get_contents( $pipes[2] ) );
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Close child stdout pipe.
+fclose( $pipes[1] );
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Close child stderr pipe.
+fclose( $pipes[2] );
+if ( 0 !== proc_close( $process ) || 'OK' !== $stdout ) {
+	// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- CLI test diagnostic is not rendered output.
+	throw new RuntimeException( 'Isolated journal entropy proof failed: ' . $stderr );
 }
 
 echo "PASS persisted journal state invariants and custom attempt ID admission\n";

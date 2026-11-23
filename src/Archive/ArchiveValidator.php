@@ -121,7 +121,7 @@ final class ArchiveValidator {
 				}
 				$this->assert_compression_ratio( $stat['size'], $stat['comp_size'] );
 				$expanded = $this->add_expanded_bytes( $expanded, $stat['size'], $expanded_limit );
-				$this->verify_entry_contents( $zip, $index, $is_directory ? 0 : $stat['size'], $is_directory ? 0 : $stat['crc'], $expanded_limit );
+				$this->verify_entry_contents( $zip, $index, $stat['size'], $stat['crc'], $expanded_limit );
 			}
 			if ( null === $root ) {
 				$this->fail( self::CODE_LAYOUT_INVALID, 'The archive does not contain a package.' );

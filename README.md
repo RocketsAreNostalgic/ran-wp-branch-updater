@@ -110,13 +110,16 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the family model and ownership bounda
 ### Expanded-size refusal
 
 After validating each ZIP entry's metadata and type, archive validation admits
-its declared size against the aggregate expanded-byte limit before opening its
-stream. Admitted entries still require actual-length and CRC verification. An
-entry whose declared size exceeds the remaining aggregate allowance reports
-expanded-size error 1018 before stream inspection, even if its data is corrupt.
-Admitted corrupt entries still report integrity error 1010. This avoids
-inflating an already-over-limit entry without claiming a measured deployment
-speedup.
+its declared size against both the aggregate expanded-byte limit and a per-entry
+compression-ratio ceiling (`100:1` for entries with declared decompressed size at
+or above `131072` bytes / 128 KiB) before opening its stream. Admitted entries
+still require bounded per-entry stream-length and CRC verification, including
+directory entries (which must declare zero size and match their declared CRC on
+the empty stream). An entry whose declared size exceeds the remaining aggregate
+allowance or the compression-ratio ceiling reports expanded-size error 1018
+before stream inspection, even if its data is corrupt. Admitted corrupt entries
+still report integrity error 1010. This avoids inflating an already-over-limit
+entry without claiming a measured deployment speedup.
 
 ## Working-copy protection
 

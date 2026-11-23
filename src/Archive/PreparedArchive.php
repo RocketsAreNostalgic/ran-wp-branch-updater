@@ -66,26 +66,79 @@ final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchAr
 				throw new RuntimeException( 'Archive directory ownership is invalid.' );
 			}
 		}
-		$path = $resolved_directory . DIRECTORY_SEPARATOR . 'ran-branch-' . bin2hex( random_bytes( 16 ) );
+		try {
+			$suffix = bin2hex( random_bytes( 16 ) );
+		} catch ( \Throwable $e ) {
+			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Preserve the previous Throwable for internal custody diagnostics; this is not rendered output.
+			throw new RuntimeException( 'Cannot create private archive file.', 0, $e );
+		}
+		$path = $resolved_directory . DIRECTORY_SEPARATOR . 'ran-branch-' . $suffix;
 		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged,WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- Exclusively create the private archive file inside the verified directory without tempnam fallback.
 		$handle = @fopen( $path, 'x+b' );
 		if ( false === $handle ) {
 			throw new RuntimeException( 'Cannot create private archive file.' );
 		}
-		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Close the exclusively created archive file descriptor before permissions and acquisition.
-		fclose( $handle );
-		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_chmod -- Make the newly created native archive file private before acquisition.
-		if ( ! chmod( $path, 0600 ) ) {
-			// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Remove the newly created archive file if private permissions cannot be applied.
-			unlink( $path );
-			throw new RuntimeException( 'Cannot create private archive file.' );
-		}
-		$created = null;
+		$created     = null;
+		$created_dev = null;
+		$created_ino = null;
 		try {
-			$created = self::identity( $path );
-			if ( null === $created ) {
+			$fstat = fstat( $handle );
+			if ( ! is_array( $fstat )
+				|| ( $fstat['mode'] & 0170000 ) !== 0100000
+				|| 1 !== (int) $fstat['nlink']
+				|| 0 !== (int) $fstat['size']
+			) {
 				throw new RuntimeException( 'Private archive identity is invalid.' );
 			}
+			$created_dev = (int) $fstat['dev'];
+			$created_ino = (int) $fstat['ino'];
+			clearstatcache( true, $path );
+			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Verify the pathname still resolves to the exclusively created descriptor before applying permissions.
+			$pre_chmod = @lstat( $path );
+			if ( ! is_array( $pre_chmod )
+				|| ( $pre_chmod['mode'] & 0170000 ) !== 0100000
+				|| 1 !== (int) $pre_chmod['nlink']
+				|| (int) $pre_chmod['dev'] !== $created_dev
+				|| (int) $pre_chmod['ino'] !== $created_ino
+			) {
+				throw new RuntimeException( 'Private archive identity is invalid.' );
+			}
+			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged,WordPress.WP.AlternativeFunctions.file_system_operations_chmod -- Make the verified exclusively created native archive file private before acquisition.
+			if ( ! @chmod( $path, 0600 ) ) {
+				throw new RuntimeException( 'Cannot create private archive file.' );
+			}
+			$after_chmod = fstat( $handle );
+			$created     = self::identity( $path );
+			if ( ! is_array( $after_chmod )
+				|| null === $created
+				|| ( $after_chmod['mode'] & 0170000 ) !== 0100000
+				|| ( $after_chmod['mode'] & 0777 ) !== 0600
+				|| 1 !== (int) $after_chmod['nlink']
+				|| 0 !== (int) $after_chmod['size']
+				|| (int) $after_chmod['dev'] !== $created_dev
+				|| (int) $after_chmod['ino'] !== $created_ino
+				|| $created['dev'] !== $created_dev
+				|| $created['ino'] !== $created_ino
+				|| 0 !== $created['size']
+			) {
+				$created = null;
+				throw new RuntimeException( 'Private archive identity is invalid.' );
+			}
+		} catch ( \Throwable $e ) {
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Close the exclusively created descriptor before identity-checked cleanup.
+			fclose( $handle );
+			if ( null !== $created_dev && null !== $created_ino ) {
+				self::cleanup_matching_file( $path, $created_dev, $created_ino, $e );
+			}
+			throw $e;
+		}
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Close the verified archive file descriptor only after descriptor-to-path identity is established.
+		if ( ! fclose( $handle ) ) {
+			$close_error = new RuntimeException( 'Cannot create private archive file.' );
+			self::cleanup_matching_file( $path, $created_dev, $created_ino, $close_error );
+			throw $close_error;
+		}
+		try {
 			$offer->acquire( $path, $maximum_artifact_bytes );
 			$identity = self::identity( $path );
 			if ( null === $identity
@@ -110,19 +163,7 @@ final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchAr
 			);
 			return new self( $path, $offer->resolved_ref, $identity, $digest, $inspection['expected_version'], $inspection['expanded'] );
 		} catch ( \Throwable $e ) {
-			if ( null !== $created ) {
-				$current = self::identity( $path );
-				if ( null !== $current && $current['dev'] === $created['dev'] && $current['ino'] === $created['ino'] ) {
-					// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Delete only the rejected archive whose device and inode still match the created file.
-					if ( ! unlink( $path ) ) {
-						// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Preserve the previous Throwable for internal custody diagnostics; this is not rendered output.
-						throw new RuntimeException( 'Rejected archive could not be cleaned safely.', 0, $e );
-					}
-				} elseif ( file_exists( $path ) || is_link( $path ) ) {
-					// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Preserve the previous Throwable for internal custody diagnostics; this is not rendered output.
-					throw new RuntimeException( 'Rejected archive replacement could not be cleaned safely.', 0, $e );
-				}
-			}
+			self::cleanup_matching_file( $path, $created['dev'], $created['ino'], $e );
 			throw $e;
 		}
 	}
@@ -192,6 +233,29 @@ final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchAr
 		}
 
 		return $maximum_artifact_bytes * self::EXPANDED_RATIO;
+	}
+
+	private static function cleanup_matching_file( string $path, int $dev, int $ino, \Throwable $cause ): void {
+		clearstatcache( true, $path );
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Missing paths need no cleanup; suppress only the native missing-path warning.
+		$current = @lstat( $path );
+		if ( false === $current ) {
+			return;
+		}
+		if ( ( $current['mode'] & 0170000 ) === 0100000
+			&& 1 === (int) $current['nlink']
+			&& (int) $current['dev'] === $dev
+			&& (int) $current['ino'] === $ino
+		) {
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Delete only the rejected archive whose device and inode still match the created file.
+			if ( ! unlink( $path ) ) {
+				// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Preserve the previous Throwable for internal custody diagnostics; this is not rendered output.
+				throw new RuntimeException( 'Rejected archive could not be cleaned safely.', 0, $cause );
+			}
+			return;
+		}
+		// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Preserve the previous Throwable for internal custody diagnostics; this is not rendered output.
+		throw new RuntimeException( 'Rejected archive replacement could not be cleaned safely.', 0, $cause );
 	}
 
 	/**

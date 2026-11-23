@@ -175,6 +175,73 @@ $small_zip->close();
 $small_result = $inspect( $small_asset_path, 209715200 );
 $assert( 0 === $small_result['code'], 'Small compressible asset below the ratio floor must remain admissible.' );
 
+// Compression-ratio exact boundary proofs: below 128 KiB passes, at 128 KiB rejects > 100:1, exact 100:1 passes.
+$ratio_check = new ReflectionMethod( ArchiveValidator::class, 'assert_compression_ratio' );
+$ratio_check->invoke( new ArchiveValidator(), 131071, 1 );
+$ratio_check->invoke( new ArchiveValidator(), 131072, 1311 );
+$ratio_check->invoke( new ArchiveValidator(), 131100, 1311 );
+foreach ( array( array( 131072, 0 ), array( 131101, 1311 ), array( 131072, 1310 ) ) as $ratio_args ) {
+	$ratio_error = null;
+	try {
+		$ratio_check->invoke( new ArchiveValidator(), ...$ratio_args );
+	} catch ( RuntimeException $error ) {
+		$ratio_error = $error;
+	}
+	$assert(
+		$ratio_error instanceof RuntimeException && ArchiveValidator::CODE_EXPANDED_TOO_LARGE === $ratio_error->getCode(),
+		'Compression ratio exceeding 100:1 at or above 128 KiB must fail expanded-size admission.'
+	);
+}
+
+$below_floor_path = $root . '/below-floor.zip';
+$below_floor_zip  = new ZipArchive();
+$assert( true === $below_floor_zip->open( $below_floor_path, ZipArchive::CREATE | ZipArchive::OVERWRITE ), 'Below-floor fixture ZIP must open.' );
+$below_floor_zip->addFromString( 'repo/demo.php', $header );
+$below_floor_zip->addFromString( 'repo/below-floor.txt', str_repeat( 'A', 131071 ) );
+$below_floor_zip->close();
+$below_floor_result = $inspect( $below_floor_path, 209715200 );
+$assert( 0 === $below_floor_result['code'], 'Entry at 131071 bytes (below 128 KiB floor) must remain admissible.' );
+
+$at_floor_path = $root . '/at-floor.zip';
+$at_floor_zip  = new ZipArchive();
+$assert( true === $at_floor_zip->open( $at_floor_path, ZipArchive::CREATE | ZipArchive::OVERWRITE ), 'At-floor fixture ZIP must open.' );
+$at_floor_zip->addFromString( 'repo/demo.php', $header );
+$at_floor_zip->addFromString( 'repo/at-floor.txt', str_repeat( 'A', 131072 ) );
+$at_floor_zip->close();
+$at_floor_result = $inspect( $at_floor_path, 209715200 );
+$assert(
+	ArchiveValidator::CODE_EXPANDED_TOO_LARGE === $at_floor_result['code'] && strlen( $header ) === $at_floor_result['bytes'],
+	'Entry at exactly 131072 bytes with ratio > 100:1 must fail before streaming.'
+);
+
+// Valid empty directory passes; empty directory with inconsistent CRC metadata fails integrity validation.
+$valid_dir_path = $root . '/valid-dir.zip';
+$valid_dir_zip  = new ZipArchive();
+$assert( true === $valid_dir_zip->open( $valid_dir_path, ZipArchive::CREATE | ZipArchive::OVERWRITE ), 'Valid-directory fixture ZIP must open.' );
+$valid_dir_zip->addFromString( 'repo/demo.php', $header );
+$valid_dir_zip->addEmptyDir( 'repo/sub' );
+$valid_dir_zip->close();
+$valid_dir_result = $inspect( $valid_dir_path, 209715200 );
+$assert( 0 === $valid_dir_result['code'], 'Valid empty directory entry must pass validation.' );
+
+$bad_dir_crc_path = $root . '/bad-dir-crc.zip';
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Patch synthetic directory entry CRC in central and local headers.
+$bad_dir_bytes   = (string) file_get_contents( $valid_dir_path );
+$bad_dir_central = strrpos( $bad_dir_bytes, "PK\x01\x02" );
+if ( false === $bad_dir_central ) {
+	throw new RuntimeException( 'Missing central directory entry for bad-dir-crc fixture.' );
+}
+$bad_dir_local = unpack( 'Voffset', substr( $bad_dir_bytes, $bad_dir_central + 42, 4 ) );
+if ( ! is_array( $bad_dir_local ) || ! is_int( $bad_dir_local['offset'] ) ) {
+	throw new RuntimeException( 'Invalid local offset for bad-dir-crc fixture.' );
+}
+$bad_dir_bytes = substr_replace( $bad_dir_bytes, pack( 'V', 0x12345678 ), $bad_dir_central + 16, 4 );
+$bad_dir_bytes = substr_replace( $bad_dir_bytes, pack( 'V', 0x12345678 ), $bad_dir_local['offset'] + 14, 4 );
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Write synthetic directory CRC mismatch ZIP fixture.
+file_put_contents( $bad_dir_crc_path, $bad_dir_bytes );
+$bad_dir_crc_result = $inspect( $bad_dir_crc_path, 209715200 );
+$assert( ArchiveValidator::CODE_ARCHIVE_INTEGRITY === $bad_dir_crc_result['code'], 'Empty directory with inconsistent CRC metadata must fail integrity validation.' );
+
 // Directory entry carrying non-zero payload bytes must be rejected.
 $dir_payload_path = $root . '/dir-payload.zip';
 $dir_zip          = new ZipArchive();
@@ -186,7 +253,7 @@ $dir_zip->close();
 $dir_result = $inspect( $dir_payload_path, 209715200 );
 $assert( ArchiveValidator::CODE_ARCHIVE_INTEGRITY === $dir_result['code'], 'Directory entry carrying payload bytes must fail integrity validation.' );
 
-foreach ( array( 'valid', 'crc', 'size', 'compressed', 'zero-claimed', 'ratio-bomb', 'small-asset', 'dir-payload' ) as $case ) {
+foreach ( array( 'valid', 'crc', 'size', 'compressed', 'zero-claimed', 'ratio-bomb', 'small-asset', 'below-floor', 'at-floor', 'valid-dir', 'bad-dir-crc', 'dir-payload' ) as $case ) {
 	// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Delete only this proof's known synthetic ZIP paths.
 	unlink( $root . '/' . $case . '.zip' );
 }
