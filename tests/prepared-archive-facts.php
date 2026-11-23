@@ -225,36 +225,32 @@ $assert(
 // phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Remove non-directory fixture file.
 unlink( $non_dir );
 
-$readonly_parent = $root . '/readonly-parent';
-// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_mkdir -- Create a read-only parent directory to test directory creation refusal.
-mkdir( $readonly_parent, 0700, true );
-// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_chmod -- Restrict parent permissions to prove directory creation fails closed.
-chmod( $readonly_parent, 0500 );
-$readonly_acquired = false;
-$readonly_offer    = new ArchiveOffer(
+$blocked_parent = $root . '/file-parent';
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Create a regular file parent so nested mkdir() fails deterministically even under privileged workers.
+file_put_contents( $blocked_parent, 'not-a-directory' );
+$blocked_acquired = false;
+$blocked_offer    = new ArchiveOffer(
 	provider: 'fixture',
 	repository_id: 'repository-id',
 	resolved_ref: 'abc123',
-	copy_to: static function ( string $destination, int $maximum_artifact_bytes ) use ( &$readonly_acquired ): void {
-		$readonly_acquired = '' !== $destination || $maximum_artifact_bytes >= 0;
+	copy_to: static function ( string $destination, int $maximum_artifact_bytes ) use ( &$blocked_acquired ): void {
+		$blocked_acquired = '' !== $destination || $maximum_artifact_bytes >= 0;
 	},
 	verify_head: static function (): void {}
 );
-$readonly_error    = null;
+$blocked_error    = null;
 try {
-	PreparedArchive::download_and_validate( $readonly_offer, $deployment, $readonly_parent . '/nested' );
+	PreparedArchive::download_and_validate( $blocked_offer, $deployment, $blocked_parent . '/nested' );
 } catch ( RuntimeException $expected ) {
-	$readonly_error = $expected;
+	$blocked_error = $expected;
 } finally {
-	// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_chmod -- Restore permissions for cleanup.
-	chmod( $readonly_parent, 0700 );
-	// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Remove read-only parent fixture directory.
-	rmdir( $readonly_parent );
+	// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Remove regular-file parent fixture.
+	unlink( $blocked_parent );
 }
 $assert(
-	$readonly_error instanceof RuntimeException
-		&& 'Cannot create private archive directory.' === $readonly_error->getMessage()
-		&& ! $readonly_acquired,
+	$blocked_error instanceof RuntimeException
+		&& 'Cannot create private archive directory.' === $blocked_error->getMessage()
+		&& ! $blocked_acquired,
 	'uncreatable staging directory must fail closed without invoking acquisition'
 );
 

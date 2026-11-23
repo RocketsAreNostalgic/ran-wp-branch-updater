@@ -45,6 +45,14 @@ final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchAr
 		if ( ! is_dir( $directory ) && ! mkdir( $directory, 0700, true ) ) {
 			throw new RuntimeException( 'Cannot create private archive directory.' );
 		}
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Verify native archive directory type and ownership before changing permissions.
+		$pre_dir_stat = @lstat( $directory );
+		if ( ! is_array( $pre_dir_stat ) || ( $pre_dir_stat['mode'] & 0170000 ) !== 0040000 ) {
+			throw new RuntimeException( 'Archive directory is unsafe.' );
+		}
+		if ( function_exists( 'posix_geteuid' ) && posix_geteuid() !== (int) $pre_dir_stat['uid'] ) {
+			throw new RuntimeException( 'Archive directory ownership is invalid.' );
+		}
 		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged,WordPress.WP.AlternativeFunctions.file_system_operations_chmod -- Set native private-directory permissions before the custody recheck; failures reject the directory.
 		if ( ! @chmod( $directory, 0700 ) ) {
 			throw new RuntimeException( 'Archive directory is not private.' );
@@ -59,12 +67,16 @@ final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchAr
 		if ( false === $resolved_directory || ! is_dir( $resolved_directory ) || ! is_writable( $resolved_directory ) ) {
 			throw new RuntimeException( 'Archive directory is not writable.' );
 		}
-		if ( function_exists( 'posix_geteuid' ) ) {
-			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Verify native archive directory ownership without leaking warnings.
-			$directory_stat = @lstat( $resolved_directory );
-			if ( ! is_array( $directory_stat ) || posix_geteuid() !== $directory_stat['uid'] ) {
-				throw new RuntimeException( 'Archive directory ownership is invalid.' );
-			}
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Re-verify native archive directory identity, mode and ownership after chmod.
+		$directory_stat = @lstat( $resolved_directory );
+		if ( ! is_array( $directory_stat )
+			|| ( $directory_stat['mode'] & 0170000 ) !== 0040000
+			|| ( $directory_stat['mode'] & 0777 ) !== 0700
+			|| (int) $directory_stat['dev'] !== (int) $pre_dir_stat['dev']
+			|| (int) $directory_stat['ino'] !== (int) $pre_dir_stat['ino']
+			|| ( function_exists( 'posix_geteuid' ) && posix_geteuid() !== (int) $directory_stat['uid'] )
+		) {
+			throw new RuntimeException( 'Archive directory ownership is invalid.' );
 		}
 		try {
 			$suffix = bin2hex( random_bytes( 16 ) );
