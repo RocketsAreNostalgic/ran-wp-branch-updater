@@ -387,4 +387,26 @@ if ( 0 !== proc_close( $process ) || 'OK' !== $stdout ) {
 	throw new RuntimeException( 'Isolated journal entropy proof failed: ' . $stderr );
 }
 
+// Long previously supported basenames (e.g. 240 bytes) must continue to update without hitting NAME_MAX.
+$long_journal_path = $root . '/' . str_repeat( 'j', 235 ) . '.json';
+$long_store        = new FileAttemptStore( $long_journal_path );
+$long_store->begin( new BranchDeploymentDeclaration( 'long-name', 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', null ) );
+if ( 'long-name' !== $long_store->get( 'long-name' )['id'] ) {
+	throw new RuntimeException( 'Long journal basename did not round-trip.' );
+}
+
+// Read-only lookup of a legacy 0644 journal file must tighten its permissions to 0600 under lock.
+$legacy_journal_path = $root . '/legacy-mode.json';
+if ( ! copy( $root . '/collision.json', $legacy_journal_path ) ) {
+	throw new RuntimeException( 'Could not create legacy-mode journal fixture.' );
+}
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_chmod -- Simulate a legacy 0644 journal created under a permissive umask.
+chmod( $legacy_journal_path, 0644 );
+$legacy_record = ( new FileAttemptStore( $legacy_journal_path ) )->get( 'first' );
+clearstatcache( true, $legacy_journal_path );
+$legacy_perms = fileperms( $legacy_journal_path );
+if ( 'first' !== $legacy_record['id'] || false === $legacy_perms || ( $legacy_perms & 0777 ) !== 0600 ) {
+	throw new RuntimeException( 'Read-only lookup must tighten legacy journal permissions to 0600.' );
+}
+
 echo "PASS persisted journal state invariants and custom attempt ID admission\n";

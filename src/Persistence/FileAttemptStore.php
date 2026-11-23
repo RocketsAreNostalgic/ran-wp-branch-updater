@@ -169,8 +169,24 @@ final class FileAttemptStore {
 		if ( false === $existing ) {
 			return array();
 		}
-		if ( null === $this->regular_single_link_stat( $this->path ) || ! is_readable( $this->path ) ) {
+		$stat = $this->regular_single_link_stat( $this->path );
+		if ( null === $stat || ! is_readable( $this->path ) ) {
 			$this->fail( 'Journal path is unsafe.' );
+		}
+		if ( ( $stat['mode'] & 0777 ) !== 0600 ) {
+			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged,WordPress.WP.AlternativeFunctions.file_system_operations_chmod -- Tighten verified legacy single-link journal permissions to owner-only under the lock.
+			if ( ! @chmod( $this->path, 0600 ) ) {
+				$this->fail( 'Journal path is unsafe.' );
+			}
+			$this->assert_parent_identity();
+			$tightened = $this->regular_single_link_stat( $this->path );
+			if ( null === $tightened
+				|| $tightened['dev'] !== $stat['dev']
+				|| $tightened['ino'] !== $stat['ino']
+				|| ( $tightened['mode'] & 0777 ) !== 0600
+			) {
+				$this->fail( 'Journal path is unsafe.' );
+			}
 		}
 		try {
 			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Read the native journal under its descriptor lock before validating every record.
@@ -283,7 +299,7 @@ final class FileAttemptStore {
 			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Preserve the previous Throwable for internal journal diagnostics; this is not rendered output.
 			throw new BranchDeploymentJournalFailure( 'Journal temporary name cannot be generated.', 0, $e );
 		}
-		$tmp = $this->path . '.new.' . $suffix;
+		$tmp = dirname( $this->path ) . DIRECTORY_SEPARATOR . '.journal-' . $suffix . '.tmp';
 		clearstatcache( true, $tmp );
 		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Pre-check unique temporary path before exclusive creation.
 		if ( false !== @lstat( $tmp ) ) {
