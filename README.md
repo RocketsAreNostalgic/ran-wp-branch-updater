@@ -7,7 +7,7 @@ It is intentionally not a native update-registration service. It has no polling 
 The production namespace is `RAN\WPBranchUpdater\V1`, loaded through PSR-4. The public flow is:
 
 ```text
-configure
+admit attempt
 → declare plugin or theme
 → receive BranchDeployment
 → deploy()
@@ -17,7 +17,7 @@ configure
 
 ## Install and configure
 
-While consuming the current prerelease line from GitHub, a root project must explicitly configure VCS repositories for both this package and `ran/updater-support`. Composer does not inherit repository declarations from dependencies. The root requires the branch updater; its compatible `ran/updater-support` constraint, `^1.0.0-beta.9`, is resolved transitively. Because that transitive support dependency is currently a beta release, the root must admit beta packages while preferring stable packages where available.
+While consuming the current prerelease line from GitHub, a root project must explicitly configure VCS repositories for both this package and `ran/updater-support`. Composer does not inherit repository declarations from dependencies. The root requires the branch updater and resolves its `ran/updater-support` dependency transitively under `^1.0.0-beta.10`. The root must admit beta packages while preferring stable packages where available.
 
 ```json
 {
@@ -39,53 +39,43 @@ While consuming the current prerelease line from GitHub, a root project must exp
 }
 ```
 
-Commit the consuming root project's `composer.lock` to pin the reviewed package and transitive support revisions. A first install without a lock file, or an update that includes Support, can select a different compatible Support 1.x release subject to the root project's constraints and stability settings. Subsequent `composer install` runs use the root lock's selected versions. This library's committed lock file qualifies its own development and CI installation; it does not pin dependencies for consumers. Do not add a separate moving updater-support requirement: the branch updater owns that production dependency constraint. Load the consumer's Composer autoloader before requiring `bootstrap.php`; this package does not load a private autoloader. Configure the updater only after WordPress has loaded, and do not call `deploy()` before WordPress is available.
+Commit the consuming root project's `composer.lock` to pin the reviewed package and transitive support revisions. A first install without a lock file, or an update that includes Support, can select a different compatible Support 1.x release subject to the root project's constraints and stability settings. Subsequent `composer install` runs use the root lock's selected versions. Load the consumer's Composer autoloader and WordPress before executing a deployment.
 
-```php
-use RAN\WPBranchUpdater\V1\Persistence\FileAttemptStore;
-
-require '/path/to/consumer/vendor/autoload.php';
-
-$configure = require '/path/to/consumer/vendor/ran/wp-branch-updater/bootstrap.php';
-
-$branches = $configure(
-    provider: $provider,
-    attempts: new FileAttemptStore('/srv/private/branch-attempts.json'),
-    archive_directory: '/srv/private/branch-archives',
-);
-```
-
-State and archive directories must be private and durable. Do not use WordPress's upgrade directory for either.
-
-The default WordPress runtime supports single-site installations only. Hosts
-must reject multisite deployments at admission, before invoking `deploy()`.
-The default executor also rejects multisite during preflight, but that check
-follows baseline acquisition and artifact preparation; it does not prevent
-provider or archive work. Custom adapters do not inherit that check.
+The host supplies the admitted declaration, durable journal, archive source,
+target facts, executor and mutation lock. Use private storage for the journal and
+archive custody. Admit only single-site deployments.
 
 ## Declare and deploy
 
 ```php
+use RAN\WPBranchUpdater\V1\Runtime\BranchUpdater;
+
+$branches = BranchUpdater::for_admitted_attempt(
+    $declaration, $journal, $archives, $target, $executor, $lock,
+);
+
 $outcome = $branches->plugin(
     repository: 'acme/example-plugin',
     repository_id: '123456789',
     branch: 'main',
     plugin_file: 'example-plugin/example-plugin.php',
-)->deploy(expected_commit: $verifiedCommit);
+)->deploy();
 ```
 
-Pass an expected commit only after the host has authenticated and admitted it. The provider resolves and acquires the branch artifact; when `expected_commit` is supplied, the runner verifies that branch head again immediately before the mutation fence. The archive is always rechecked before the fence. WordPress Core performs the installation/update, and postconditions are then verified before the attempt is finished.
+For a branch-head deployment, the host can bind an authenticated expected head
+in the declaration. The host's archive adapter rechecks source authority before
+mutation, and the runner rechecks archive custody. WordPress Core performs the
+installation or update, then the runner verifies the postconditions.
 
 New installs remain inactive. Do not retry an uncertain outcome automatically.
 
-The standalone `FileAttemptStore` refuses custom attempt IDs that PHP converts
-to integer array keys, such as `0`, `123`, `-1`, and the current platform's integer
-bounds. It rejects them before touching the journal. Numeric-looking strings
-that remain string keys, including leading-zero and integer-overflow values,
-continue to round-trip; generated IDs are unchanged. This is a file-store
-constraint, not a restriction on declarations or custom admitted journals.
-Existing malformed journals still require an explicit operator recovery decision;
-the store does not migrate, prune or rebuild them.
+### Roll back to a selected commit
+
+Branch-head deployments refuse an archive with an older version than the
+installed package. An operator can choose a historical commit to install an older
+version. The host records that confirmed choice as `selected_commit` on the
+admitted declaration, and the acquired archive must match the exact commit.
+See [API.md](API.md#selected-commit-rollbacks) for the host contract.
 
 ## Updater-family architecture
 
@@ -129,11 +119,9 @@ directories and dangling links. It checks only the target, under the mutation
 lock after final preflight and before the journal's mutation fence. Missing
 install targets, ancestor markers and Composer metadata do not trigger it.
 
-Standalone callers may explicitly pass `deploy(allow_working_copy: true)` for
-one call. Admitted hosts must set `allow_working_copy: true` on the admitted
-`BranchDeploymentDeclaration`; `deploy()` cannot change that admission. There
-is no global override. See [MIGRATING.md](MIGRATING.md) for admitted API 4 and the
-required destination fact. WordPress's separate VCS-context filter is unchanged.
+Hosts authorize an override by setting `allow_working_copy: true` on the
+`BranchDeploymentDeclaration` for that attempt. See [MIGRATING.md](MIGRATING.md)
+for admitted API 4 and the required destination fact.
 
 ## Failure reasons
 
@@ -141,9 +129,12 @@ Outcome codes are unchanged. A failure can also carry a closed reason and a scre
 
 ## Verification
 
-The repository gate runs behavioral characterization for declaration validation, provider/source-head checks, archive safety and identity, downgrade prevention, mutation locking, journal transitions, WordPress execution, restoration/postcondition handling, cleanup, and hard-stop recovery.
+The repository gate verifies declaration validation, source rechecks, archive
+safety and identity, rollback policy, mutation fencing, terminal journaling,
+WordPress execution, restoration, postconditions and cleanup.
 
-CI also installs the package into a separate no-dev Composer consumer and runs `tests/consumer-install.php`. That proves production classes resolve through the installed PSR-4 package and that bootstrap does not depend on a package-private `vendor` directory.
+CI also exercises the admitted entry point in a separate Composer installation
+with development dependencies omitted.
 
 ### Package header policy
 
@@ -169,12 +160,10 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing a change. Use [SUPPORT.
 ### Journal naming boundary
 
 `AdmittedAttemptJournal` implementations use `record_resolved_ref()` and
-`mark_mutation_started()`; `finish()` is unchanged. `FileAttemptJournal` accepts
-`attempt_id` as its constructor parameter. Hosts must update implementations,
+`mark_mutation_started()` and `finish()`. Hosts must update implementations,
 callers and named arguments together when adopting this breaking beta contract.
-Persisted journal keys, outcomes and the mutation sequence are unchanged.
 
-Owned-method and variable naming checks cover all shipped source and bootstrap.
+Owned-method and variable naming checks cover all shipped source.
 The remaining connected API migration uses direct snake_case replacements; see
 [MIGRATING.md](MIGRATING.md). Hosts must adopt matching declarations, callers,
 named arguments and overrides together. Mixed old/new tuples are unsupported;

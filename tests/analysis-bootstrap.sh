@@ -5,10 +5,19 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 php "$root/tests/analysis-coverage.php"
 php "$root/tests/analysis-coverage.php" "$root" --maintained
 fixture="$(mktemp -d)"
-trap 'rm -rf "$fixture"' EXIT
+cleanup_fixture() {
+    python3 - "$fixture" <<'PYTHON'
+import pathlib, shutil, sys, tempfile
+path = pathlib.Path(sys.argv[1]).resolve()
+if path.parent != pathlib.Path(tempfile.gettempdir()).resolve() or not path.name.startswith("tmp."):
+    raise RuntimeError("Unexpected fixture path")
+shutil.rmtree(path)
+PYTHON
+}
+trap cleanup_fixture EXIT
 
 # Keep configuration paths relative to an isolated copy; never mutate runtime PHP.
-cp "$root/composer.json" "$root/composer.lock" "$root/phpstan.neon" "$root/phpstan-maintained.neon" "$root/bootstrap.php" "$fixture/"
+cp "$root/composer.json" "$root/composer.lock" "$root/phpstan.neon" "$root/phpstan-maintained.neon" "$fixture/"
 ln -s "$root/vendor" "$fixture/vendor"
 cp -R "$root/src" "$fixture/src"
 
@@ -18,35 +27,35 @@ analyze() {
 
 if ! analyze > "$fixture/clean.json" 2> "$fixture/clean.log"; then
     cat "$fixture/clean.log" "$fixture/clean.json" >&2
-    echo 'Unmodified bootstrap analysis failed.' >&2
+    echo 'Unmodified production source analysis failed.' >&2
     exit 1
 fi
 
-# Insert before the returned closure so the probe is reachable to the analyzer.
+# Insert a diagnostic into a shipped production class.
 php -r '
 $path = $argv[1];
 $source = file_get_contents($path);
 $source = str_replace(
-    "return static function (",
-    "ran_branch_analysis_probe_missing();\n\nreturn static function (",
+    "final class BranchUpdater {",
+    "final class BranchUpdater { public function analysis_probe(): void { ran_branch_analysis_probe_missing(); }",
     $source,
     $count
 );
 if ($count !== 1 || file_put_contents($path, $source) === false) {
-    fwrite(STDERR, "Cannot prepare bootstrap analysis probe.\n");
+    fwrite(STDERR, "Cannot prepare production source analysis probe.\n");
     exit(1);
 }
-' "$fixture/bootstrap.php"
+' "$fixture/src/Runtime/BranchUpdater.php"
 
 status=0
 analyze > "$fixture/invalid.json" 2> "$fixture/invalid.log" || status=$?
 if [[ "$status" -ne 1 ]]; then
     cat "$fixture/invalid.log" "$fixture/invalid.json" >&2
-    echo "Expected bootstrap analysis failure, received $status." >&2
+    echo "Expected production source analysis failure, received $status." >&2
     exit 1
 fi
 
-# A tooling/configuration failure is not evidence that bootstrap.php was analyzed.
+# A tooling/configuration failure is not evidence that the production file was analyzed.
 php -r '
 $report = json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR);
 $path = realpath($argv[2]);
@@ -58,14 +67,14 @@ foreach ($report["files"][$path]["messages"] ?? [] as $message) {
         exit(0);
     }
 }
-fwrite(STDERR, "Missing expected bootstrap analysis diagnostic.\n");
+fwrite(STDERR, "Missing expected production source analysis diagnostic.\n");
 exit(1);
-' "$fixture/invalid.json" "$fixture/bootstrap.php"
+' "$fixture/invalid.json" "$fixture/src/Runtime/BranchUpdater.php"
 
-echo 'Bootstrap analysis positive/negative contract passed.'
+echo 'Production source analysis positive/negative contract passed.'
 
 # Root-inclusive selection must pick up new files without editing a named file list.
-cp "$root/bootstrap.php" "$fixture/bootstrap.php"
+cp "$root/src/Runtime/BranchUpdater.php" "$fixture/src/Runtime/BranchUpdater.php"
 mkdir -p "$fixture/new product/contracts" "$fixture/src/tests"
 for path in root-contract.php 'new product/contracts/split.php' src/tests/runtime-contract.php; do
     printf '<?php\nran_branch_new_contract_missing();\n' > "$fixture/$path"
@@ -170,7 +179,7 @@ mkdir "$fixture/tests" "$fixture/scripts"
 printf '<?php\n' > "$fixture/tests/development.php"
 printf '<?php\n' > "$fixture/scripts/development.php"
 php "$root/tests/analysis-coverage.php" "$fixture"
-printf '\tstubFiles:\n\t\t- bootstrap.php\n' >> "$fixture/phpstan.neon"
+printf '\tstubFiles:\n\t\t- src/Runtime/BranchUpdater.php\n' >> "$fixture/phpstan.neon"
 if php "$root/tests/analysis-coverage.php" "$fixture" > "$fixture/guard.log" 2>&1; then
     echo 'Production source reclassified as stub escaped effective selection.' >&2; exit 1
 fi

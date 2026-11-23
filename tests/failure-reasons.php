@@ -4,21 +4,16 @@ declare(strict_types=1);
 
 require dirname( __DIR__ ) . '/vendor/autoload.php';
 
-use RAN\WPBranchUpdater\V1\Archive\ArchiveOffer;
 use RAN\WPBranchUpdater\V1\Archive\ArchiveValidator;
+use RAN\WPBranchUpdater\V1\Archive\PreparedArchive;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedArchiveSource;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedAttemptJournal;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedAttemptReasonJournal;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedBranchArtifact;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedPackageExecutor;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedTargetFacts;
-use RAN\WPBranchUpdater\V1\Contract\BranchProvider;
 use RAN\WPBranchUpdater\V1\Contract\MutationLock;
 use RAN\WPBranchUpdater\V1\GitHubFixtureProvider;
-use RAN\WPBranchUpdater\V1\Persistence\FileAttemptStore;
-use RAN\WPBranchUpdater\V1\Persistence\FileMutationLock;
-use RAN\WPBranchUpdater\V1\RecordingExecutor;
-use RAN\WPBranchUpdater\V1\Runtime\StandaloneBranchRunner;
 use RAN\WPBranchUpdater\V1\Persistence\BranchDeploymentJournalFailure;
 use RAN\WPBranchUpdater\V1\Runtime\AdmittedBranchDurabilityFailure;
 use RAN\WPBranchUpdater\V1\Runtime\AdmittedBranchStageFailure;
@@ -30,7 +25,6 @@ use RAN\WPBranchUpdater\V1\Runtime\BranchUpdater;
 use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionFailure;
 use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionResult;
 use RAN\WPBranchUpdater\V1\Runtime\FailureReason;
-use RAN\WPBranchUpdater\V1\Runtime\ProviderArchiveSource;
 use RAN\WPBranchUpdater\V1\Runtime\ReasonedFailure;
 
 $assert = static function ( bool $actual, string $message ): void {
@@ -108,15 +102,19 @@ final class RAN_WP_Branch_Updater_ReasonArtifact implements AdmittedBranchArtifa
 	}
 }
 
-// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- These test-only fault-injection doubles share one standalone behavioral proof.
-final class RAN_WP_Branch_Updater_ReasonProvider implements BranchProvider {
-	public function __construct( private RuntimeException $failure ) {}
-	public function supports_selected_commit(): bool {
-		return false;
+// phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- Test host supplies the admitted archive contract.
+final class RAN_WP_Branch_Updater_ReasonZipSource implements AdmittedArchiveSource {
+	public function __construct( private GitHubFixtureProvider $provider, private string $directory, private int $limit = 10485760 ) {}
+	public function prepare( BranchDeploymentDeclaration $deployment, ?array $baseline ): AdmittedBranchArtifact {
+		try {
+			return PreparedArchive::download_and_validate( $this->provider->prepare( $deployment ), $deployment, $this->directory, $this->limit );
+		} catch ( RuntimeException $failure ) {
+			$cause = ReasonedFailure::find( $failure );
+			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Closed archive reasons are recorded as data.
+			throw new AdmittedBranchStageFailure( 'archive_integrity_failed', $cause->reason ?? FailureReason::ARCHIVE_PREPARE_FAILED->value, $cause?->detail );
+		}
 	}
-	public function prepare( BranchDeploymentDeclaration $d ): ArchiveOffer {
-		throw $this->failure;
-	}
+	public function verify_current_head(): void {}
 }
 
 // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- These test-only fault-injection doubles share one standalone behavioral proof.
@@ -334,17 +332,12 @@ try {
 	// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Remove only this fixture's metadata control.
 	unlink( $working_root . '/demo/composer.json' );
 
-	$mutation_lock                     = new FileMutationLock( $working_root . '/mutation.lock' );
-	$late_lock                         = new class( $mutation_lock, $working_root ) implements MutationLock {
-		public function __construct( private FileMutationLock $lock, private string $root ) {}
+	$late_lock                         = new class( $working_root ) implements MutationLock {
+		public function __construct( private string $root ) {}
 		public function run( callable $operation ): mixed {
-			return $this->lock->run(
-				function () use ( $operation ): mixed {
-					// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Insert a marker only after the real mutation lock is held.
-					file_put_contents( $this->root . '/demo/.git', 'late marker' );
-					return $operation();
-				}
-			);
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Insert a marker at the admitted lock boundary.
+			file_put_contents( $this->root . '/demo/.git', 'late marker' );
+			return $operation();
 		}
 	};
 	[$outcome, $record, $late_journal] = RAN_WP_Branch_Updater_ReasonFixtures::run(
@@ -354,11 +347,8 @@ try {
 		)
 	);
 	$assert( 'policy_blocked' === $outcome && null !== $record && FailureReason::TARGET_IS_WORKING_COPY === $record->reason && 0 === $late_journal->fences, 'marker introduced at lock acquisition refuses before the fence' );
-	$assert( true === $mutation_lock->run( static fn(): bool => true ), 'working-copy refusal releases the real mutation lock' );
-	// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Remove only this fixture's late marker and lock file.
+	// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Remove only this fixture's late marker.
 	unlink( $working_root . '/demo/.git' );
-	// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Remove only this fixture's released lock file.
-	unlink( $working_root . '/mutation.lock' );
 
 } finally {
 	// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Remove only this fixture's empty target.
@@ -468,7 +458,7 @@ $assert( 'preflight_failed' === $outcome && null === $record, 'a plain RuntimeEx
 [$outcome, $record] = RAN_WP_Branch_Updater_ReasonFixtures::run( array( 'lock_failure' => new RuntimeException( 'plain lock failure' ) ) );
 $assert( 'lock_unavailable' === $outcome && null === $record, 'a plain lock RuntimeException keeps its outcome and records no reason' );
 
-// Archive validation causes through the real ProviderArchiveSource and ArchiveValidator.
+// Archive validation causes through the real RAN_WP_Branch_Updater_ReasonZipSource and ArchiveValidator.
 $root = __DIR__ . '/build/failure-reasons-' . bin2hex( random_bytes( 4 ) );
 // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_mkdir -- This standalone fixture owns its isolated temporary directory.
 if ( ! mkdir( $root, 0700, true ) ) {
@@ -491,14 +481,14 @@ $make_zip      = static function ( array $entries ) use ( $root, &$sequence ): s
 };
 $plugin_source = static fn( string $headers = "Plugin Name: Demo\nVersion: 1.2.3" ): string => "<?php\n/*\n{$headers}\n*/\n";
 $style         = static fn( string $headers = "Theme Name: Demo\nVersion: 1.2.3" ): string => "/*\n{$headers}\n*/\n";
-$via_zip       = static function ( string $archive, array $options = array(), int $limit = 10485760, ?BranchProvider $provider = null ) use ( $root ): array {
+$via_zip       = static function ( string $archive, array $options = array(), int $limit = 10485760, ?GitHubFixtureProvider $provider = null ) use ( $root ): array {
 	$provider ??= new GitHubFixtureProvider( $archive, 'abc123' );
 	return RAN_WP_Branch_Updater_ReasonFixtures::run(
 		array_merge(
 			array(
 				'operation'    => 'install',
 				'subdirectory' => 'demo',
-				'archives'     => new ProviderArchiveSource( $provider, $root . '/custody', $limit ),
+				'archives'     => new RAN_WP_Branch_Updater_ReasonZipSource( $provider, $root . '/custody', $limit ),
 			),
 			$options
 		)
@@ -626,29 +616,6 @@ foreach ( $validator_codes as $name => $code ) {
 	}
 }
 
-// Provider causes.
-foreach ( array(
-	'selected commit unsupported' => array( new GitHubFixtureProvider( $make_zip( array( 'repository/demo/demo.php' => $plugin_source() ) ), 'abc123', null, false ), array( 'selected_commit' => str_repeat( 'a', 40 ) ), FailureReason::SELECTED_COMMIT_UNSUPPORTED ),
-	'repository mismatch'         => array( new GitHubFixtureProvider( $make_zip( array( 'repository/demo/demo.php' => $plugin_source() ) ), 'abc123', 'another-repository' ), array(), FailureReason::REPOSITORY_MISMATCH ),
-) as $label => [$provider, $options, $expected_reason] ) {
-	[$outcome, $record] = $via_zip( '', $options, 10485760, $provider );
-	$assert( 'provider_failed' === $outcome && null !== $record && $expected_reason === $record->reason, $label . ': provider_failed records ' . $expected_reason->value );
-}
-$provider             = new GitHubFixtureProvider( $make_zip( array( 'repository/demo/demo.php' => $plugin_source() ) ), 'abc123' );
-$provider->forced_ref = 'def456';
-[$outcome, $record]   = $via_zip( '', array(), 10485760, $provider );
-$assert( 'provider_failed' === $outcome && null !== $record && FailureReason::REF_MISMATCH === $record->reason, 'a provider ref that differs from the expected head is ref_mismatch' );
-foreach ( array(
-	404 => 'http_404',
-	503 => 'http_503',
-	0   => null,
-	999 => null,
-) as $http_status => $expected_detail ) {
-	$failing            = new RAN_WP_Branch_Updater_ReasonProvider( new RuntimeException( 'https://user:token@example.test/leak /var/www/secret ' . hash( 'sha256', 'x' ), $http_status ) );
-	[$outcome, $record] = $via_zip( '', array(), 10485760, $failing );
-	$assert( 'provider_failed' === $outcome && null !== $record && FailureReason::PROVIDER_ERROR === $record->reason && $expected_detail === $record->detail, 'provider status ' . $http_status . ' passes only a bounded status code' );
-}
-
 // Class C: a failing cleanup beside another cause records both and never replaces the primary cause.
 $cleanup = new RuntimeException( 'cleanup failed at /var/www/private ' . hash( 'sha256', 'x' ) );
 $both    = static function ( string $label, array $options, string $outcome, FailureReason $reason, ?string $detail, string $primary ) use ( $assert, $cleanup ): void {
@@ -696,7 +663,7 @@ $assert( 'interrupted' === $actual && null !== $record && 'interrupted' === $rec
 // A prepared archive whose custody breaks fails both the check and its cleanup: the custody cause is kept.
 // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- This test-only fault-injection double shares one standalone behavioral proof.
 final class RAN_WP_Branch_Updater_ReasonTamperingArchives implements AdmittedArchiveSource {
-	public function __construct( private ProviderArchiveSource $source ) {}
+	public function __construct( private RAN_WP_Branch_Updater_ReasonZipSource $source ) {}
 	public function prepare( BranchDeploymentDeclaration $deployment, ?array $baseline ): AdmittedBranchArtifact {
 		$artifact = $this->source->prepare( $deployment, $baseline );
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_chmod -- Break the prepared archive's custody identity for the proof.
@@ -712,7 +679,7 @@ $tampered                    = $make_zip( array( 'repository/demo/demo.php' => $
 	array(
 		'operation'    => 'install',
 		'subdirectory' => 'demo',
-		'archives'     => new RAN_WP_Branch_Updater_ReasonTamperingArchives( new ProviderArchiveSource( new GitHubFixtureProvider( $tampered, 'abc123' ), $root . '/custody' ) ),
+		'archives'     => new RAN_WP_Branch_Updater_ReasonTamperingArchives( new RAN_WP_Branch_Updater_ReasonZipSource( new GitHubFixtureProvider( $tampered, 'abc123' ), $root . '/custody' ) ),
 	)
 );
 $assert( 'archive_cleanup_failed' === $actual && array( 'archive_cleanup_failed' ) === $journal->finished, 'broken custody keeps the archive_cleanup_failed outcome for an old journal' );
@@ -742,16 +709,6 @@ $assert( 'thrown' === $outcome && $thrown instanceof BranchDeploymentJournalFail
 );
 $assert( 'thrown' === $outcome && $thrown instanceof AdmittedBranchDurabilityFailure && null !== $record && FailureReason::DURABILITY_UNCERTAIN === $record->reason && null === $record->detail, 'a terminal finish_with_reason() durability failure is recorded and still escapes' );
 
-// Two handles from one standalone updater keep their own reasons.
-$shared_updater = BranchUpdater::for_standalone( new StandaloneBranchRunner( new GitHubFixtureProvider( '', 'abc123' ), new FileAttemptStore( $root . '/handles' ), new RecordingExecutor(), $root . '/handle-custody', new FileMutationLock( $root . '/handles.lock' ) ) );
-$handle_a       = $shared_updater->plugin( 'acme/demo', 'fixture-1', 'main', 'demo/demo.php' );
-$handle_b       = $shared_updater->theme( 'acme/other', 'fixture-2', 'main', 'other' );
-$handle_a->deploy( 'abc123' );
-$a_reason = $handle_a->last_reason();
-$assert( null !== $a_reason && null === $handle_b->last_reason(), 'a handle that has not deployed has no reason, whatever another handle did' );
-$handle_b->deploy( 'abc123' );
-$assert( $handle_a->last_reason() === $a_reason, 'a later deploy of another handle does not change this handle\'s reason' );
-
 // A non-ambiguous terminal journal failure leaves the run's own reason in place.
 $wordpress_failed                = CorePackageExecutionResult::failed( CorePackageExecutionFailure::WORDPRESS_FAILED, 'incompatible_archive' );
 [$outcome, $record, , , $thrown] = RAN_WP_Branch_Updater_ReasonFixtures::run(
@@ -772,10 +729,10 @@ $assert( 'thrown' === $outcome && $thrown instanceof RuntimeException && null !=
 $assert( 'thrown' === $outcome && $thrown instanceof AdmittedBranchDurabilityFailure && null !== $record && FailureReason::DURABILITY_UNCERTAIN === $record->reason && $record->cleanup_failed, 'a durability failure with a failing cleanup records the cause and the cleanup failure' );
 
 // Handles of one admitted updater: only the handle whose call actually ran has a reason.
-$admitted_updater = static function () use ( $wordpress_failed ): BranchUpdater {
+$admitted_updater = static function ( ?string $expected_head = 'abc123' ) use ( $wordpress_failed ): BranchUpdater {
 	$o = array();
 	return BranchUpdater::for_admitted_attempt(
-		new BranchDeploymentDeclaration( 'reason-handles', 'plugin', 'demo', 'acme/demo', 'fixture-1', 'main', 'abc123', 'update', null, 'demo/demo.php' ),
+		new BranchDeploymentDeclaration( 'reason-handles', 'plugin', 'demo', 'acme/demo', 'fixture-1', 'main', $expected_head, 'update', null, 'demo/demo.php' ),
 		new RAN_WP_Branch_Updater_ReasonJournal(),
 		new RAN_WP_Branch_Updater_ReasonArchives( new RAN_WP_Branch_Updater_ReasonArtifact(), null ),
 		new RAN_WP_Branch_Updater_ReasonTarget( RAN_WP_Branch_Updater_ReasonFixtures::BASELINE, $o ),
@@ -812,14 +769,12 @@ try {
 	$assert( null === $admitted_c->last_reason(), 'a rejected terminal declaration leaves no stale reason' );
 }
 
-// A failure before the runner exists (the journal cannot begin) must not leave a stale reason behind.
-$standalone = new StandaloneBranchRunner( new GitHubFixtureProvider( '', 'abc123' ), new FileAttemptStore( $root ), new RecordingExecutor(), $root . '/custody', new FileMutationLock( $root . '/standalone.lock' ) );
-( new ReflectionProperty( $standalone, 'last_reason' ) )->setValue( $standalone, new AdmittedFailureReason( FailureReason::LOCK_HELD ) );
+$branch_head = $admitted_updater( null )->plugin( 'acme/demo', 'fixture-1', 'main', package_slug: 'demo' );
 try {
-	$standalone->execute( new BranchDeploymentDeclaration( 'standalone-begin', 'plugin', 'demo', 'acme/demo', 'fixture-1', 'main', 'abc123', 'update', null, 'demo/demo.php' ) );
-	$assert( false, 'an unusable journal must refuse to begin' );
-} catch ( RuntimeException ) {
-	$assert( null === $standalone->last_reason(), 'a stale reason is cleared when the journal cannot begin' );
+	$branch_head->deploy( selected_commit: str_repeat( 'a', 40 ) );
+	$assert( false, 'a terminal call cannot add rollback intent to an admitted branch-head attempt' );
+} catch ( InvalidArgumentException ) {
+	$assert( 'upgrader_failed' === $branch_head->deploy(), 'the refused override does not consume the admitted attempt' );
 }
 
 // Remove only this fixture's temporary tree.

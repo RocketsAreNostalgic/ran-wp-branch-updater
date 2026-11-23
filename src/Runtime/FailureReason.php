@@ -59,7 +59,6 @@ enum FailureReason: string {
 	case LOCK_RELEASE             = 'lock_release';
 	// WordPress Core execution (one per CorePackageExecutionFailure value).
 	case CORE_INVALID_REQUEST     = 'core_invalid_request';
-	case CORE_RUNTIME_UNSUPPORTED = 'core_runtime_unsupported';
 	case CORE_WORDPRESS_REFUSED   = 'core_wordpress_refused';
 	case CORE_WORDPRESS_FAILED    = 'core_wordpress_failed';
 	case CORE_WORDPRESS_RESTORED  = 'core_wordpress_restored';

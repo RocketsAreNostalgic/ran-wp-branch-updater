@@ -58,7 +58,8 @@ final class AdmittedBranchRunner {
 			if ( null !== $deployment->selected_commit && ! hash_equals( $deployment->selected_commit, $artifact->resolved_ref() ) ) {
 				throw new AdmittedBranchStageFailure( 'provider_failed', FailureReason::REF_MISMATCH->value );
 			}
-			if ( null !== $baseline && version_compare( $artifact->expected_version(), $baseline['version'], '<' ) ) {
+			// The host admits an exact historical selection as rollback intent.
+			if ( null === $deployment->selected_commit && null !== $baseline && version_compare( $artifact->expected_version(), $baseline['version'], '<' ) ) {
 				throw new AdmittedBranchStageFailure( 'downgrade_blocked' );
 			}
 			$this->executor->preflight( $deployment, $artifact );
@@ -75,7 +76,7 @@ final class AdmittedBranchRunner {
 					try {
 						$stage    = 'policy_blocked';
 						$baseline = $this->target->frozen_target( $deployment, false );
-						if ( null !== $baseline && version_compare( $artifact->expected_version(), $baseline['version'], '<' ) ) {
+						if ( null === $deployment->selected_commit && null !== $baseline && version_compare( $artifact->expected_version(), $baseline['version'], '<' ) ) {
 							throw new AdmittedBranchStageFailure( 'downgrade_blocked' );
 						}
 						$stage = 'provider_failed';

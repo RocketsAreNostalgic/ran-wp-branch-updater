@@ -12,9 +12,9 @@ consumer that ignores them sees exactly the behaviour it saw before.
 | Surface | Use |
 | --- | --- |
 | `BranchDeployment::last_reason()` | `?AdmittedFailureReason` for the last `deploy()`. Also set before an ambiguous durability failure escapes `deploy()`. |
-| `AdmittedBranchRunner::last_reason()` / `StandaloneBranchRunner::last_reason()` | The same record from the runner. |
-| `Contract\AdmittedAttemptReasonJournal` | Optional journal capability. The runner calls `finish_with_reason( $code, $reason )` instead of `finish( $code )` only when the journal implements it and a reason exists. The code passed is the same code `finish()` would receive. `FileAttemptJournal` does not implement it and its durable record is unchanged. |
-| `ReasonedFailure::find( Throwable )` | The nearest reason-carrying failure in an exception chain. A host that calls `PreparedArchive::download_and_validate()` itself (as Booster does) uses this on the exception it catches. |
+| `AdmittedBranchRunner::last_reason()` | The same record from the runner. |
+| `Contract\AdmittedAttemptReasonJournal` | Optional journal capability. The runner calls `finish_with_reason( $code, $reason )` when the journal implements it and a reason exists. Otherwise it calls `finish( $code )`. |
+| `ReasonedFailure::find( Throwable )` | The nearest reason-carrying failure in an exception chain. Archive adapters can use it when handling exceptions from `PreparedArchive::download_and_validate()`. |
 
 `finish_with_reason()` evolves by adding fields to the final readonly `AdmittedFailureReason`; changing its signature needs a new interface, not an edit of this one.
 
@@ -77,7 +77,7 @@ contract now requires admitted API `4`; see [MIGRATING.md](../MIGRATING.md).
 | Preflight | `preflight_multisite`, `preflight_file_mods_disabled`, `preflight_filesystem_not_direct`, `preflight_maintenance_active` | none |
 | Target policy | `target_is_working_copy` | none |
 | Lock | `lock_held`, `lock_token_invalid` (missing or malformed token), `lock_stale_release_failed`, `lock_stale_reinsert_failed`, `lock_storage`, `lock_release` | none |
-| WordPress Core | `core_invalid_request`, `core_runtime_unsupported`, `core_wordpress_refused`, `core_wordpress_failed`, `core_wordpress_restored`, `core_wordpress_uncertain`, `core_operation_mismatch` | an allow-listed upgrader WP_Error code, or a closed cause (see below) |
+| WordPress Core | `core_invalid_request`, `core_wordpress_refused`, `core_wordpress_failed`, `core_wordpress_restored`, `core_wordpress_uncertain`, `core_operation_mismatch` | an allow-listed upgrader WP_Error code, or a closed cause (see below) |
 | Postcondition | `baseline_unreadable`, `baseline_changed`, `identifier_mismatch`, `adopt_failed` | none |
 | Ambiguous | `durability_uncertain`, `journal_uncertain` | none |
 | Cleanup | `cleanup_also_failed` | none |
@@ -101,27 +101,23 @@ reason is recorded and tested; **documented** = deliberately unchanged, rational
 
 | ID | File:line | Stage | Known at site | Leaves site | Class | Reason id | Redaction rationale | Fix / test | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| E01 | `Runtime/ProviderArchiveSource.php:55` | validate | validator cause and bounded message | `archive_integrity_failed` | B | the 25 validator reasons, or `archive_prepare_failed` | message dropped; only the closed id and header name pass | `ReasonedFailure::find()`; `tests/failure-reasons.php` zip cases | fixed |
-| E02 | Booster `AdmittedBranchHostAdapter` (not in this repo) | validate | same as E01 | `archive_integrity_failed`, no log | B | as E01 | as E01 | Booster reads `ReasonedFailure::find()` on its own catch | consumer |
+| E02 | Host `AdmittedArchiveSource` adapter | validate | archive preparation or validation failure | host stage outcome | B | validator reason or `archive_prepare_failed` | closed id and allow-listed detail | `ReasonedFailure::find()` in the admitted archive test fixture in `tests/failure-reasons.php` | consumer |
 | E03 | `Archive/ArchiveValidator.php:293-336` | validate | which header failed | collapsed code | B | `header_*`, `version_*`, `compat_invalid`, `requires_newer_*` | closed header names only | detail header name; `tests/failure-reasons.php` | fixed |
 | E04 | `WordPress/WordPressCorePackageExecutor.php:361` | replace | WP_Error code and message | `WORDPRESS_FAILED` | B and A | `core_wordpress_failed` | message can hold paths: always dropped; code only if allow-listed | `error_detail()`; `tests/failure-reasons-wordpress.php` | fixed |
 | E05 | `WordPressCorePackageExecutor.php:74,114` | replace | Throwable class, code, message | `WORDPRESS_UNCERTAIN` | B and A | `core_wordpress_uncertain` | only `exception` or `php_error`; class and message may be foreign or hold paths | `tests/failure-reasons-wordpress.php` | fixed (coarse by design) |
 | E06 | `WordPressCorePackageExecutor.php:221-244` | replace | which of 5 source-selection failures | one WP_Error code | B | `core_wordpress_failed` | 4 closed causes in the WP_Error data | `invalid_package_source( $cause )`; `tests/failure-reasons-wordpress.php`, `tests/core-package-error-code.php` | fixed |
 | E07 | `Runtime/AdmittedBranchRunner.php:139,159` | cleanup | primary cause and cleanup failure | `archive_cleanup_failed` replaced the cause | C | primary reason or `cleanup_also_failed`, plus `primary_outcome`, `cleanup_failed` | cleanup message never read | `tests/failure-reasons.php` class C cases | reason recorded; outcome code unchanged |
 | E08 | `AdmittedBranchRunner.php:112-128` | postcondition | Core failure; baseline readable or changed | `restoration_uncertain` and others | B | `core_*`, `baseline_unreadable`, `baseline_changed` | closed ids | `tests/failure-reasons.php` | fixed |
-| E09 | `WordPress/WordPressPackageExecutor.php:41-57`, `AdmittedBranchRunner.php:153` | preflight | which of 4 preflight conditions | `preflight_failed` or stage | B | `preflight_*` | fixed internal messages, closed ids | `tests/failure-reasons-wordpress.php`, `tests/failure-reasons.php` | fixed; a plain `RuntimeException` from a foreign executor stays reason-less (text is untrusted) |
-| E10 | `Persistence/FileMutationLock.php`, `WordPress/WordPressUpdaterLock.php` | lock | held or malformed | `lock_unavailable` | B | `lock_held`, `lock_token_invalid` | closed ids | `tests/failure-reasons-wordpress.php`, `tests/installed-wordpress.php` | acquisition retries races, then reports current contention. Historical `lock_stale_release_failed` and `lock_stale_reinsert_failed` ids remain valid |
-| E11 | `Runtime/ProviderArchiveSource.php:43` | provider | provider exception code and message | `provider_failed` | B and A | `provider_error` | only an HTTP status 100-599; message dropped | `tests/failure-reasons.php` | fixed |
+| E09 | Host `AdmittedPackageExecutor::preflight()` | preflight | host policy refusal | `preflight_failed` or stage | B | host-supplied typed reason | generic exceptions supply no reason | `tests/failure-reasons.php` | consumer |
+| E10 | `WordPress/WordPressUpdaterLock.php` | lock | held or malformed | `lock_unavailable` | B | `lock_held`, `lock_token_invalid` | closed ids | `tests/failure-reasons-wordpress.php`, `tests/installed-wordpress.php` | acquisition retries races, then reports current contention. Historical `lock_stale_release_failed` and `lock_stale_reinsert_failed` ids remain valid |
 | E12 | `AdmittedBranchRunner.php:98,111` | postcondition | identifier mismatch vs refused adoption | `persistence_uncertain` | B | `identifier_mismatch`, `adopt_failed` | closed ids | `tests/failure-reasons.php` | fixed |
-| E13 | `Runtime/StandalonePackageExecutor.php:40` | replace | legacy `PackageExecutor` exception | `WORDPRESS_FAILED` | A | `core_wordpress_failed`, no detail | consumer-supplied text is untrusted | none | documented |
-| E14 | `Archive/PreparedArchive.php:88-98` | validate | validation failure plus cleanup result | rethrown with the primary chained | none | the chained validator reason | no loss at this site; the chain is now read at E01 | `ReasonedFailure::find()` | fixed |
+| E14 | `Archive/PreparedArchive.php:88-98` | validate | validation failure plus cleanup result | rethrown with the primary chained | none | the chained validator reason | host can read the chain as in E02 | `ReasonedFailure::find()` | fixed |
 | E15 | `Archive/PreparedArchive.php:132` | custody | cleaned, identity or digest changed | one message | B | `archive_custody_changed` | closed details only; digest never shown | `tests/failure-reasons-wordpress.php`, `tests/failure-reasons.php` | fixed |
-| E16 | `Persistence/FileAttemptStore.php:165-179` | journal | six journal corruption causes | `Journal is malformed.` | B (low) | `journal_uncertain` | file contents and paths are not exposed | the exception chain keeps the JSON error; per-cause ids not added | documented |
 | E17 | `WordPressCorePackageExecutor.php:265` | replace | theme archive, parent invalid or missing | `INVALID_REQUEST` | B | `core_invalid_request` | closed causes only; the parent name is not passed | `tests/failure-reasons-wordpress.php`; `theme_parent_missing` needs real WordPress and is covered only by the installed lane | fixed |
 | E18 | `Runtime/BranchUpdater.php:92-93`, `RAN\UpdaterSupport\V1\PackageDirectory::normalize()` | input | exact invalid field | fixed text | A | none | caller-input validation text is already specific enough | none | documented |
 | E19 | `Runtime/Admitted*Failure.php`, `Branch*Failure.php` | durability | previous chain | thrown out of `run()` | C | `durability_uncertain`, `journal_uncertain`, `lock_storage`, `lock_release` | closed ids | `last_reason()` is set before the escape; `tests/failure-reasons.php` | fixed here; the host must read it and log (consumer) |
 | E20 | `AdmittedBranchRunner.php:139` | cleanup | an outcome returned normally (for example `deployed`) | replaced by `interrupted` or `archive_cleanup_failed` | C | `cleanup_also_failed` and `primary_outcome` | none | `tests/failure-reasons.php` | reason recorded; outcome code unchanged |
-| E21 | `Runtime/AdmittedBranchRunner.php:91` | locked policy | target has a VCS marker | `policy_blocked` | B | `target_is_working_copy` | no path, marker contents or other detail leaves the check | `tests/failure-reasons.php` public admitted marker matrix and late-lock marker; `tests/contract.php` standalone journal/override | fixed |
+| E21 | `Runtime/AdmittedBranchRunner.php:91` | locked policy | target has a VCS marker | `policy_blocked` | B | `target_is_working_copy` | no path, marker contents or other detail leaves the check | `tests/failure-reasons.php` admitted marker matrix and late-lock marker, `tests/installed-wordpress.php` refusal and override | fixed |
 
 For E10, the adapter reclaims expired rows through its exact-token release and
 retries races with other adapter callers. WordPress Core's
