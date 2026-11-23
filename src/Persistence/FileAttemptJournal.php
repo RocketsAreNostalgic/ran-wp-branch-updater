@@ -19,7 +19,7 @@ final readonly class FileAttemptJournal implements AdmittedAttemptJournal {
 
 	public function finish( string $code ): void {
 		$state = match ( $code ) {
-			'deployed', 'already_managed' => 'succeeded',
+			'deployed' => 'succeeded',
 			'interrupted', 'maintenance_remaining', 'installed_version_mismatch', 'activation_state_changed', 'persistence_uncertain', 'restoration_uncertain' => 'needs_attention',
 			default => 'failed',
 		};

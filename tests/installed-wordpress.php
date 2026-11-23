@@ -18,6 +18,8 @@ use RAN\WPBranchUpdater\V1\Archive\PreparedArchive;
 use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionFailure;
 use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentLockStorageFailure;
+use RAN\WPBranchUpdater\V1\Runtime\FailureReason;
+use RAN\WPBranchUpdater\V1\Runtime\ReasonedFailure;
 use RAN\WPBranchUpdater\V1\Runtime\StandaloneTargetFacts;
 use RAN\WPBranchUpdater\V1\WordPress\WordPressPackageExecutor;
 use RAN\WPBranchUpdater\V1\WordPress\WordPressUpdaterLock;
@@ -44,8 +46,10 @@ final class InstalledWordPressProof {
 		$this->lock();
 		$this->non_reclaiming_lock();
 		$this->lock_race();
+		$this->reclaim_interleavings();
 		$this->adapter_boundaries();
 		$this->header_compatibility();
+		$this->case_alias_installation();
 		foreach ( array( 'plugin', 'theme' ) as $type ) {
 			$this->package( $type );
 			$this->package( $type, true );
@@ -112,6 +116,8 @@ final class InstalledWordPressProof {
 								$parent_theme->cache_delete();
 								wp_clean_themes_cache();
 								self::check( 'theme_parent_missing' === $eligibility->invoke( $executor, $artifact, 'demo', 'demo' ), 'Unavailable synthetic parent must remain ineligible.' );
+								$update = $executor->update_theme( $artifact, 'demo', 'demo', 'demo' );
+								self::check( CorePackageExecutionFailure::INVALID_REQUEST === $update->get_failure() && 'theme_parent_missing' === $update->get_detail(), 'A native theme update must refuse a missing parent before calling Core.' );
 								self::check( wp_mkdir_p( $parent_root ), 'Restore only the synthetic parent for remaining formatting controls.' );
 								// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Restore only the synthetic parent before remaining formatting controls.
 								file_put_contents( $parent_root . '/style.css', "/* Theme Name: Header parent */\nVersion: 1.0.0" );
@@ -187,6 +193,11 @@ final class InstalledWordPressProof {
 		}
 		self::check( $failed, 'Missing update offer must be rejected before the automatic updater call.' );
 
+		$method = new ReflectionMethod( $executor, 'vcs_filter' );
+		$filter = $method->invoke( $executor, 'plugin', 'example/example.php' );
+		self::check( false === $filter( true, WP_PLUGIN_DIR . '/.' ), 'An alternate spelling of the canonical plugin directory must match.' );
+		self::check( true === $filter( true, WP_CONTENT_DIR ), 'An unrelated context must preserve WordPress VCS detection.' );
+
 		global $wp_filesystem;
 		WP_Filesystem();
 		$filesystem = $wp_filesystem;
@@ -251,7 +262,8 @@ final class InstalledWordPressProof {
 		get_option( $name );
 		$token = $owner->acquire();
 		self::check( $other->current_token() === $token && get_option( $name ) === $token, 'Insertion must be visible through SQL and the options cache.' );
-		self::check( 'no' === $wpdb->get_var( $wpdb->prepare( 'SELECT autoload FROM %i WHERE option_name = %s', $wpdb->options, $name ) ), 'Native lock must not autoload.' );
+		self::check( 'off' === $wpdb->get_var( $wpdb->prepare( 'SELECT autoload FROM %i WHERE option_name = %s', $wpdb->options, $name ) ), 'Native lock must use WordPress non-autoload encoding.' );
+		self::check( ! \WP_Upgrader::create_lock( 'auto_updater' ), 'WordPress Core must recognize the exact token as a live timestamp.' );
 		$contended = false;
 		try {
 			$other->acquire();
@@ -262,6 +274,31 @@ final class InstalledWordPressProof {
 		self::check( ! $other->release( 'wrong-token' ) && get_option( $name ) === $token, 'Wrong-token release must preserve the row and cached owner.' );
 		self::check( $owner->release( $token ) && false === get_option( $name ) && null === $other->current_token(), 'Exact release must invalidate positive option cache.' );
 		self::check( ! $owner->release( $token ), 'Repeated release must report lost ownership.' );
+
+		for ( $attempt = 0; $attempt < 4; ++$attempt ) {
+			$first = $owner->acquire();
+			self::check( $owner->release( $first ), 'First owner must release its token.' );
+			$next = $other->try_acquire_without_reclaim();
+			if ( null === $next ) {
+				throw new RuntimeException( 'Second owner could not acquire the released lock.' );
+			}
+			try {
+					$first_second = explode( '.', $first )[0];
+					$next_second  = explode( '.', $next )[0];
+				if ( $first_second === $next_second ) {
+					self::check( $first !== $next && ! $owner->release( $first ) && ! $owner->release( $next . ' ' ) && $next === $other->current_token(), 'A same-second successor must survive old tokens and non-exact byte matches.' );
+					break;
+				}
+			} finally {
+				self::check( $other->release( $next ), 'Second owner must release its exact token.' );
+			}
+		}
+		self::check( $attempt < 4, 'The proof must exercise two acquisitions in the same second.' );
+
+		// A timestamp written by older WordPress remains an active owner.
+		$legacy = (string) time();
+		$wpdb->query( $wpdb->prepare( 'INSERT INTO %i (option_name, option_value, autoload) VALUES (%s, %s, %s)', $wpdb->options, $name, $legacy, 'no' ) );
+		self::check( $legacy === $other->current_token() && $owner->release( $legacy ), 'Legacy timestamp rows remain readable and exactly releasable.' );
 
 		$stale = (string) ( time() - 7200 );
 		update_option( $name, $stale, false );
@@ -310,6 +347,49 @@ final class InstalledWordPressProof {
 		} finally {
 			$wpdb->options = $original_options;
 			$wpdb->suppress_errors( $previous_suppression );
+		}
+	}
+
+	private function reclaim_interleavings(): void {
+		$owner     = new WordPressUpdaterLock();
+		$contender = new WordPressUpdaterLock();
+		$held      = $owner->acquire();
+		$released  = false;
+		$barrier   = static function ( string $query ) use ( $owner, $held, &$released ): string {
+			if ( ! $released && str_starts_with( $query, 'SELECT option_value FROM' ) && str_contains( $query, 'auto_updater.lock' ) ) {
+				$released = $owner->release( $held );
+			}
+			return $query;
+		};
+		add_filter( 'query', $barrier );
+		try {
+			$acquired = $contender->acquire();
+			self::check( $released && $held !== $acquired && $contender->release( $acquired ), 'A release between INSERT and SELECT must allow acquisition.' );
+		} finally {
+			remove_filter( 'query', $barrier );
+		}
+
+		$stale       = (string) ( time() - 7200 );
+		$replacement = null;
+		update_option( 'auto_updater.lock', $stale, false );
+		$barrier = static function ( string $query ) use ( $owner, $stale, &$replacement ): string {
+			if ( null === $replacement && str_starts_with( $query, 'UPDATE ' ) && str_contains( $query, 'CAST(option_value AS BINARY)' ) ) {
+				self::check( $owner->release( $stale ), 'Competing owner must remove the original expired row.' );
+				$replacement = $owner->try_acquire_without_reclaim();
+			}
+			return $query;
+		};
+		add_filter( 'query', $barrier );
+		try {
+			$contender->acquire();
+			throw new RuntimeException( 'A stale reclaim must not take over a concurrent owner.' );
+		} catch ( ReasonedFailure $failure ) {
+			self::check( FailureReason::LOCK_HELD->value === $failure->reason && null !== $replacement && $replacement === $contender->current_token(), 'The conditional replacement must report the winning owner as held.' );
+		} finally {
+			remove_filter( 'query', $barrier );
+			if ( null !== $replacement ) {
+				self::check( $owner->release( $replacement ), 'Winning owner must release its exact token.' );
+			}
 		}
 	}
 
@@ -383,7 +463,7 @@ final class InstalledWordPressProof {
 			}
 			foreach ( $workers as $worker ) {
 				$line = self::child_line( $worker[1][1] );
-				self::check( 'occupied' === $line || 1 === preg_match( '/^owned:[0-9]+$/D', $line ), 'Contender must report explicit ownership or occupancy.' );
+				self::check( 'occupied' === $line || 1 === preg_match( '/^owned:[0-9]+\.[0-9]+$/D', $line ), 'Contender must report explicit ownership or occupancy.' );
 				if ( str_starts_with( $line, 'owned:' ) ) {
 					$tokens[] = substr( $line, 6 );
 				}
@@ -546,18 +626,27 @@ final class InstalledWordPressProof {
 		self::check( $mixed_case || 'ran-branch-proof-' . $type === $slug, 'New installs from capitalized subdirectories must use the lower-case folder.' );
 		$executor = new WordPressPackageExecutor();
 		foreach ( array( 'install', 'update' ) as $operation ) {
-			$version     = 'install' === $operation ? '1.0.0' : '2.0.0';
-			$declaration = new BranchDeploymentDeclaration( 'installed-proof', $type, $slug, 'fixture/repository', 'fixture', 'main', null, $operation, $subdirectory, 'plugin' === $type ? $slug . '/' . $slug . '.php' : $slug );
-			$artifact    = $this->artifact( $declaration, $version );
-			$before      = $this->hooks();
-			$observed    = false;
-			$observer    = static function ( mixed $reply, mixed $package, mixed $upgrader, array $extra ) use ( &$observed, $artifact, $type, $operation ): mixed {
+			$version       = 'install' === $operation ? '1.0.0' : '2.0.0';
+			$declaration   = new BranchDeploymentDeclaration( 'installed-proof', $type, $slug, 'fixture/repository', 'fixture', 'main', null, $operation, $subdirectory, 'plugin' === $type ? $slug . '/' . $slug . '.php' : $slug );
+			$requires_php  = 'update' === $operation ? '8.1' : '';
+			$archive_root  = $mixed_case ? strtolower( $slug ) : $slug;
+			$artifact      = $this->artifact( $declaration, $version, archive_root: $archive_root, extra_headers: '' === $requires_php ? '' : "Requires PHP: $requires_php\n" );
+			$before        = $this->hooks();
+			$observed      = false;
+			$observer      = static function ( mixed $reply, mixed $package, mixed $upgrader, array $extra ) use ( &$observed, $artifact, $type, $operation ): mixed {
 				if ( ( $extra['type'] ?? null ) === $type && ( $extra['action'] ?? null ) === $operation ) {
 					$observed = is_string( $reply ) && $reply === $package && hash_file( 'sha256', $reply ) === hash_file( 'sha256', $artifact->get_path() );
 				}
 				return $reply;
 			};
+			$offered_php   = null;
+			$observe_offer = static function ( string $offer_type, object $offer ) use ( $type, $slug, &$offered_php ): void {
+				if ( $offer_type === $type && ( $offer->slug ?? null ) === $slug ) {
+					$offered_php = $offer->requires_php ?? null;
+				}
+			};
 			add_filter( 'upgrader_pre_download', $observer, 20, 4 );
+			add_action( 'pre_auto_update', $observe_offer, 10, 2 );
 			try {
 				$this->preflight_admission( $executor, $declaration, $artifact );
 				if ( $mixed_case && 'update' === $operation ) {
@@ -586,8 +675,10 @@ final class InstalledWordPressProof {
 				self::check( ! file_exists( $path . '/outside.txt' ), 'Repository siblings must not enter the installed package.' );
 				self::check( ! file_exists( ABSPATH . '.maintenance' ) && ! wp_doing_cron(), 'Maintenance and cron scope must be restored.' );
 				self::check( $observed, 'Real upgrader must consume the exact local archive through the scoped hook.' );
+				self::check( 'install' === $operation || $offered_php === $requires_php, 'Native update must receive the package Requires PHP header.' );
 			} finally {
 				remove_filter( 'upgrader_pre_download', $observer, 20 );
+				remove_action( 'pre_auto_update', $observe_offer, 10 );
 				$artifact->cleanup();
 			}
 			self::check( $before === $this->hooks(), 'Executor hooks must be restored after success.' );
@@ -600,6 +691,37 @@ final class InstalledWordPressProof {
 		$this->failures( $type );
 		if ( 'theme' === $type ) {
 			$this->missing_theme_version( $slug );
+		}
+	}
+
+	private function case_alias_installation(): void {
+		$slug        = 'ran-root-alias-proof';
+		$declaration = new BranchDeploymentDeclaration( 'root-alias', 'plugin', $slug, 'fixture/repository', 'fixture', 'main', null, 'install' );
+		$artifact    = $this->artifact( $declaration, '1.0.0', archive_root: strtoupper( $slug ) );
+		$filtered    = false;
+		$reorder     = static function ( mixed $result ) use ( &$filtered ): mixed {
+			if ( is_array( $result ) ) {
+				$filtered = true;
+				return array_reverse( $result, true ) + array( 'fixture_extension' => true );
+			}
+			return $result;
+		};
+		$executor    = new WordPressCorePackageExecutor(
+			static function ( string $action, string $type, string $archive ): mixed {
+				self::check( 'install' === $action && 'plugin' === $type, 'Core must receive the plugin installation.' );
+				$skin   = new \Automatic_Upgrader_Skin();
+				$result = ( new \Plugin_Upgrader( $skin ) )->install( $archive );
+				return true === $result ? $skin->result : $result;
+			}
+		);
+		add_filter( 'upgrader_install_package_result', $reorder );
+		try {
+			$result = $executor->install_plugin( $artifact, $slug, null );
+			self::check( $filtered && $result->is_successful(), 'A case-differing ZIP root and reordered Core result with an extra field must succeed.' );
+			self::check( isset( get_plugins()[ $slug . '/' . $slug . '.php' ] ), 'The plugin must be installed in the exact case of the requested slug.' );
+		} finally {
+			remove_filter( 'upgrader_install_package_result', $reorder );
+			$artifact->cleanup();
 		}
 	}
 
@@ -722,22 +844,24 @@ final class InstalledWordPressProof {
 		}
 	}
 
-	private function artifact( BranchDeploymentDeclaration $d, string $version, ?string $main_file = null, bool $omit_style = false ): PreparedArchive {
+	private function artifact( BranchDeploymentDeclaration $d, string $version, ?string $main_file = null, bool $omit_style = false, string $archive_root = 'repository', string $extra_headers = '' ): PreparedArchive {
 		$source = wp_tempnam( 'branch-proof.zip' );
 		$zip    = new ZipArchive();
 		self::check( true === $zip->open( $source, ZipArchive::CREATE | ZipArchive::OVERWRITE ), 'Fixture ZIP must open.' );
-		$prefix = 'repository/' . ( $d->subdirectory ?? 'packages/target' ) . '/';
+		$prefix = $archive_root . '/' . ( null === $d->subdirectory ? '' : $d->subdirectory . '/' );
 		if ( 'plugin' === $d->package_type ) {
-			$zip->addFromString( $prefix . ( $main_file ?? $d->slug . '.php' ), "<?php\n/*\nPlugin Name: Branch proof\nVersion: " . $version . "\n*/\n" );
+			$zip->addFromString( $prefix . ( $main_file ?? $d->slug . '.php' ), "<?php\n/*\nPlugin Name: Branch proof\nVersion: " . $version . "\n" . $extra_headers . "*/\n" );
 			if ( 'Bootstrap.php' === $main_file ) {
 				$zip->addFromString( $prefix . 'fixtures/nested.php', "<?php\n/*\nPlugin Name: Nested fixture\nVersion: 1.0.0\n*/\n" );
 			}
 		} else {
-			$zip->addFromString( $prefix . ( $omit_style ? 'missing-style.css' : 'style.css' ), "/*\nTheme Name: Branch proof\nVersion: " . $version . "\n*/\n" );
+			$zip->addFromString( $prefix . ( $omit_style ? 'missing-style.css' : 'style.css' ), "/*\nTheme Name: Branch proof\nVersion: " . $version . "\n" . $extra_headers . "*/\n" );
 			$zip->addFromString( $prefix . 'index.php', '<?php // Local fixture.' );
 		}
 		$zip->addFromString( $prefix . 'proof.txt', $version );
-		$zip->addFromString( 'repository/outside.txt', 'excluded' );
+		if ( null !== $d->subdirectory ) {
+			$zip->addFromString( $archive_root . '/outside.txt', 'excluded' );
+		}
 		$zip->close();
 		$offer = new ArchiveOffer(
 			'fixture',
@@ -779,6 +903,7 @@ InstalledWordPressProof::check( realpath( ABSPATH ) === realpath( $ran_wp_branch
 require_once ABSPATH . 'wp-admin/includes/file.php';
 require_once ABSPATH . 'wp-admin/includes/plugin.php';
 require_once ABSPATH . 'wp-admin/includes/theme.php';
+require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
 if ( in_array( '--lock-contender', $argv ?? array(), true ) ) {
 	InstalledWordPressProof::lock_contender();
 	return;

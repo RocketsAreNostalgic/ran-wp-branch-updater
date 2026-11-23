@@ -36,7 +36,10 @@ final class RAN_WP_Branch_Updater_WordPressDatabase {
 	public array $inserts = array();
 	/** @var list<int|false> */
 	public array $deletes = array();
-	public mixed $stored  = null;
+	/** @var list<int|false> */
+	public array $updates = array();
+	/** @var list<string|null> */
+	public array $stored = array();
 	/** @var list<string> */
 	public array $queries = array();
 	public function prepare( string $query, mixed ...$arguments ): string {
@@ -44,11 +47,16 @@ final class RAN_WP_Branch_Updater_WordPressDatabase {
 	}
 	public function query( string $sql ): int|false {
 		$this->queries[] = $sql;
-		return ( str_starts_with( $sql, 'INSERT' ) ? array_shift( $this->inserts ) : array_shift( $this->deletes ) ) ?? false;
+		return match ( true ) {
+			str_starts_with( $sql, 'INSERT' ) => array_shift( $this->inserts ) ?? false,
+			str_starts_with( $sql, 'UPDATE' ) => array_shift( $this->updates ) ?? false,
+			default => array_shift( $this->deletes ) ?? false,
+		};
 	}
-	public function get_var( string $sql ): mixed {
+	public function get_row( string $sql ): ?object {
 		$this->queries[] = $sql;
-		return $this->stored;
+		$value           = array_shift( $this->stored );
+		return null === $value ? null : (object) array( 'option_value' => $value );
 	}
 }
 
@@ -102,7 +110,7 @@ $assert = static function ( bool $actual, string $message ): void {
 	}
 };
 
-$root = __DIR__ . '/build/failure-reasons-wordpress-' . bin2hex( random_bytes( 4 ) );
+$root = rtrim( sys_get_temp_dir(), '/\\' ) . '/branch-reasons-wordpress-' . bin2hex( random_bytes( 8 ) );
 foreach ( array( '/wp/wp-admin/includes', '/custody' ) as $directory ) {
 	// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_mkdir -- This standalone fixture owns its isolated temporary directory.
 	if ( ! mkdir( $root . $directory, 0700, true ) ) {
@@ -245,8 +253,44 @@ foreach ( array(
 	'invalid parent'                 => array( "Template: bad/parent\n", 'theme_archive_invalid' ),
 ) as $label => [$template, $expected_detail] ) {
 	[, $artifact] = $prepared( 'theme', $theme_zip( $template ) );
-	$result       = ( new WordPressCorePackageExecutor( static fn(): bool => true ) )->install_theme( $artifact, 'demo', 'demo' );
-	$assert( CorePackageExecutionFailure::INVALID_REQUEST === $result->get_failure() && $expected_detail === $result->get_detail(), 'theme ' . $label . ': ' . $expected_detail );
+	$core         = new WordPressCorePackageExecutor( static fn(): bool => true );
+	$before       = RAN_WP_Branch_Updater_WordPressState::$hook_calls;
+	foreach ( array( $core->install_theme( $artifact, 'demo', 'demo' ), $core->update_theme( $artifact, 'demo', 'demo', 'demo' ) ) as $result ) {
+		$assert( CorePackageExecutionFailure::INVALID_REQUEST === $result->get_failure() && $expected_detail === $result->get_detail(), 'theme ' . $label . ': ' . $expected_detail );
+	}
+	$assert( RAN_WP_Branch_Updater_WordPressState::$hook_calls === $before, 'ineligible themes must be refused before WordPress hook registration' );
+}
+
+$core         = new WordPressCorePackageExecutor();
+$update_offer = new ReflectionMethod( $core, 'update_offer' );
+foreach ( array(
+	'plugin' => $plugin_zip,
+	'theme'  => $theme_zip(),
+) as $package_type => $entries ) {
+	[, $artifact] = $prepared( $package_type, $entries );
+	$offer        = $update_offer->invoke( $core, $package_type, $artifact, 'demo', 'plugin' === $package_type ? 'demo/demo.php' : 'demo', 'demo' );
+	$assert( is_object( $offer ) && ! property_exists( $offer, 'requires_php' ), 'an absent Requires PHP header leaves the native offer field absent' );
+}
+
+$check_result  = new ReflectionMethod( $core, 'is_canonical_installation_result' );
+$native_result = array(
+	'source'             => 'source',
+	'source_files'       => array( 'plugin.php' ),
+	'destination'        => 'destination',
+	'destination_name'   => 'demo',
+	'local_destination'  => 'local',
+	'remote_destination' => 'remote',
+	'clear_destination'  => false,
+);
+$assert( true === $check_result->invoke( $core, array_reverse( $native_result ) + array( 'extra' => null ) ), 'installation result accepts reordered and appended fields' );
+foreach ( array_keys( $native_result ) as $field ) {
+	$incomplete = $native_result;
+	unset( $incomplete[ $field ] );
+	$assert( false === $check_result->invoke( $core, $incomplete ), 'a required installation result field is missing: ' . $field );
+	$assert( false === $check_result->invoke( $core, array_replace( $native_result, array( $field => null ) ) ), 'a required installation result field is malformed: ' . $field );
+}
+foreach ( array( array( 123 ), array( 'unexpected' => 'plugin.php' ) ) as $source_files ) {
+	$assert( false === $check_result->invoke( $core, array_replace( $native_result, array( 'source_files' => $source_files ) ) ), 'source files must be a list of strings' );
 }
 
 // Source selection causes.
@@ -277,27 +321,43 @@ foreach ( $cases as $label => [$slug, $subdirectory, $arguments, $expected_detai
 $lock_path = $root . '/mutation.lock';
 // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- flock requires the native descriptor that holds the competing lock.
 $holder = fopen( $lock_path, 'c+' );
-$assert( false !== $holder && flock( $holder, LOCK_EX | LOCK_NB ), 'the competing lock is acquired' );
-try {
-	( new FileMutationLock( $lock_path ) )->run( static fn(): string => 'unreachable' );
-	$assert( false, 'a held file lock must refuse' );
-} catch ( ReasonedFailure $failure ) {
-	$assert( FailureReason::LOCK_HELD->value === $failure->reason && 'Mutation lock is held.' === $failure->getMessage(), 'a held file lock is lock_held with its unchanged message' );
+if ( false === $holder || ! flock( $holder, LOCK_EX | LOCK_NB ) ) {
+	throw new RuntimeException( 'Could not acquire the competing file lock.' );
 }
+$handle_count = count( get_resources( 'stream' ) );
+for ( $attempt = 0; $attempt < 8; ++$attempt ) {
+	try {
+		( new FileMutationLock( $lock_path ) )->run( static fn(): string => 'unreachable' );
+		$assert( false, 'a held file lock must refuse' );
+	} catch ( ReasonedFailure $failure ) {
+		$assert( FailureReason::LOCK_HELD->value === $failure->reason && 'Mutation lock is held.' === $failure->getMessage(), 'a held file lock is lock_held with its unchanged message' );
+	}
+}
+$assert( count( get_resources( 'stream' ) ) === $handle_count, 'contenders must close every opened descriptor' );
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Close the competing descriptor before proving recovery.
+fclose( $holder );
+$assert( 'ran' === ( new FileMutationLock( $lock_path ) )->run( static fn(): string => 'ran' ), 'file lock can be acquired after the holder closes' );
+try {
+	( new FileMutationLock( $root . '/missing/mutation.lock' ) )->run( static fn(): string => 'unreachable' );
+	$assert( false, 'an unavailable lock directory must refuse' );
+} catch ( BranchDeploymentLockStorageFailure ) {
+	$assert( true, 'file open failure is storage failure' );
+}
+
 $database = new RAN_WP_Branch_Updater_WordPressDatabase();
 // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Standalone CLI fixture models the WordPress database global.
 $wpdb  = $database;
 $stale = (string) ( time() - 7200 );
 foreach ( array(
-	'live token'            => array( (string) time(), array( 0 ), array(), FailureReason::LOCK_HELD ),
-	'malformed token'       => array( 'abc', array( 0 ), array(), FailureReason::LOCK_TOKEN_INVALID ),
-	'missing token'         => array( null, array( 0 ), array(), FailureReason::LOCK_TOKEN_INVALID ),
-	'stale release failed'  => array( $stale, array( 0 ), array( 0 ), FailureReason::LOCK_STALE_RELEASE_FAIL ),
-	'stale reinsert failed' => array( $stale, array( 0, 0 ), array( 1 ), FailureReason::LOCK_STALE_REINSERT_FAIL ),
-) as $label => [$stored, $inserts, $deletes, $expected_reason] ) {
+	'live token'           => array( array( (string) time() ), array( 0 ), array(), FailureReason::LOCK_HELD ),
+	'malformed token'      => array( array( 'abc' ), array( 0 ), array(), FailureReason::LOCK_TOKEN_INVALID ),
+	'empty stored token'   => array( array( '' ), array( 0 ), array(), FailureReason::LOCK_TOKEN_INVALID ),
+	'competing takeover'   => array( array( $stale, (string) time() ), array( 0, 0 ), array( 0 ), FailureReason::LOCK_HELD ),
+	'bounded retry budget' => array( array( null, null, null ), array( 0, 0, 0 ), array(), FailureReason::LOCK_HELD ),
+) as $label => [$stored, $inserts, $updates, $expected_reason] ) {
 	$database->stored  = $stored;
 	$database->inserts = $inserts;
-	$database->deletes = $deletes;
+	$database->updates = $updates;
 	try {
 		( new WordPressUpdaterLock() )->acquire();
 		$assert( false, 'contention must refuse: ' . $label );
@@ -305,20 +365,38 @@ foreach ( array(
 		$assert( $expected_reason->value === $failure->reason && 'WordPress updater is already running.' === $failure->getMessage(), 'updater lock ' . $label . ': ' . $expected_reason->value );
 	}
 }
-$database->inserts = array( false );
+foreach ( array(
+	array( array( null ), array() ),
+	array( array( $stale, null ), array( 0 ) ),
+) as [$stored, $updates] ) {
+	$database->stored  = $stored;
+	$database->updates = $updates;
+	$database->inserts = array_merge( array_fill( 0, count( $stored ), 0 ), array( 1 ) );
+	$assert( is_numeric( ( new WordPressUpdaterLock() )->acquire() ), 'a clean release during acquisition allows a bounded retry' );
+}
+$database->inserts = array( 0 );
+$database->stored  = array( $stale );
+$database->updates = array( false );
 try {
 	( new WordPressUpdaterLock() )->acquire();
 	$assert( false, 'database failure must escape' );
-} catch ( BranchDeploymentLockStorageFailure $failure ) {
+} catch ( BranchDeploymentLockStorageFailure ) {
 	$assert( true, 'a lock storage failure keeps its own type; the runner maps it to lock_storage' );
 }
-$database->inserts = array( 1 );
-$database->deletes = array( 0 );
-try {
-	( new WordPressUpdaterLock() )->run( static fn(): string => 'ran' );
-	$assert( false, 'a failed lock release must escape' );
-} catch ( BranchDeploymentLockReleaseFailure ) {
-	$assert( true, 'a failed lock release keeps its own type; the runner maps it to lock_release' );
+foreach ( array( 0, false ) as $failed_release ) {
+	$database->inserts = array( 1 );
+	$database->deletes = array( $failed_release );
+	$primary           = new RuntimeException( 'Primary fixture failure.' );
+	try {
+		( new WordPressUpdaterLock() )->run(
+			static function () use ( $primary ): never {
+				throw $primary;
+			}
+		);
+		$assert( false, 'a failed lock release must escape' );
+	} catch ( BranchDeploymentLockReleaseFailure $failure ) {
+		$assert( $failure->getPrevious() === $primary, 'a failed lock release keeps the primary exception as its cause' );
+	}
 }
 
 // Remove only this fixture's temporary tree.

@@ -10,7 +10,7 @@ use RAN\WPBranchUpdater\V1\Persistence\FileAttemptStore;
 use RAN\WPBranchUpdater\V1\Persistence\FileAttemptJournal;
 use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 
-$root = __DIR__ . '/build/journal-invariants-' . bin2hex( random_bytes( 4 ) );
+$root = rtrim( sys_get_temp_dir(), '/\\' ) . '/branch-journal-invariants-' . bin2hex( random_bytes( 8 ) );
 // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_mkdir -- Standalone CLI proof creates or cleans only its isolated local fixture files with native filesystem semantics.
 if ( ! mkdir( $root, 0700, true ) ) {
 	throw new RuntimeException( 'Cannot create journal invariant fixture directory.' );
@@ -56,6 +56,28 @@ $reject = static function ( array $record ) use ( $write, $store ): void {
 
 foreach ( array( '', 'demo/other/main.php', 'other/main.php', ' demo/main.php', 123 ) as $identifier ) {
 	$reject( array_merge( $base, array( 'expected_identifier' => $identifier ) ) );
+}
+foreach ( array( 'component', 'PLUGIN' ) as $package_type ) {
+	$reject( array_replace( $base, array( 'package_type' => $package_type ) ) );
+}
+foreach ( array( 'nested/demo', ' demo', '.', 'demo\\nested' ) as $slug ) {
+	$reject( array_replace( $base, array( 'slug' => $slug ) ) );
+}
+$legacy_record = array_replace(
+	$base,
+	array(
+		'package_type'        => 'theme',
+		'slug'                => 'Mixed-Case',
+		'state'               => 'succeeded',
+		'resolved_ref'        => 'abc123',
+		'mutation_started_at' => '2026-09-08T21:59:00+00:00',
+		'outcome'             => 'already_managed',
+		'finished_at'         => '2026-09-08T22:00:00+00:00',
+	)
+);
+$write( $legacy_record );
+if ( $store->get( 'attempt' ) !== $legacy_record ) {
+	throw new RuntimeException( 'Valid historical journal records must retain their stored state and outcome.' );
 }
 
 foreach ( array( 'abc', str_repeat( 'A', 40 ), 123 ) as $selected ) {
@@ -208,6 +230,13 @@ $record = $transition_store->get( 'transition' );
 if ( 'abc123' !== $record['resolved_ref'] || null === $record['mutation_started_at']
 	|| 'succeeded' !== $record['state'] || 'deployed' !== $record['outcome'] ) {
 	throw new RuntimeException( 'Named-argument journal transitions did not preserve persisted state.' );
+}
+
+$transition_store->begin( new BranchDeploymentDeclaration( 'obsolete-outcome', 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', null ) );
+$obsolete_journal = new FileAttemptJournal( $transition_store, 'obsolete-outcome' );
+$obsolete_journal->finish( 'already_managed' );
+if ( 'failed' !== $transition_store->get( 'obsolete-outcome' )['state'] ) {
+	throw new RuntimeException( 'An obsolete outcome must use the default terminal mapping.' );
 }
 
 $id_path  = $root . '/custom-ids.json';
