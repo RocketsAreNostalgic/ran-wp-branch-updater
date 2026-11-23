@@ -46,7 +46,7 @@ $deployment = new BranchDeploymentDeclaration(
 	installed_identifier: null
 );
 
-$offer = static fn(): ArchiveOffer => new ArchiveOffer(
+$offer = static fn( ?Closure $verify_head = null ): ArchiveOffer => new ArchiveOffer(
 	provider: 'fixture',
 	repository_id: 'repository-id',
 	resolved_ref: 'abc123',
@@ -56,8 +56,28 @@ $offer = static fn(): ArchiveOffer => new ArchiveOffer(
 			throw new RuntimeException( 'Cannot acquire prepared archive fixture.' );
 		}
 	},
-	verify_head: static function (): void {}
+	verify_head: $verify_head ?? static function (): void {}
 );
+
+$verification_calls = 0;
+$offer(
+	static function () use ( &$verification_calls ): void {
+		++$verification_calls;
+	}
+)->verify_current_head();
+$assert( 1 === $verification_calls, 'archive offer invokes the verifier once' );
+
+$verification_failure = new RuntimeException( 'Source verification failed.' );
+try {
+	$offer(
+		static function () use ( $verification_failure ): void {
+			throw $verification_failure;
+		}
+	)->verify_current_head();
+	throw new LogicException( 'Archive offer suppressed the verification failure.' );
+} catch ( RuntimeException $actual ) {
+	$assert( $verification_failure === $actual, 'archive offer propagates the verifier exception unchanged' );
+}
 
 foreach ( array(
 	'plugin' => 'custom-main.php',

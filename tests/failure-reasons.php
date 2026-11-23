@@ -360,7 +360,6 @@ try {
 // Core results: one reason per CorePackageExecutionFailure, detail passes through the screen.
 $core_outcomes = array(
 	'invalid_request'     => 'restoration_uncertain',
-	'runtime_unsupported' => 'restoration_uncertain',
 	'wordpress_refused'   => 'upgrader_failed',
 	'wordpress_failed'    => 'upgrader_failed',
 	'wordpress_restored'  => 'activation_failed',

@@ -4,12 +4,12 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 php "$root/tests/analysis-coverage.php"
 php "$root/tests/analysis-coverage.php" "$root" --maintained
-fixture="$(mktemp -d)"
+fixture="$(python3 -c 'import tempfile; print(tempfile.mkdtemp(prefix="ran-branch-analysis-"))')"
 cleanup_fixture() {
     python3 - "$fixture" <<'PYTHON'
 import pathlib, shutil, sys, tempfile
 path = pathlib.Path(sys.argv[1]).resolve()
-if path.parent != pathlib.Path(tempfile.gettempdir()).resolve() or not path.name.startswith("tmp."):
+if path.parent != pathlib.Path(tempfile.gettempdir()).resolve() or not path.name.startswith("ran-branch-analysis-"):
     raise RuntimeError("Unexpected fixture path")
 shutil.rmtree(path)
 PYTHON
