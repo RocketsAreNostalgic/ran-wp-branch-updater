@@ -7,7 +7,6 @@ require_once __DIR__ . '/Support/WordPressErrorStub.php';
 
 use RAN\WPBranchUpdater\V1\Archive\PreparedArchive;
 use RAN\WPBranchUpdater\V1\GitHubFixtureProvider;
-use RAN\WPBranchUpdater\V1\Persistence\FileMutationLock;
 use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentLockReleaseFailure;
 use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentLockStorageFailure;
@@ -16,14 +15,10 @@ use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionResult;
 use RAN\WPBranchUpdater\V1\Runtime\FailureReason;
 use RAN\WPBranchUpdater\V1\Runtime\ReasonedFailure;
 use RAN\WPBranchUpdater\V1\WordPress\WordPressCorePackageExecutor;
-use RAN\WPBranchUpdater\V1\WordPress\WordPressPackageExecutor;
 use RAN\WPBranchUpdater\V1\WordPress\WordPressUpdaterLock;
 
 // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- This test-only state holder and the WordPress stubs below share one standalone proof.
 final class RAN_WP_Branch_Updater_WordPressState {
-	public static bool $multisite     = false;
-	public static bool $file_mods     = true;
-	public static string $filesystem  = 'direct';
 	public static int $hook_calls     = 0;
 	public static int|false $priority = false;
 }
@@ -54,18 +49,6 @@ final class RAN_WP_Branch_Updater_WordPressDatabase {
 	}
 }
 
-// phpcs:ignore Universal.Files.SeparateFunctionsFromOO.Mixed, WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound -- WordPress function stubs must retain their native global names and signatures in this standalone proof.
-function is_multisite(): bool {
-	return RAN_WP_Branch_Updater_WordPressState::$multisite;
-}
-// phpcs:ignore Universal.Files.SeparateFunctionsFromOO.Mixed, WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound, Generic.CodeAnalysis.UnusedFunctionParameter.Found -- WordPress function stubs must retain their native global names and signatures in this standalone proof.
-function wp_is_file_mod_allowed( string $context ): bool {
-	return RAN_WP_Branch_Updater_WordPressState::$file_mods && '' !== $context;
-}
-// phpcs:ignore Universal.Files.SeparateFunctionsFromOO.Mixed, WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound -- WordPress function stubs must retain their native global names and signatures in this standalone proof.
-function get_filesystem_method(): string {
-	return RAN_WP_Branch_Updater_WordPressState::$filesystem;
-}
 // phpcs:ignore Universal.Files.SeparateFunctionsFromOO.Mixed, WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound, Generic.CodeAnalysis.UnusedFunctionParameter.Found, Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- WordPress function stubs must retain their native global names and signatures in this standalone proof.
 function add_filter( string $hook_name, callable $callback, int $priority = 10, int $accepted_args = 1 ): bool {
 	++RAN_WP_Branch_Updater_WordPressState::$hook_calls;
@@ -133,36 +116,6 @@ $prepared   = static function ( string $type, array $entries, string $operation 
 };
 $plugin_zip = array( 'repository/demo/demo.php' => "<?php\n/*\nPlugin Name: Demo\nVersion: 1.2.3\n*/\n" );
 $theme_zip  = static fn( string $extra = '' ): array => array( 'repository/demo/style.css' => "/*\nTheme Name: Demo\nVersion: 1.2.3\n" . $extra . "*/\n" );
-
-// Preflight causes keep their fixed messages and add a closed reason.
-[$declaration, $artifact] = $prepared( 'plugin', $plugin_zip );
-$executor                 = new WordPressPackageExecutor();
-$assert( array() === $executor->preflight( $declaration, $artifact ), 'preflight passes when WordPress allows the operation' );
-foreach ( array(
-	array( 'multisite', FailureReason::PREFLIGHT_MULTISITE, 'Branch deployment supports single-site WordPress only.' ),
-	array( 'file_mods', FailureReason::PREFLIGHT_FILE_MODS_DISABLED, 'WordPress file modifications are disabled.' ),
-	array( 'filesystem', FailureReason::PREFLIGHT_FILESYSTEM_NOT_DIRECT, 'The WordPress direct filesystem method is required.' ),
-	array( 'maintenance', FailureReason::PREFLIGHT_MAINTENANCE_ACTIVE, 'WordPress maintenance mode is active.' ),
-) as [$condition, $expected_reason, $message] ) {
-	RAN_WP_Branch_Updater_WordPressState::$multisite  = 'multisite' === $condition;
-	RAN_WP_Branch_Updater_WordPressState::$file_mods  = 'file_mods' !== $condition;
-	RAN_WP_Branch_Updater_WordPressState::$filesystem = 'filesystem' === $condition ? 'ftp' : 'direct';
-	if ( 'maintenance' === $condition ) {
-		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Create the maintenance marker in this isolated temporary directory.
-		file_put_contents( ABSPATH . '.maintenance', '' );
-	}
-	try {
-		$executor->preflight( $declaration, $artifact );
-		$assert( false, 'preflight must refuse: ' . $condition );
-	} catch ( ReasonedFailure $failure ) {
-		$assert( $expected_reason->value === $failure->reason && $message === $failure->getMessage(), 'preflight ' . $condition . ' carries ' . $expected_reason->value . ' and its unchanged message' );
-	}
-}
-// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Remove the fixture's maintenance marker.
-unlink( ABSPATH . '.maintenance' );
-RAN_WP_Branch_Updater_WordPressState::$multisite  = false;
-RAN_WP_Branch_Updater_WordPressState::$file_mods  = true;
-RAN_WP_Branch_Updater_WordPressState::$filesystem = 'direct';
 
 // WordPress Core execution results.
 $secret       = '/var/www/private/wp-content/upgrade/' . hash( 'sha256', 'x' ) . ' https://user:token@example.test';
@@ -309,33 +262,6 @@ foreach ( $cases as $label => [$slug, $subdirectory, $arguments, $expected_detai
 	$filter       = $selection->invoke( new WordPressCorePackageExecutor(), $slug, $subdirectory, 'plugin', 'install', null );
 	$source_error = $filter( $arguments[0], $arguments[1], null, $extra );
 	$assert( $source_error instanceof WP_Error && 'ran_branch_deployment_invalid_package_source' === $source_error->get_error_code() && $expected_detail === $source_error->get_error_data() && '' === $source_error->get_error_message(), 'source selection ' . $label . ': ' . $expected_detail );
-}
-
-// Mutation lock causes.
-$lock_path = $root . '/mutation.lock';
-// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- flock requires the native descriptor that holds the competing lock.
-$holder = fopen( $lock_path, 'c+' );
-if ( false === $holder || ! flock( $holder, LOCK_EX | LOCK_NB ) ) {
-	throw new RuntimeException( 'Could not acquire the competing file lock.' );
-}
-$handle_count = count( get_resources( 'stream' ) );
-for ( $attempt = 0; $attempt < 8; ++$attempt ) {
-	try {
-		( new FileMutationLock( $lock_path ) )->run( static fn(): string => 'unreachable' );
-		$assert( false, 'a held file lock must refuse' );
-	} catch ( ReasonedFailure $failure ) {
-		$assert( FailureReason::LOCK_HELD->value === $failure->reason && 'Mutation lock is held.' === $failure->getMessage(), 'a held file lock is lock_held with its unchanged message' );
-	}
-}
-$assert( count( get_resources( 'stream' ) ) === $handle_count, 'contenders must close every opened descriptor' );
-// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Close the competing descriptor before proving recovery.
-fclose( $holder );
-$assert( 'ran' === ( new FileMutationLock( $lock_path ) )->run( static fn(): string => 'ran' ), 'file lock can be acquired after the holder closes' );
-try {
-	( new FileMutationLock( $root . '/missing/mutation.lock' ) )->run( static fn(): string => 'unreachable' );
-	$assert( false, 'an unavailable lock directory must refuse' );
-} catch ( BranchDeploymentLockStorageFailure ) {
-	$assert( true, 'file open failure is storage failure' );
 }
 
 $database = new RAN_WP_Branch_Updater_WordPressDatabase();

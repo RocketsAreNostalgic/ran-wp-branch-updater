@@ -1,6 +1,6 @@
 # API
 
-Load the consumer's Composer autoloader before requiring package bootstrap. Production classes use the `RAN\WPBranchUpdater\V1` PSR-4 namespace.
+Load the consumer's Composer autoloader. Production classes use the `RAN\WPBranchUpdater\V1` PSR-4 namespace.
 
 `Runtime\BranchUpdater` is the public declaration boundary. Its `plugin()` and `theme()` methods return a `Runtime\BranchDeployment` handle so a target can be declared before the terminal `deploy()` call.
 
@@ -12,36 +12,43 @@ $plugin = $branches->plugin(
     plugin_file: 'example-plugin/example-plugin.php',
 );
 
-$outcome = $plugin->deploy(expected_commit: $commit);
+$outcome = $plugin->deploy();
 ```
 
-`deploy()` accepts an optional expected commit and operation (`install` or `update`). A deployment created for an already-admitted host attempt cannot override its bound declaration. `attempt_id()` exposes the durable journal key used by host recovery.
+`deploy()` uses the bound declaration. Any arguments supplied to the terminal call must match it. `attempt_id()` exposes the durable journal key used by host recovery.
 
 ## Core concepts
 
-`Runtime\BranchDeploymentDeclaration` contains immutable requested/admitted facts: attempt ID, package type and slug, repository identity, branch, expected head, operation, optional package subdirectory, and installed identifier.
+`Runtime\BranchDeploymentDeclaration` contains the host's immutable admission facts. They include the attempt ID, package type and slug, repository identity, tracking branch, operation, optional subdirectory, installed or expected package identifiers and deployment policy flags.
 
-`Contract\BranchProvider` owns source-specific access. It resolves the requested branch and returns an `Archive\ArchiveOffer`. Providers must reject a stale expected head and support a fresh head verification immediately before mutation. The `ArchiveOffer` acquisition callback receives the validated `maximum_artifact_bytes` ceiling and must stop transport before writing more than that number of bytes. `PreparedArchive` rechecks the acquired file size afterward as defense in depth.
+`Contract\AdmittedArchiveSource` is the host's boundary for source access. Its adapter resolves the requested revision and revalidates source authority under the mutation lock. The `ArchiveOffer` acquisition callback receives the validated `maximum_artifact_bytes` ceiling and must stop transport before writing more than that number of bytes. `PreparedArchive` rechecks the acquired file size.
 
 `Archive\PreparedArchive` owns the exact local ZIP from acquisition until cleanup. Validation covers path safety, entry metadata/type, collision rules, one package root, size limits, selected subdirectory, package identity, headers, version syntax, and PHP/WordPress compatibility.
 
-The same `PreparedArchive` implements `Contract\AdmittedBranchArtifact` and `Contract\PreparedPackageArtifact`. `ProviderArchiveSource::prepare()` returns that validated owner directly; standalone executors receive the same object. `resolved_ref()` and `expected_version()` expose immutable metadata alongside `resolved_ref`, `version`, and `get_expected_version()`, including after cleanup. Byte access, capacity checks and mutation still require intact custody. Reuse this owner rather than cloning it: copies do not share cleanup state, and cleaning one invalidates the other's file custody.
+`PreparedArchive` implements `Contract\AdmittedBranchArtifact` and `Contract\PreparedPackageArtifact`. Pass the validated owner from `AdmittedArchiveSource::prepare()` to the runner and Core executor. `resolved_ref()` and `expected_version()` expose immutable metadata, including after cleanup. Reuse the same owner for byte access, capacity checks and mutation. Cleaning a clone would invalidate the original owner's custody.
 
-`Runtime\AdmittedBranchRunner` owns the ordered execution of one already-admitted attempt. `Runtime\StandaloneBranchRunner` is the package's standalone composition around the same admitted runner.
+`Runtime\AdmittedBranchRunner` owns the ordered execution of one already-admitted attempt.
 
-`WordPress\WordPressPackageExecutor` adapts the package-level execution contract to WordPress. `WordPress\WordPressCorePackageExecutor` scopes the direct Core upgrader interaction. WordPress remains the installation owner.
+The host's `AdmittedPackageExecutor` dispatches to `WordPress\WordPressCorePackageExecutor`, which scopes the direct Core upgrader interaction. WordPress remains the installation owner.
 
-The WordPress executor's `preflight()` checks runtime policy, loads the plugin and theme helpers and verifies archive custody, returning an empty array. It does not query installed metadata. The deployment lifecycle still acquires fresh installed facts before acquisition, under the mutation lock, after execution and when checking restoration. Custom `PackageExecutor` implementations retain the two-argument array-returning contract.
+The host supplies runtime policy and target facts. The runner requests fresh installed facts before acquisition, under the mutation lock, after execution and when checking restoration. Admit deployments only on single-site WordPress. The `active` target fact describes activation in that site's context.
 
-The default WordPress executor rejects multisite in preflight. Preflight follows
-baseline acquisition and artifact preparation, so hosts must reject multisite
-at admission if they need to avoid that work. This guard precedes the mutation
-lock, mutation fence, and WordPress execution; custom adapters must enforce their
-own policy. Multisite deployment remains unsupported.
+## Selected-commit rollbacks
 
-Target facts expose one `active: bool`. The default adapter observes plugin
-activation or the current stylesheet/template in the current WordPress context;
-that value cannot describe network-wide and per-site activation or theme state.
+Branch-head deployments return `downgrade_blocked` if the archive version is
+lower than the installed version at initial admission or under the mutation lock.
+This applies to unattended requests, including those pinned with `expected_head`.
+
+An exact, operator-confirmed historical selection in `selected_commit` allows an
+older version, matching the release updater's confirmed `$older_intended` rule
+(PU-037). The host owns confirmation and leaves `selected_commit` unset for
+automatic requests. The declaration accepts a full lowercase 40- or 64-character
+hex commit and requires `expected_head` to be null. The runner checks the resolved
+ref for exact equality. The host adapter must reverify repository access and the
+selected revision before mutation. Archive custody, target policy and installed
+checks still apply. The selected commit applies to one deployment of package
+files. Future deployments track the configured branch. Database recovery is a
+separate operator action.
 
 ## Outcomes and exceptions
 
@@ -63,28 +70,6 @@ Archive-integrity and cleanup failures are closed outcomes when their state is k
 
 `BranchDeployment::last_reason()` returns `?AdmittedFailureReason` with a closed `reason`, an optional screened `detail` (untrusted text: escape it), `primary_outcome` and `cleanup_failed`. A journal may implement `Contract\AdmittedAttemptReasonJournal` to receive it from `finish_with_reason()`; one that does not is called exactly as before. See [docs/error-detail-inventory.md](docs/error-detail-inventory.md).
 
-## Standalone composition
-
-The package bootstrap composes a `BranchUpdater` using a host-supplied provider, attempt store, private archive directory, package executor, mutation lock, and optional `maximum_artifact_bytes`. The former named arguments `archiveDirectory` and `maximumArtifactBytes` are now `archive_directory` and `maximum_artifact_bytes`; positional calls are unchanged and no legacy aliases are provided. The artifact limit defaults to 52,428,800 bytes (50 MiB). Defaults use the WordPress package executor and WordPress updater lock.
-
-```php
-use RAN\WPBranchUpdater\V1\Persistence\FileAttemptStore;
-
-$configure = require '/path/to/vendor/ran/wp-branch-updater/bootstrap.php';
-
-$branches = $configure(
-    provider: $provider,
-    attempts: new FileAttemptStore('/srv/private/branch-attempts.json'),
-    archive_directory: '/srv/private/branch-archives',
-    maximum_artifact_bytes: 134217728,
-);
-```
-
-`Persistence\FileAttemptStore` provides locked atomic file replacement, readback, and process-stop recovery. It does not claim power-loss durability on filesystems where data or directory metadata has not reached stable storage, and it does not issue explicit `fsync` calls. Hosts needing stronger guarantees should supply an `AdmittedAttemptJournal` backed by storage with those semantics.
-
-The host chooses the file journal path and therefore its sharing and ownership
-scope. The store does not derive a network or site identity for that path.
-
 ## Themes and repository subdirectories
 
 ```php
@@ -94,14 +79,14 @@ $outcome = $branches->theme(
     branch: 'production',
     stylesheet: 'example-theme',
     subdirectory: 'themes/example-theme',
-)->deploy(operation: 'install');
+)->deploy();
 ```
 
-Subdirectories are normalized as repository-relative package paths. A new install does not activate the package.
+For an initial install, bind `operation: 'install'` in the declaration. Subdirectories are normalized as repository-relative package paths. A new install leaves the package inactive.
 
 ## Execute an admitted host attempt
 
-Hosts with their own durable admission, archive custody, target facts, and operator history can construct the same execution path directly:
+Bind the admitted declaration to the host's durable journal, archive source, target facts, executor and lock:
 
 ```php
 use RAN\WPBranchUpdater\V1\Runtime\BranchUpdater;
@@ -128,7 +113,9 @@ The collaborators implement `Contract\AdmittedAttemptJournal`, `Contract\Admitte
 
 ## Provider boundary
 
-Production providers are host-supplied. The `GitHubFixtureProvider` and `BitbucketFixtureProvider` classes shipped in test support are local ZIP fixtures only; they are not production HTTP clients. A provider implementation must treat the `maximum_artifact_bytes` value passed to `ArchiveOffer::acquire()` as a transport ceiling, not merely as a post-download validation hint.
+Production providers are host-supplied. The `GitHubFixtureProvider` in development
+test support reads a local ZIP. Provider implementations must enforce the
+`maximum_artifact_bytes` ceiling passed to `ArchiveOffer::acquire()` during transfer.
 
 A host remains responsible for credential handling, webhook authentication, scheduling, durable admission/deduplication, and recovery decisions. The branch package is responsible only for its declared deployment lifecycle.
 
@@ -148,8 +135,7 @@ Use this barrier for host authority transitions that must not steal an interrupt
 operation's lock. `current_token()` followed by `acquire()` is not equivalent:
 ordinary `acquire()` retains its existing expired-lock takeover policy. The new
 method does not establish that an earlier operation stopped, clear durable mutation
-journals, or authorize recovery. Those remain host responsibilities. The existing
-timestamp token format and standalone deployment behavior are unchanged.
+journals, or authorize recovery. Those remain host responsibilities.
 
 Timestamp tokens are not globally unique receipts. Do not reuse a token after its
 release or infer another process's lifetime from its age. A host's durable
@@ -158,5 +144,4 @@ provide that evidence.
 
 The adapter uses `$wpdb->options` and the current context's `options` cache
 group. On multisite these are not a network-wide mutex or cache invalidation
-scheme. The host must not treat this lock or a file journal path as multisite
-admission or coordination.
+scheme. The lock is for the current site's admitted operations.

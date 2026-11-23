@@ -8,7 +8,7 @@ This repository uses the RAN `php-library` quality profile. PHP coding and compa
 under the `^1.0` development constraint. The additional `RANOwnedMethods`
 check covers every shipped declaration, including inherited classes, with no
 remaining owned-method migration deferrals. Variable naming covers all shipped
-source and `bootstrap.php`; precise ZipArchive::$numFiles exceptions preserve
+source. Precise `ZipArchive::$numFiles` exceptions preserve
 that external API. `composer test:naming` proves method, property, parameter,
 variable and standards enforcement. The connected beta API is intentionally
 breaking: prepare and qualify matching Core consumers before released adoption.
@@ -19,9 +19,16 @@ and diagnostic exceptions restricted to their annotated lines.
 
 Keep the package's actual contract local: PHP `^8.2`, the `RAN\WPBranchUpdater\V1` namespace, source paths, updater-specific tests, and justified runtime/security exceptions. Do not add a WordPress-version floor unless this package explicitly claims one, and do not copy shared rules back into local configuration.
 
-`composer check` is the ordinary deterministic PHP quality contract. It must retain strict Composer validation, shared PHPCS/PHPCompatibility checks, PHPStan, the existing architecture/archive/runner/journal/error-code and release workflow/classification tests, and the PHP syntax sweep. PHPCS governs all 62 tracked first-party PHP files, including the 21 test/fixture files and one maintenance script. The root ruleset discovers future PHP outside the earlier shipped roots; dependencies and generated proof output remain excluded. Standalone tests/scripts additionally use full PHPCompatibility through `.phpcs-cli-compat.xml`, without WordPress polyfill allowances. PHPStan checks both isolated production and all-maintained root profiles at level 8. Only root dependency directories are exempt from the maintained profile; tests and scripts are analyzed automatically. The effective file finder must match independently discovered PHP for each profile. New untracked root and nested product PHP are included automatically. The ordinary
-`test:analysis-bootstrap` regression exercises the real Composer analysis command
-with clean and deliberately invalid isolated bootstrap copies. PHPStan requires level 8 in both profiles. Preserve truthful array-shape contracts and explicit checks at native WordPress boundaries; do not hide diagnostics with broad exclusions or unchecked type assertions. The installed no-dev consumer proof remains a separate required CI lane.
+`composer check` retains strict Composer validation, shared PHPCS/PHPCompatibility,
+both level-8 PHPStan profiles, architecture/archive/runner/error-code and release
+workflow/classification tests, and the PHP syntax sweep. The root PHPCS ruleset
+discovers all first-party PHP. CLI tests and scripts also run through `.phpcs-cli-compat.xml`
+with full PHPCompatibility. The analysis file finder must match independent
+discovery for production and maintained PHP, including new root and nested files.
+`test:analysis-bootstrap` runs the real Composer analysis command against clean
+and deliberately invalid copies of shipped production code. Preserve truthful
+array-shape contracts and explicit checks at native WordPress boundaries. The
+installed no-dev consumer proof is a separate required CI lane.
 
 `composer lint:syntax` is the focused parser sweep; `composer standards` / `composer standards:fix` run PHPCS/PHPCBF; `composer analyze` retains blocking level 8; `composer test` aggregates the existing ordinary tests. Analysis runs both production and maintained profiles; both standards commands apply the common and standalone-compatibility rulesets.
 

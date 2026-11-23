@@ -10,12 +10,11 @@ final class BranchDeployment {
 	private ?AdmittedFailureReason $last_reason = null;
 
 	public function __construct(
-		private readonly StandaloneBranchRunner|AdmittedBranchRunner $runner,
-		private readonly BranchDeploymentDeclaration $declaration,
-		private readonly BranchDeploymentDeclaration|false $admitted
+		private readonly AdmittedBranchRunner $runner,
+		private readonly BranchDeploymentDeclaration $declaration
 	) {}
 
-	/** The durable standalone journal key, stable before and after deploy(). */
+	/** The durable admitted attempt key, stable before and after deploy(). */
 	public function attempt_id(): string {
 		return $this->declaration->attempt_id;
 	}
@@ -43,15 +42,13 @@ final class BranchDeployment {
 			$expected_identifier ?? $this->declaration->expected_identifier,
 			$allow_working_copy ?? $this->declaration->allow_working_copy
 		);
-		if ( false !== $this->admitted && (array) $deployment !== (array) $this->admitted ) {
+		if ( (array) $deployment !== (array) $this->declaration ) {
 			throw new \InvalidArgumentException( 'The admitted deployment terminal declaration does not match.' );
 		}
 		// A refused call (an already consumed admitted runner) never ran, so it has no reason of its own.
-		$started = $this->runner instanceof StandaloneBranchRunner || ! $this->runner->is_consumed();
+		$started = ! $this->runner->is_consumed();
 		try {
-			return $this->runner instanceof StandaloneBranchRunner
-				? $this->runner->execute( $deployment )
-				: $this->runner->run( $deployment );
+			return $this->runner->run( $deployment );
 		} finally {
 			$this->last_reason = $started ? $this->runner->last_reason() : null;
 		}

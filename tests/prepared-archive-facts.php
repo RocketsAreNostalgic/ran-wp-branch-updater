@@ -5,16 +5,11 @@ declare(strict_types=1);
 require dirname( __DIR__ ) . '/vendor/autoload.php';
 
 use RAN\WPBranchUpdater\V1\Archive\ArchiveOffer;
+use RAN\WPBranchUpdater\V1\Archive\ArchiveValidator;
 use RAN\WPBranchUpdater\V1\Archive\PreparedArchive;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedBranchArtifact;
-use RAN\WPBranchUpdater\V1\Contract\PackageExecutor;
 use RAN\WPBranchUpdater\V1\Contract\PreparedPackageArtifact;
-use RAN\WPBranchUpdater\V1\GitHubFixtureProvider;
 use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
-use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionFailure;
-use RAN\WPBranchUpdater\V1\Runtime\ProviderArchiveSource;
-use RAN\WPBranchUpdater\V1\Runtime\StandalonePackageExecutor;
-use RAN\WPBranchUpdater\V1\Runtime\StandaloneTargetFacts;
 
 $assert = static function ( bool $actual, string $message ): void {
 	if ( ! $actual ) {
@@ -51,7 +46,7 @@ $deployment = new BranchDeploymentDeclaration(
 	installed_identifier: null
 );
 
-$offer = static fn(): ArchiveOffer => new ArchiveOffer(
+$offer = static fn( ?Closure $verify_head = null ): ArchiveOffer => new ArchiveOffer(
 	provider: 'fixture',
 	repository_id: 'repository-id',
 	resolved_ref: 'abc123',
@@ -61,8 +56,28 @@ $offer = static fn(): ArchiveOffer => new ArchiveOffer(
 			throw new RuntimeException( 'Cannot acquire prepared archive fixture.' );
 		}
 	},
-	verify_head: static function (): void {}
+	verify_head: $verify_head ?? static function (): void {}
 );
+
+$verification_calls = 0;
+$offer(
+	static function () use ( &$verification_calls ): void {
+		++$verification_calls;
+	}
+)->verify_current_head();
+$assert( 1 === $verification_calls, 'archive offer invokes the verifier once' );
+
+$verification_failure = new RuntimeException( 'Source verification failed.' );
+try {
+	$offer(
+		static function () use ( $verification_failure ): void {
+			throw $verification_failure;
+		}
+	)->verify_current_head();
+	throw new LogicException( 'Archive offer suppressed the verification failure.' );
+} catch ( RuntimeException $actual ) {
+	$assert( $verification_failure === $actual, 'archive offer propagates the verifier exception unchanged' );
+}
 
 foreach ( array(
 	'plugin' => 'custom-main.php',
@@ -79,6 +94,70 @@ foreach ( array(
 $zip->open( $source, ZipArchive::CREATE | ZipArchive::OVERWRITE );
 $zip->addFromString( 'repository/demo/demo.php', $contents );
 $zip->close();
+
+$transport = $root . '/transport.zip';
+$assert( true === $zip->open( $transport, ZipArchive::CREATE | ZipArchive::OVERWRITE ), 'transport-limit fixture ZIP opens' );
+$zip->addFromString( 'repository/demo/demo.php', "<?php\n/* Plugin Name: Demo\nVersion: 1.2.3 */\n" );
+$zip->close();
+$transport_bytes = filesize( $transport );
+$compressed      = filesize( $source );
+if ( false === $transport_bytes || $transport_bytes < 2 || false === $compressed || $compressed < 1 || strlen( $contents ) <= 4 * $compressed ) {
+	throw new RuntimeException( 'Archive fixture sizes do not exercise their admission limits.' );
+}
+$limits        = array();
+$bounded_offer = static function ( string $fixture ) use ( &$limits ): ArchiveOffer {
+	return new ArchiveOffer(
+		'fixture',
+		'repository-id',
+		'abc123',
+		static function ( string $destination, int $maximum_artifact_bytes ) use ( $fixture, &$limits ): void {
+			$limits[] = $maximum_artifact_bytes;
+			$size     = filesize( $fixture );
+			if ( false === $size || $size > $maximum_artifact_bytes ) {
+				throw new RuntimeException( 'Synthetic transport reached its byte ceiling.' );
+			}
+			if ( ! copy( $fixture, $destination ) ) {
+				throw new RuntimeException( 'Cannot copy bounded fixture ZIP.' );
+			}
+		},
+		static function (): void {}
+	);
+};
+$bounded       = PreparedArchive::download_and_validate( $bounded_offer( $transport ), $deployment, $root . '/archives', $transport_bytes );
+$bounded->cleanup();
+
+try {
+	PreparedArchive::download_and_validate( $bounded_offer( $transport ), $deployment, $root . '/archives', $transport_bytes - 1 );
+	throw new LogicException( 'Over-limit transport was admitted.' );
+} catch ( RuntimeException $expected ) {
+	$assert( 'Synthetic transport reached its byte ceiling.' === $expected->getMessage(), 'a one-byte-short ceiling fails at acquisition' );
+}
+
+foreach (
+	array(
+		array( 0, 'Maximum artifact bytes is invalid.' ),
+		array( '536870912', 'Maximum artifact bytes is invalid.' ),
+		array( intdiv( PHP_INT_MAX, 4 ) + 1, 'Maximum artifact bytes is invalid for expanded archive validation.' ),
+	) as [$invalid_limit, $message]
+) {
+	try {
+		PreparedArchive::download_and_validate( $bounded_offer( $transport ), $deployment, $root . '/archives', $invalid_limit );
+		throw new LogicException( 'Invalid configured ceiling was admitted.' );
+	} catch ( RuntimeException $expected ) {
+		$assert( $expected->getMessage() === $message, 'invalid byte ceilings fail validation' );
+	}
+}
+$assert( array( $transport_bytes, $transport_bytes - 1 ) === $limits, 'the exact ceiling reaches acquisition once and invalid ceilings never reach it' );
+
+try {
+	PreparedArchive::download_and_validate( $bounded_offer( $source ), $deployment, $root . '/archives', $compressed );
+	throw new LogicException( 'Archive exceeding its expanded ceiling was admitted.' );
+} catch ( RuntimeException $expected ) {
+	$assert( ArchiveValidator::CODE_EXPANDED_TOO_LARGE === $expected->getCode(), 'the configured compressed ceiling also binds expanded size' );
+}
+$assert( array( $transport_bytes, $transport_bytes - 1, $compressed ) === $limits && array() === glob( $root . '/archives/*' ), 'expanded refusal follows acquisition and failed admissions leave no staged files' );
+// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Remove only the transport-limit fixture archive.
+unlink( $transport );
 
 $archive_type = new ReflectionClass( PreparedArchive::class );
 $constructor  = $archive_type->getConstructor();
@@ -111,71 +190,6 @@ try {
 	$assert( 'Prepared archive changed before use.' === $expected->getMessage(), 'clone fails custody after its shared file is removed' );
 }
 $assert( ! glob( $root . '/archives/*' ), 'successful prepared archive cleanup remains unchanged' );
-
-$prepared = ( new ProviderArchiveSource( new GitHubFixtureProvider( $source, 'abc123', 'repository-id' ), $root . '/archives' ) )->prepare( $deployment, null );
-$assert( $prepared instanceof PreparedArchive, 'provider source returns its validated archive owner directly' );
-$executor = new class() implements PackageExecutor {
-	public function target_directory( BranchDeploymentDeclaration $deployment ): string {
-		return __DIR__ . '/build/absent-target/' . $deployment->slug;
-	}
-
-	public ?PreparedArchive $preflight_archive = null;
-	public ?PreparedArchive $executed_archive  = null;
-
-	/** @return array{} */
-	public function preflight( BranchDeploymentDeclaration $deployment, PreparedArchive $archive ): array {
-		$archive->assert_unchanged();
-		$this->preflight_archive = $archive;
-		return array();
-	}
-
-	public function execute( BranchDeploymentDeclaration $deployment, PreparedArchive $archive ): void {
-		$archive->assert_unchanged();
-		$this->executed_archive = $archive;
-	}
-};
-$target   = new StandaloneTargetFacts( $executor );
-$admitted = new StandalonePackageExecutor( $executor, $target );
-$admitted->preflight( $deployment, $prepared );
-$assert( $admitted->execute( $deployment, null, $prepared )->is_successful(), 'custom standalone executor completes with direct archive owner' );
-$assert( $prepared === $executor->preflight_archive && $prepared === $executor->executed_archive, 'custom executor receives the same custody owner at both boundaries' );
-$prepared->cleanup();
-$assert(
-	array(
-		'identifier' => 'demo',
-		'version'    => '1.2.3',
-		'active'     => false,
-	) === $target->installed( $deployment ),
-	'standalone postconditions retain validated metadata after cleanup'
-);
-
-$fake = new class() implements AdmittedBranchArtifact {
-	public bool $touched = false;
-
-	public function resolved_ref(): string {
-		return 'abc123';
-	}
-
-	public function expected_version(): string {
-		return '1.2.3';
-	}
-
-	public function assert_unchanged(): void {
-		$this->touched = true;
-	}
-
-	public function cleanup(): void {
-		$this->touched = true;
-	}
-};
-try {
-	$admitted->preflight( $deployment, $fake );
-	$assert( false, 'standalone preflight must reject an arbitrary admitted artifact' );
-} catch ( RuntimeException $expected ) {
-	$assert( 'The standalone executor requires the admitted archive artifact.' === $expected->getMessage(), 'preflight keeps its concrete custody-owner boundary' );
-}
-$assert( CorePackageExecutionFailure::INVALID_REQUEST === $admitted->execute( $deployment, null, $fake )->get_failure(), 'standalone execution rejects a fake admitted artifact' );
-$assert( ! $fake->touched, 'fake artifact cannot authorize itself through its custody method' );
 
 $tampered = PreparedArchive::download_and_validate( $offer(), $deployment, $root . '/archives' );
 // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Standalone CLI fixture variable does not share WordPress runtime globals.
@@ -344,35 +358,21 @@ namespace RAN\WPBranchUpdater\V1\Archive {
 namespace {
 	require $argv[1];
 	$acquired = false;
-	$provider = new class( $acquired ) implements \RAN\WPBranchUpdater\V1\Contract\BranchProvider {
-		public function __construct( public bool &$acquired ) {}
-		public function supports_selected_commit(): bool { return false; }
-		public function prepare( \RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration $d ): \RAN\WPBranchUpdater\V1\Archive\ArchiveOffer {
-			$acquired =& $this->acquired;
-			return new \RAN\WPBranchUpdater\V1\Archive\ArchiveOffer(
-				provider: 'fixture',
-				repository_id: 'repository-id',
-				resolved_ref: 'abc123',
-				copy_to: static function ( string $destination, int $max ) use ( &$acquired ): void {
-					$acquired = '' !== $destination || $max >= 0;
-				},
-				verify_head: static function (): void {}
-			);
-		}
-	};
+	$offer = new \RAN\WPBranchUpdater\V1\Archive\ArchiveOffer(
+		'fixture', 'repository-id', 'abc123',
+		static function ( string $destination, int $max ) use ( &$acquired ): void { $acquired = '' !== $destination || $max >= 0; },
+		static function (): void {}
+	);
 	$deployment = new \RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration(
 		'entropy-failure', 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', 'abc123', 'install', 'demo', null
 	);
-	$source = new \RAN\WPBranchUpdater\V1\Runtime\ProviderArchiveSource( $provider, $argv[2] );
 	$stage = null;
 	try {
-		$source->prepare( $deployment, null );
-	} catch ( \RAN\WPBranchUpdater\V1\Runtime\AdmittedBranchStageFailure $e ) {
+		\RAN\WPBranchUpdater\V1\Archive\PreparedArchive::download_and_validate( $offer, $deployment, $argv[2] );
+	} catch ( \RuntimeException $e ) {
 		$stage = $e;
 	}
-	if ( ! $stage instanceof \RAN\WPBranchUpdater\V1\Runtime\AdmittedBranchStageFailure
-		|| 'archive_integrity_failed' !== $stage->outcome_code
-		|| \RAN\WPBranchUpdater\V1\Runtime\FailureReason::ARCHIVE_PREPARE_FAILED->value !== $stage->reason
+	if ( ! $stage instanceof \RuntimeException
 		|| $acquired
 	) {
 		fwrite( STDERR, 'Unexpected entropy failure classification' );
@@ -384,7 +384,7 @@ PHP,
 	$autoload_path,
 	$entropy_dir
 );
-$assert( 'OK' === $entropy_output, 'archive staging entropy failure must classify as archive_integrity_failed / archive_prepare_failed' );
+$assert( 'OK' === $entropy_output, 'archive staging entropy failure must fail before acquisition' );
 // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Remove entropy-failure fixture directory.
 rmdir( $entropy_dir );
 

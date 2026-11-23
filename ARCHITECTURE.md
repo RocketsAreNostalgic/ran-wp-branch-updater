@@ -41,13 +41,13 @@ Parallel names imply parallel responsibilities. Similar-looking positions in two
 The branch updater performs an explicitly requested deployment. Its consumer flow is:
 
 ```text
-bootstrap/configure
+admit attempt
 → declare plugin or theme
 → receive BranchDeployment
 → deploy()
 ```
 
-`Runtime\BranchUpdater` creates target-specific declarations. `Runtime\BranchDeployment` is the deployment handle. `Runtime\BranchDeploymentDeclaration` holds immutable execution facts. `Runtime\AdmittedBranchRunner` owns the ordered execution of one admitted attempt; `Runtime\StandaloneBranchRunner` composes the standalone package around it.
+`Runtime\BranchUpdater` binds a plugin or theme to the host's admitted declaration. `Runtime\BranchDeployment` is the deployment handle. `Runtime\BranchDeploymentDeclaration` holds immutable execution facts. `Runtime\AdmittedBranchRunner` owns the ordered execution of one admitted attempt.
 
 The runner preserves this security-sensitive ordering:
 
@@ -83,7 +83,7 @@ Its release domain also has a sealed provider/runtime trust model. Providers and
 
 Both packages treat WordPress Core as the installation owner. Package code may validate, admit, scope and verify the operation, but it does not replace the WordPress upgrader with a parallel installer.
 
-In the branch updater, `WordPress\WordPressPackageExecutor` adapts the deployment contract and `WordPress\WordPressCorePackageExecutor` owns the narrowly scoped Core call. `WordPress\WordPressUpdaterLock` participates in mutation exclusion without changing Core's installation ownership.
+The host adapts the deployment contract and calls `WordPress\WordPressCorePackageExecutor` for the narrowly scoped Core operation. `WordPress\WordPressUpdaterLock` participates in mutation exclusion without changing Core's installation ownership.
 
 ## Artifact and validation ownership
 

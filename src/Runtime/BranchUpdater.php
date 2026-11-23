@@ -16,13 +16,9 @@ use RAN\WPBranchUpdater\V1\WordPress\InstalledPackageIdentifier;
 final class BranchUpdater {
 	public const ADMITTED_API_VERSION = 4;
 	private function __construct(
-		private readonly StandaloneBranchRunner|AdmittedBranchRunner $runner,
-		private readonly BranchDeploymentDeclaration|false $admitted
+		private readonly AdmittedBranchRunner $runner,
+		private readonly BranchDeploymentDeclaration $admitted
 	) {}
-
-	public static function for_standalone( StandaloneBranchRunner $operation ): self {
-		return new self( $operation, false );
-	}
 
 	/** Create the single runner allowed to complete one already-admitted attempt. */
 	public static function for_admitted_attempt(
@@ -51,37 +47,33 @@ final class BranchUpdater {
 			throw new \InvalidArgumentException( 'The plugin file and package slug disagree.' );
 		}
 		$slug = $package_slug ?? $this->plugin_slug( (string) $plugin_file );
-		return $this->pending( 'plugin', $repository, $repository_id, $branch, $slug, $subdirectory, false === $this->admitted ? $plugin_file : ( $plugin_file ?? $this->admitted->installed_identifier ) );
+		return $this->pending( 'plugin', $repository, $repository_id, $branch, $slug, $subdirectory, $plugin_file ?? $this->admitted->installed_identifier );
 	}
 
 	public function theme( string $repository, string $repository_id, string $branch, string $stylesheet, ?string $subdirectory = null ): BranchDeployment {
-		return $this->pending( 'theme', $repository, $repository_id, $branch, $stylesheet, $subdirectory, false === $this->admitted ? $stylesheet : $this->admitted->installed_identifier );
+		return $this->pending( 'theme', $repository, $repository_id, $branch, $stylesheet, $subdirectory, $this->admitted->installed_identifier );
 	}
 
 	private function pending( string $type, string $repository, string $repository_id, string $branch, string $slug, ?string $subdirectory, ?string $installed_identifier ): BranchDeployment {
-		if ( false === $this->admitted && 'plugin' === $type && null === $installed_identifier ) {
-			throw new \InvalidArgumentException( 'A standalone plugin deployment requires its installed plugin file.' );
-		}
-		$bound      = false !== $this->admitted;
 		$deployment = new BranchDeploymentDeclaration(
-			$bound ? $this->admitted->attempt_id : bin2hex( random_bytes( 16 ) ),
+			$this->admitted->attempt_id,
 			$type,
 			$slug,
 			$repository,
 			$repository_id,
 			$branch,
-			$bound ? $this->admitted->expected_head : null,
-			$bound ? $this->admitted->operation : 'update',
+			$this->admitted->expected_head,
+			$this->admitted->operation,
 			PackageDirectory::normalize( $subdirectory ),
 			$installed_identifier,
-			$bound ? $this->admitted->selected_commit : null,
-			$bound ? $this->admitted->expected_identifier : null,
-			$bound && $this->admitted->allow_working_copy
+			$this->admitted->selected_commit,
+			$this->admitted->expected_identifier,
+			$this->admitted->allow_working_copy
 		);
-		if ( $bound && (array) $deployment !== (array) $this->admitted ) {
+		if ( (array) $deployment !== (array) $this->admitted ) {
 			throw new \InvalidArgumentException( 'The admitted deployment declaration does not match.' );
 		}
-		return new BranchDeployment( $this->runner, $deployment, $this->admitted );
+		return new BranchDeployment( $this->runner, $deployment );
 	}
 
 	private function plugin_slug( string $plugin_file ): string {

@@ -173,13 +173,11 @@ $allowed_origins = array(
 	'$name',
 	'$changed',
 	'$parent_failure',
-	'$cause?->detail',
 	'$result->get_detail()',
 	'$this->detail',
 	'$this->error_detail( $result )',
 	'$failure instanceof \Error ? \'php_error\' : \'exception\'',
 	'$failure instanceof ReasonedFailure ? \'archive_changed\' : \'input_invalid\'',
-	'$failure->getCode() >= 100 && $failure->getCode() <= 599 ? \'http_\' . $failure->getCode() : null',
 );
 // Argument index of the detail for each constructor, factory or wrapper helper. Class names match
 // `new X(` however it is qualified; subclasses found in src/ and `new self(` / `new static(` inside a
@@ -282,7 +280,7 @@ foreach ( $src_files as $source_path => $source ) {
 			$assert( in_array( $origin, $allowed_origins, true ), $file->getFilename() . ': detail origin is not allow-listed: ' . $origin );
 			preg_match_all( '/\'([^\']*)\'/', $origin, $literals );
 			foreach ( $literals[1] as $literal_text ) {
-				$assert( 'http_' === $literal_text || AdmittedFailureReason::screen_detail( $literal_text ) === $literal_text, 'allow-listed literal survives the screen: ' . $literal_text );
+				$assert( AdmittedFailureReason::screen_detail( $literal_text ) === $literal_text, 'allow-listed literal survives the screen: ' . $literal_text );
 			}
 		}
 	}

@@ -33,6 +33,25 @@ if ( 'demo/demo.php' !== InstalledPackageIdentifier::normalize( ' demo/demo.php 
 	throw new RuntimeException( 'Installed identifier normalization changed.' );
 }
 
+foreach ( array( '', 'demo/../demo.php', 'demo/main.php ', '/demo/main.php', 'demo/main.PHP', 'demo/' . str_repeat( 'a', 183 ) . '.php', 'other/main.php', 'demo/nested/main.php', 'demo\\main.php' ) as $identifier ) {
+	try {
+		new BranchDeploymentDeclaration( 'invalid-target', 'plugin', 'demo', 'fixture/repository', 'fixture', 'main', null, operation: 'install', expected_identifier: $identifier );
+		throw new LogicException( 'Invalid exact installation identifier was admitted.' );
+	} catch ( RuntimeException $expected ) {
+		if ( 'Invalid expected installation identifier.' !== $expected->getMessage() ) {
+			throw $expected;
+		}
+	}
+}
+try {
+	new BranchDeploymentDeclaration( 'update-target', 'plugin', 'demo', 'fixture/repository', 'fixture', 'main', null, expected_identifier: 'demo/main.php' );
+	throw new LogicException( 'An update was admitted with an initial-install identifier.' );
+} catch ( RuntimeException $expected ) {
+	if ( 'Invalid expected installation identifier.' !== $expected->getMessage() ) {
+		throw $expected;
+	}
+}
+
 foreach ( array(
 	'',
 	'/demo/demo.php',

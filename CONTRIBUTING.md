@@ -2,7 +2,8 @@
 
 This package is in a pre-release development line. Keep every change suitable for public review. Use a Conventional Commit pull-request title so an ordinary squash merge uses that title as the subject consumed by Release Please, rather than the individual branch commit subjects. Release-significant changes must use a visible type from this repository's release configuration (including `deps:` for its production-dependency policy), or a supported breaking classification; see [RELEASING.md](RELEASING.md). A deliberately approved merge commit preserves individual commits, so their Conventional Commit subjects remain release inputs.
 
-Use PHP 8.2 and Node.js 24.21.0. Install Composer dependencies, then run the repository gate:
+Use PHP 8.2, Node.js 24.21.0 and Python 3 for the analysis fixture cleanup.
+Install Composer dependencies, then run the repository gate:
 
 ```sh
 composer install --no-interaction --prefer-dist
@@ -13,7 +14,7 @@ Focused commands use the shared PHP command contract:
 
 | Command | Scope |
 | --- | --- |
-| `composer lint:syntax` | Parser checks for `src/`, `tests/`, `scripts/` and `bootstrap.php` |
+| `composer lint:syntax` | Parser checks for `src/`, `tests/` and `scripts/` |
 | `composer standards` | Common PHPCS/WPCS/PHPCompatibility over all first-party PHP; full PHPCompatibility additionally over standalone `tests/` and `scripts/` |
 | `composer standards:fix` | PHPCBF with both standards rulesets and their matching source paths |
 | `composer analyze` | Blocking PHPStan level 8 over both isolated production and all-maintained PHP profiles |
@@ -23,9 +24,8 @@ Focused commands use the shared PHP command contract:
 manifest validation. `standards:fix` is a manual source edit. The former
 `composer lint` command is now `composer lint:syntax`.
 `composer test:analysis-bootstrap` runs the actual analysis command against an
-isolated bootstrap copy: the original must pass and an inserted undefined
-function must produce the expected diagnostic in that file. This prevents the
-installed bootstrap silently dropping out of analysis scope.
+isolated copy of a shipped class. The original must pass and an inserted
+undefined function must produce the expected diagnostic in that class.
 Individual `test:*` commands remain available for focused work. The installed
 consumer proof below stays outside this aggregate because it creates and
 resolves a separate Composer project; CI still requires it.
@@ -33,14 +33,14 @@ resolves a separate Composer project; CI still requires it.
 For changes to runtime PHP or Composer metadata, also prove a separate installed Composer consumer:
 
 ```sh
-consumer="$(mktemp -d)"
-trap 'rm -rf "$consumer"' EXIT
+consumer="$(mktemp -d /tmp/branch-consumer.XXXXXXXX)"
 php scripts/prepare-consumer-fixture.php "$consumer" "$PWD"
 composer --working-dir="$consumer" update --no-dev --no-interaction --prefer-dist --no-progress
 BRANCH_UPDATER_CONSUMER_ROOT="$consumer" php tests/consumer-install.php
 ```
 
-The external consumer proof verifies the installed PSR-4 package and bootstrap without relying on a package-private `vendor` directory.
+The consumer proof resolves the PSR-4 package from the consumer's autoloader and
+runs a journaled outcome through the admitted entry point.
 
 ## Architecture rules
 
@@ -75,8 +75,8 @@ All shipped owned methods enter `RANOwnedMethods`, including declarations
 upstream WPCS skips because of inheritance. The connected cohort migrates the
 last 32 method declarations, 10 properties and 26 parameters with all owned
 callers. No owned-method naming deferrals remain. Variable naming is enforced
-across all 39 source files and `bootstrap.php`; three precise external
-`ZipArchive::$numFiles` exceptions preserve the PHP extension API.
+across all shipped source. Precise `ZipArchive::$numFiles` exceptions preserve
+the PHP extension API.
 
 `composer test:naming`, included in `composer test` and `composer check`, runs
 unchanged/injected pairs through the actual repository rules without rewriting
@@ -108,10 +108,9 @@ substitute for it.
 
 ## Standalone development PHP coverage
 
-Common standards now select all **62 tracked PHP files**, up from the former
-37 runtime files: 39 `src/` files, `bootstrap.php`, 21 test/fixture files and one
-consumer-fixture script. Root discovery includes future maintained PHP; vendor,
-node dependencies and generated `tests/build/` proof artifacts are excluded.
+Common standards select first-party PHP across `src/`, `tests/` and `scripts/`.
+Root discovery includes future maintained PHP. Vendor, node dependencies and
+generated `tests/build/` proof artifacts are excluded.
 The standalone compatibility ruleset selects tests/scripts at the same PHP 8.2
 floor with full PHPCompatibility, because these commands do not load WordPress
 polyfills. Both `standards` and `standards:fix` execute both rulesets; the fixer
@@ -144,11 +143,10 @@ lines, so unrelated calls in the same file remain checked:
 | --- | --- | --- |
 | `Archive/ArchiveValidator.php` | Bounded ZIP-entry reads, CRC/expanded-size validation and stream closure | Archive and prepared-archive contracts |
 | `Archive/PreparedArchive.php` | Private native permissions, device/inode custody, identity-checked deletion; quiet missing-path `lstat` rejection | Prepared-archive, archive and runner contracts |
-| `Persistence/FileAttemptStore.php` | Descriptor locking, JSON throwing serialization, sibling-file atomic replacement and validated readback | Journal invariants, runner and hard-stop/recovery contracts |
-| `Persistence/FileMutationLock.php` | Keep the exact `flock` descriptor through the callback and release it in order | Runner and hard-stop contracts |
 
-`test:naming` also injects an unrelated native JSON call into each of these four
-source files and requires the real checker to reject it. A separate suppressed
+`test:naming` injects an unrelated native JSON call into each of these source
+files and into `AdmittedBranchRunner.php`. It requires the checker to reject all
+three probes. A separate suppressed
 expression probe in `PreparedArchive` must fail NoSilencedErrors. These controls
 protect against restoring either former file-wide exemption. Executable
 operations, error suppression and failure ordering are unchanged.
@@ -161,20 +159,17 @@ profile exempts root `tests/`, `scripts/`, `vendor/`, `node_modules/` and Git me
 development fixtures, maintenance tooling, external dependencies and generated
 repository metadata are distinct roles, not an inventory of product files.
 A production `src/tests/` directory remains included. The independent filesystem
-inventory is compared with locked PHPStan's effective file finder. The existing
-bootstrap regression also proves that new untracked root/nested/split contracts
+inventory is compared with locked PHPStan's effective file finder. The analysis
+regression also proves that new untracked root/nested/split contracts
 produce real analysis diagnostics. Uppercase extensions and PHP entrypoints outside lowercase `.php` fail for an explicit scope decision rather than disappearing.
-The 40 current production PHP files remain clean at required level 8. The second,
-all-maintained profile also includes tests and scripts automatically, covering all
-62 maintained PHP files at level 8. Its only exclusions are root `vendor/`,
+The all-maintained profile includes tests and scripts automatically at level 8.
+Its only exclusions are root `vendor/`,
 `node_modules/` and Git metadata. Both profiles run through `composer analyze`;
 the maintained controls additionally prove diagnostics in new root, test and
 script PHP files and protect the reviewed analysis-exemption inventory. Both
 profiles reject downgrades to levels 5, 6 and 7.
 
-The installed WordPress proof also checks a damaged theme whose missing stylesheet
-makes WordPress return `false` for its version. The adapter rejects that value
-before exposing installed facts. Focused adapter controls check transient
+Focused adapter controls check transient
 normalization, missing update offers and invalid filesystem objects; these direct
 callback checks supplement the native plugin/theme installation and update proofs.
 Native `stdClass` transients keep their identity. Other objects are copied into a
@@ -217,11 +212,12 @@ intentionally leaves its installed fixture packages for inspection. Never point
 it at a maintained site. Keep the site outside this repository so generated
 WordPress files do not enter maintained-source discovery.
 
-The proof loads this checkout's Composer autoloader and constructs Branch's
-`WordPressPackageExecutor` without an injected executor. Controlled local ZIPs
-exercise plugin and theme installation and updating, nested source selection,
-installed version/payload checks, native download vetoes,
-foreign completion rejection, automatic-update refusal and hook/cron restoration.
+The proof loads this checkout's Composer autoloader and uses
+`WordPressCorePackageExecutor` directly and through test-owned admitted adapters.
+Controlled local ZIPs exercise plugin and theme installation, updating and
+selected-commit rollback, branch-head downgrade refusal, nested source selection,
+installed version and payload checks, native download vetoes, foreign completion
+rejection, automatic-update refusal and hook/cron restoration.
 It uses Branch's `WordPressUpdaterLock` against the installed options table for
 insertion, contention, exact-token release, stale takeover, cache invalidation,
 operation exceptions and real SQL failure. It does not certify Core's adapters.

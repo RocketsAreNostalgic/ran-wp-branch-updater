@@ -18,9 +18,6 @@ final readonly class CorePackageExecutionResult {
 	public function is_successful(): bool {
 		return null === $this->failure;
 	}
-	public function was_restored_by_wordpress(): bool {
-		return CorePackageExecutionFailure::WORDPRESS_RESTORED === $this->failure;
-	}
 	public function get_failure(): ?CorePackageExecutionFailure {
 		return $this->failure;
 	}

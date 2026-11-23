@@ -11,8 +11,11 @@ $cases         = array(
 
 	array( 'src/Archive/ArchiveValidator.php', 'final class ArchiveValidator {', 'final class ArchiveValidator { public function native_operation_probe(): void { json_encode( array() ); }', 'WordPress.WP.AlternativeFunctions.json_encode_json_encode' ),
 	array( 'src/Archive/PreparedArchive.php', 'final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchArtifact {', 'final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchArtifact { public function native_operation_probe(): void { json_encode( array() ); }', 'WordPress.WP.AlternativeFunctions.json_encode_json_encode' ),
-	array( 'src/Persistence/FileAttemptStore.php', 'final class FileAttemptStore {', 'final class FileAttemptStore { public function native_operation_probe(): void { json_encode( array() ); }', 'WordPress.WP.AlternativeFunctions.json_encode_json_encode' ),
-	array( 'src/Persistence/FileMutationLock.php', 'final class FileMutationLock implements MutationLock {', 'final class FileMutationLock implements MutationLock { public function native_operation_probe(): void { json_encode( array() ); }', 'WordPress.WP.AlternativeFunctions.json_encode_json_encode' ),
+	array( 'src/Runtime/AdmittedBranchRunner.php', 'final class AdmittedBranchRunner {', 'final class AdmittedBranchRunner { public function native_operation_probe(): void { json_encode( array() ); }', 'WordPress.WP.AlternativeFunctions.json_encode_json_encode' ),
+	array( 'src/Contract/AdmittedAttemptJournal.php', 'function record_resolved_ref(', 'function recordResolvedRef(', $method_code ),
+	array( 'src/Runtime/AdmittedBranchRunner.php', 'function is_consumed(', 'function isConsumed(', $method_code ),
+	array( 'src/Runtime/AdmittedBranchRunner.php', '$primary_outcome', '$primaryOutcome', $variable_code ),
+	array( 'src/Runtime/AdmittedBranchRunner.php', 'null !== $deployment->selected_commit', '$deployment->selected_commit !== null', 'WordPress.PHP.YodaConditions.NotYoda' ),
 	array( 'src/Contract/AdmittedTargetFacts.php', 'function frozen_target(', 'function frozenTarget(', $method_code ),
 	array( 'src/Archive/PreparedArchive.php', 'function download_and_validate(', 'function downloadAndValidate(', $method_code ),
 	array( 'src/Runtime/BranchUpdater.php', 'function for_admitted_attempt(', 'function forAdmittedAttempt(', $method_code ),
@@ -24,27 +27,18 @@ $cases         = array(
 	array( 'src/Archive/ArchiveValidator.php', 'phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase', 'external-contract WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase', 'WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase' ),
 	array( 'src/WordPress/WordPressCorePackageExecutor.php', 'phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase', 'external-contract WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase', 'WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase' ),
 	array( 'src/WordPress/WordPressUpdaterLock.php', 'phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped', 'reviewed-exception WordPress.Security.EscapeOutput.ExceptionNotEscaped', 'WordPress.Security.EscapeOutput.ExceptionNotEscaped' ),
-	array( 'src/WordPress/WordPressPackageExecutor.php', 'phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped', 'reviewed-exception WordPress.Security.EscapeOutput.ExceptionNotEscaped', 'WordPress.Security.EscapeOutput.ExceptionNotEscaped' ),
-	array( 'src/Persistence/FileAttemptStore.php', 'phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped', 'reviewed-exception WordPress.Security.EscapeOutput.ExceptionNotEscaped', 'WordPress.Security.EscapeOutput.ExceptionNotEscaped' ),
 	array( 'src/Archive/ArchiveValidator.php', 'phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped', 'reviewed-exception WordPress.Security.EscapeOutput.ExceptionNotEscaped', 'WordPress.Security.EscapeOutput.ExceptionNotEscaped' ),
 	array( 'src/Archive/PreparedArchive.php', 'phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped', 'reviewed-exception WordPress.Security.EscapeOutput.ExceptionNotEscaped', 'WordPress.Security.EscapeOutput.ExceptionNotEscaped' ),
 	array( 'src/Archive/PreparedArchive.php', '1 !== $s[\'nlink\']', '$s[\'nlink\'] !== 1', 'WordPress.PHP.YodaConditions.NotYoda' ),
-	array( 'src/Persistence/FileAttemptStore.php', '( $r[\'id\'] ?? null ) !== $id', '$id !== ( $r[\'id\'] ?? null )', 'WordPress.PHP.YodaConditions.NotYoda' ),
 
 	array( 'src/WordPress/WordPressCorePackageExecutor.php', 'phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed', 'reviewed-exception Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed', 'Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed' ),
 	array( 'src/Runtime/AdmittedBranchStageFailure.php', 'phpcs:ignore Generic.CodeAnalysis.UselessOverridingMethod.Found', 'reviewed-exception Generic.CodeAnalysis.UselessOverridingMethod.Found', 'Generic.CodeAnalysis.UselessOverridingMethod.Found' ),
 	array( 'src/WordPress/WordPressCorePackageExecutor.php', '$parent_path', '$parent', 'Universal.NamingConventions.NoReservedKeywordParameterNames.parentFound' ),
 
-	array( 'bootstrap.php', '$archive_directory', '$archiveDirectory', $variable_code ),
-	array( 'bootstrap.php', '$maximum_artifact_bytes', '$maximumArtifactBytes', $variable_code ),
 	array( 'src/Archive/ArchiveValidator.php', 'function verify_entry_contents(', 'function verifyEntryContents(', $method_code ),
-	array( 'src/Persistence/FileAttemptStore.php', 'function recover_stopped(', 'function recoverStopped(', $method_code ),
 	array( 'src/Runtime/CorePackageExecutionResult.php', 'function is_successful(', 'function isSuccessful(', $method_code ),
 	array( 'src/WordPress/WordPressCorePackageExecutor.php', 'function execute_install(', 'function executeInstall(', $method_code ),
 	array( 'src/WordPress/WordPressUpdaterLock.php', 'function contention_failure(', 'function contentionFailure(', $method_code ),
-	array( 'src/Persistence/FileAttemptJournal.php', 'function record_resolved_ref(', 'function recordResolvedRef(', $method_code ),
-	array( 'src/Persistence/FileMutationLock.php', 'function run(', 'function regressionProbe(', $method_code ),
-	array( 'src/Persistence/FileAttemptJournal.php', '$attempt_id', '$attemptId', $variable_code ),
 );
 
 /**

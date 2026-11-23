@@ -3,94 +3,55 @@
 
 declare(strict_types=1);
 
-$consumer = getenv( 'BRANCH_UPDATER_CONSUMER_ROOT' );
-if ( ! is_string( $consumer ) || '' === $consumer ) {
-	throw new RuntimeException( 'BRANCH_UPDATER_CONSUMER_ROOT is required.' );
-}
+use RAN\WPBranchUpdater\V1\Archive\ArchiveValidator;
+use RAN\WPBranchUpdater\V1\Contract\AdmittedArchiveSource;
+use RAN\WPBranchUpdater\V1\Contract\AdmittedAttemptJournal;
+use RAN\WPBranchUpdater\V1\Contract\AdmittedBranchArtifact;
+use RAN\WPBranchUpdater\V1\Contract\AdmittedPackageExecutor;
+use RAN\WPBranchUpdater\V1\Contract\AdmittedTargetFacts;
+use RAN\WPBranchUpdater\V1\Contract\MutationLock;
+use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
+use RAN\WPBranchUpdater\V1\Runtime\BranchUpdater;
+use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionResult;
 
-$autoload  = $consumer . '/vendor/autoload.php';
-$bootstrap = $consumer . '/vendor/ran/wp-branch-updater/bootstrap.php';
-if ( ! is_file( $autoload ) || ! is_file( $bootstrap ) ) {
+$consumer = getenv( 'BRANCH_UPDATER_CONSUMER_ROOT' );
+if ( ! is_string( $consumer ) || '' === $consumer || ! is_file( $consumer . '/vendor/autoload.php' ) ) {
 	throw new RuntimeException( 'Consumer installation is incomplete.' );
 }
+$consumer = realpath( $consumer );
+if ( false === $consumer ) {
+	throw new RuntimeException( 'Consumer root cannot be resolved.' );
+}
+require $consumer . '/vendor/autoload.php';
 
-require $autoload;
-
-if ( ! class_exists( RAN\WPBranchUpdater\V1\Runtime\BranchUpdater::class ) ) {
-	throw new RuntimeException( 'Composer did not load the branch updater source.' );
-}
-if ( ! class_exists( RAN\UpdaterSupport\V1\ArchiveSafety::class ) || ! class_exists( RAN\UpdaterSupport\V1\TargetWorkingCopy::class ) || ! class_exists( RAN\UpdaterSupport\V1\PackageDirectory::class ) ) {
-	throw new RuntimeException( 'Composer did not load updater support.' );
-}
-$archive_contract = new ReflectionClass( RAN\WPBranchUpdater\V1\Archive\PreparedArchive::class );
-if ( ! $archive_contract->implementsInterface( RAN\WPBranchUpdater\V1\Contract\AdmittedBranchArtifact::class )
-	|| ! $archive_contract->implementsInterface( RAN\WPBranchUpdater\V1\Contract\PreparedPackageArtifact::class )
-) {
-	throw new RuntimeException( 'Installed prepared archive must directly implement both archive contracts.' );
-}
-if ( class_exists( 'RAN\\WPBranchUpdater\\V1\\Archive\\PreparedArchiveArtifact' ) ) {
-	throw new RuntimeException( 'Installed package retains the retired archive wrapper.' );
-}
-if (
-	class_exists( RAN\WPBranchUpdater\V1\GitHubFixtureProvider::class )
-	|| class_exists( RAN\WPBranchUpdater\V1\BitbucketFixtureProvider::class )
-	|| class_exists( RAN\WPBranchUpdater\V1\RecordingExecutor::class )
-	|| class_exists( RAN\WPBranchUpdater\V1\HeaderFormattingFixtures::class )
-) {
-	throw new RuntimeException( 'Consumer installation loaded test-only fixture classes.' );
-}
-
-foreach ( array( RAN\WPBranchUpdater\V1\Runtime\BranchUpdater::class, RAN\UpdaterSupport\V1\ArchiveSafety::class, RAN\UpdaterSupport\V1\TargetWorkingCopy::class, RAN\UpdaterSupport\V1\PackageDirectory::class ) as $class ) {
+foreach ( array( BranchUpdater::class, RAN\UpdaterSupport\V1\ArchiveSafety::class, RAN\UpdaterSupport\V1\TargetWorkingCopy::class, RAN\UpdaterSupport\V1\PackageDirectory::class ) as $class ) {
 	$file = ( new ReflectionClass( $class ) )->getFileName();
 	if ( ! is_string( $file ) || ! str_starts_with( $file, $consumer . '/vendor/' ) || is_link( $file ) ) {
 		throw new RuntimeException( 'Composer did not load an installed regular package file.' );
 	}
 }
-// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Read only the local installed fixture or checked source bytes; no WordPress runtime is loaded.
-if ( str_contains( (string) file_get_contents( $bootstrap ), 'vendor/autoload' ) ) {
-	throw new RuntimeException( 'Installed bootstrap loads a package-private autoloader.' );
-}
-
-$configure = require $bootstrap;
-if ( ! $configure instanceof Closure ) {
-	throw new RuntimeException( 'Installed bootstrap did not return its configuration closure.' );
-}
-
-$provider = new class() implements RAN\WPBranchUpdater\V1\Contract\BranchProvider {
-	public function supports_selected_commit(): bool {
-		return false;
+foreach ( array( 'Contract\\BranchProvider', 'Contract\\PackageExecutor', 'Persistence\\FileAttemptStore', 'Persistence\\FileAttemptJournal', 'Persistence\\FileMutationLock', 'Runtime\\StandaloneBranchRunner', 'Runtime\\StandalonePackageExecutor', 'Runtime\\StandaloneTargetFacts', 'Runtime\\ProviderArchiveSource', 'WordPress\\WordPressPackageExecutor', 'Archive\\PreparedArchiveArtifact', 'GitHubFixtureProvider', 'BitbucketFixtureProvider', 'RecordingExecutor', 'HeaderFormattingFixtures' ) as $retired ) {
+	$name = 'RAN\\WPBranchUpdater\\V1\\' . $retired;
+	if ( class_exists( $name ) || interface_exists( $name ) ) {
+		throw new RuntimeException( 'Installed package contains a retired or development-only declaration.' );
 	}
-	// phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found -- The non-acquiring consumer stub retains the BranchProvider prepare signature.
-	public function prepare( RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration $deployment ): RAN\WPBranchUpdater\V1\Archive\ArchiveOffer {
-		throw new RuntimeException( 'The consumer smoke must not prepare an archive.' );
+}
+if ( in_array( 'for_standalone', array_map( static fn( ReflectionMethod $method ): string => $method->getName(), ( new ReflectionClass( BranchUpdater::class ) )->getMethods() ), true ) || is_file( $consumer . '/vendor/ran/wp-branch-updater/bootstrap.php' ) || class_exists( 'PHPUnit\\Framework\\TestCase' ) ) {
+	throw new RuntimeException( 'Installed package contains retired or development-only code.' );
+}
+foreach ( array( 'phpcompatibility/php-compatibility', 'phpcompatibility/phpcompatibility-paragonie', 'phpcompatibility/phpcompatibility-wp', 'phpstan/phpstan', 'ran/coding-standards', 'szepeviktor/phpstan-wordpress' ) as $dev_package ) {
+	if ( Composer\InstalledVersions::isInstalled( $dev_package ) ) {
+		throw new RuntimeException( 'Consumer installation includes a development dependency.' );
 	}
-};
-$private  = $consumer . '/private';
-// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_mkdir -- Standalone CLI proof creates or cleans only its isolated local fixture files with native filesystem semantics.
-if ( ! mkdir( $private, 0700 ) ) {
-	throw new RuntimeException( 'Consumer private state directory could not be created.' );
 }
-$state    = $private . '/attempts.json';
-$branches = $configure( $provider, new RAN\WPBranchUpdater\V1\Persistence\FileAttemptStore( $state ), $consumer . '/private/archives' );
-if ( ! $branches instanceof RAN\WPBranchUpdater\V1\Runtime\BranchUpdater ) {
-	throw new RuntimeException( 'Installed bootstrap did not configure the branch package.' );
-}
-$package_facts = new ReflectionObject( $branches );
-$runner        = $package_facts->getProperty( 'runner' )->getValue( $branches );
-if ( ! $runner instanceof RAN\WPBranchUpdater\V1\Runtime\StandaloneBranchRunner ) {
-	throw new RuntimeException( 'Installed bootstrap did not configure the standalone runner.' );
-}
-$runner_facts = new ReflectionObject( $runner );
-if (
-	! $runner_facts->getProperty( 'executor' )->getValue( $runner ) instanceof RAN\WPBranchUpdater\V1\WordPress\WordPressPackageExecutor
-	|| ! $runner_facts->getProperty( 'lock' )->getValue( $runner ) instanceof RAN\WPBranchUpdater\V1\WordPress\WordPressUpdaterLock
-) {
-	throw new RuntimeException( 'Installed bootstrap did not retain its default executor and lock.' );
+$archive_contract = new ReflectionClass( RAN\WPBranchUpdater\V1\Archive\PreparedArchive::class );
+if ( ! $archive_contract->implementsInterface( AdmittedBranchArtifact::class ) || ! $archive_contract->implementsInterface( RAN\WPBranchUpdater\V1\Contract\PreparedPackageArtifact::class ) ) {
+	throw new RuntimeException( 'Installed prepared archive must implement both archive contracts.' );
 }
 
-// Exercise installed production parsing without loading development-only fixture support.
+// Parse the installed package's headers without WordPress or its development stubs.
 foreach ( array( 'plugin', 'theme' ) as $package_type ) {
-	$header_path = $private . '/' . $package_type . '.zip';
+	$header_path = $consumer . '/headers-' . $package_type . '.zip';
 	$zip         = new ZipArchive();
 	if ( true !== $zip->open( $header_path, ZipArchive::CREATE | ZipArchive::OVERWRITE ) ) {
 		throw new RuntimeException( 'Installed header fixture ZIP could not open.' );
@@ -98,56 +59,75 @@ foreach ( array( 'plugin', 'theme' ) as $package_type ) {
 	$label = 'plugin' === $package_type ? 'Plugin Name' : 'Theme Name';
 	$zip->addFromString( 'repository/demo/' . ( 'plugin' === $package_type ? 'demo.php' : 'style.css' ), '<?php /* ' . $label . ": Demo */\r/* Version: 1.2.3 ?> ignored" );
 	$zip->close();
-	$declaration = new RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration( 'consumer-header-' . $package_type, $package_type, 'demo', 'synthetic/demo', 'fixture', 'main', null, 'install', 'demo' );
-	$inspection  = ( new RAN\WPBranchUpdater\V1\Archive\ArchiveValidator() )->validate( $header_path, $declaration, null, 1048576, 4194304, '6.5' );
-	if ( '1.2.3' !== $inspection['expected_version'] ) {
-		throw new RuntimeException( 'Installed package did not apply WordPress header formatting.' );
-	}
-	// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Delete only the synthetic ZIP created under this separate consumer's private fixture directory.
-	unlink( $header_path );
-}
-
-// Reflection retains named argument binding for the installed, dynamically loaded closure.
-$named        = ( new ReflectionFunction( $configure ) )->invokeArgs(
-	array(
-		'provider'               => $provider,
-		'attempts'               => new RAN\WPBranchUpdater\V1\Persistence\FileAttemptStore( $state ),
-		'archive_directory'      => $private . '/named-archives',
-		'maximum_artifact_bytes' => 134217728,
-	)
-);
-$named_runner = ( new ReflectionObject( $named ) )->getProperty( 'runner' )->getValue( $named );
-if ( ! $named_runner instanceof RAN\WPBranchUpdater\V1\Runtime\StandaloneBranchRunner ) {
-	throw new RuntimeException( 'Named configuration did not create a standalone runner.' );
-}
-$named_facts = new ReflectionObject( $named_runner );
-if (
-	$private . '/named-archives' !== $named_facts->getProperty( 'archive_directory' )->getValue( $named_runner )
-	|| 134217728 !== $named_facts->getProperty( 'maximum_artifact_bytes' )->getValue( $named_runner )
-) {
-	throw new RuntimeException( 'Installed bootstrap did not forward its named arguments.' );
-}
-
-$installed_store = new RAN\WPBranchUpdater\V1\Persistence\FileAttemptStore( $state );
-$installed_store->begin( new RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration( '01', 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', null ) );
-$installed_store->finish( '01', 'failed', 'provider_failed' );
-$installed_record = $installed_store->get( '01' );
-// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Compare synthetic consumer journal bytes across unsupported input rejection.
-$installed_bytes = file_get_contents( $state );
-if ( ! is_string( $installed_bytes ) ) {
-	throw new RuntimeException( 'Installed consumer journal cannot be read.' );
-}
-try {
-	$installed_store->begin( new RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration( '123', 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', null ) );
-	throw new RuntimeException( 'Installed file store accepted an integer-coercible attempt ID.' );
-} catch ( RuntimeException $expected ) {
-	if ( 'Attempt ID cannot be stored as a string journal key.' !== $expected->getMessage() ) {
-		throw $expected;
+	try {
+		$declaration = new BranchDeploymentDeclaration( 'consumer-header-' . $package_type, $package_type, 'demo', 'synthetic/demo', 'fixture', 'main', null, 'install', 'demo' );
+		$inspection  = ( new ArchiveValidator() )->validate( $header_path, $declaration, null, 1048576, 4194304, '6.5' );
+		if ( '1.2.3' !== $inspection['expected_version'] ) {
+			throw new RuntimeException( 'Installed package did not apply WordPress header formatting.' );
+		}
+	} finally {
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Delete only the synthetic ZIP created in this separate consumer fixture.
+		unlink( $header_path );
 	}
 }
-// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Verify the installed store preserves exact journal bytes and existing records.
-if ( file_get_contents( $state ) !== $installed_bytes || $installed_store->get( '01' ) !== $installed_record ) {
-	throw new RuntimeException( 'Installed file store rejection damaged its prior journal.' );
-}
 
-echo "PASS installed Composer consumer bootstrap and journal ID admission\n";
+$journal     = new class() implements AdmittedAttemptJournal {
+	public string $outcome = '';
+	public function record_resolved_ref( string $ref ): void {}
+	public function mark_mutation_started(): void {}
+	public function finish( string $code ): void {
+		$this->outcome = $code; }
+};
+$archives    = new class() implements AdmittedArchiveSource {
+	public function prepare( BranchDeploymentDeclaration $deployment, ?array $baseline ): AdmittedBranchArtifact {
+		unset( $deployment, $baseline );
+		throw new RuntimeException( 'Unexpected archive access.' ); }
+	public function verify_current_head(): void {
+		throw new RuntimeException( 'Unexpected archive access.' ); }
+};
+$target      = new class() implements AdmittedTargetFacts {
+	public int $policy_checks = 0;
+	public function target_directory( BranchDeploymentDeclaration $deployment ): string {
+		unset( $deployment );
+		throw new RuntimeException( 'Unexpected target access.' ); }
+	public function assert_mutation_allowed(): void {
+		++$this->policy_checks;
+		throw new RuntimeException( 'Synthetic policy rejection.' ); }
+	public function frozen_target( BranchDeploymentDeclaration $deployment, bool $defer_existing ): ?array {
+		unset( $deployment, $defer_existing );
+		throw new RuntimeException( 'Unexpected target access.' ); }
+	public function maintenance_active(): bool {
+		throw new RuntimeException( 'Unexpected target access.' ); }
+	public function recheck_managed( BranchDeploymentDeclaration $deployment ): void {
+		unset( $deployment );
+		throw new RuntimeException( 'Unexpected target access.' ); }
+	public function installed( BranchDeploymentDeclaration $deployment ): array {
+		unset( $deployment );
+		throw new RuntimeException( 'Unexpected target access.' ); }
+	public function baseline_now( BranchDeploymentDeclaration $deployment, array $baseline ): ?array {
+		unset( $deployment, $baseline );
+		throw new RuntimeException( 'Unexpected target access.' ); }
+	public function adopt( BranchDeploymentDeclaration $deployment ): bool {
+		unset( $deployment );
+		throw new RuntimeException( 'Unexpected target access.' ); }
+};
+$executor    = new class() implements AdmittedPackageExecutor {
+	public function preflight( BranchDeploymentDeclaration $deployment, AdmittedBranchArtifact $artifact ): void {
+		unset( $deployment, $artifact );
+		throw new RuntimeException( 'Unexpected executor access.' ); }
+	public function execute( BranchDeploymentDeclaration $deployment, ?array $baseline, AdmittedBranchArtifact $artifact ): CorePackageExecutionResult {
+		unset( $deployment, $baseline, $artifact );
+		throw new RuntimeException( 'Unexpected executor access.' ); }
+};
+$lock        = new class() implements MutationLock {
+	public function run( callable $operation ): mixed {
+		unset( $operation );
+		throw new RuntimeException( 'Unexpected lock access.' ); }
+};
+$declaration = new BranchDeploymentDeclaration( 'consumer-attempt', 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', null, 'update', null, 'demo/demo.php' );
+$updater     = BranchUpdater::for_admitted_attempt( $declaration, $journal, $archives, $target, $executor, $lock );
+$deployment  = $updater->plugin( 'acme/demo', 'repository-id', 'main', 'demo/demo.php' );
+if ( 'consumer-attempt' !== $deployment->attempt_id() || 'policy_blocked' !== $deployment->deploy() || 'policy_blocked' !== $journal->outcome || 1 !== $target->policy_checks ) {
+	throw new RuntimeException( 'Installed admitted API did not journal its terminal policy outcome.' );
+}
+echo "PASS installed Composer consumer admitted API and header parsing\n";

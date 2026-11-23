@@ -12,6 +12,7 @@ use RAN\WPBranchUpdater\V1\Contract\AdmittedTargetFacts;
 use RAN\WPBranchUpdater\V1\Contract\MutationLock;
 use RAN\WPBranchUpdater\V1\Runtime\AdmittedBranchRunner;
 use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
+use RAN\WPBranchUpdater\V1\Runtime\BranchUpdater;
 use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionFailure;
 use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionResult;
 
@@ -42,11 +43,12 @@ final class RAN_WP_Branch_Updater_ArchitectureBaselineArtifact implements Admitt
 	public function __construct(
 		private RAN_WP_Branch_Updater_ArchitectureBaselineTrace $trace,
 		private string $version = '1.2.3',
-		private ?\Throwable $integrity_failure = null
+		private ?\Throwable $integrity_failure = null,
+		private string $ref = 'abc123'
 	) {}
 	public function resolved_ref(): string {
 		$this->trace->add( 'artifact.resolved' );
-		return 'abc123';
+		return $this->ref;
 	}
 	public function expected_version(): string {
 		$this->trace->add( 'artifact.version' );
@@ -266,7 +268,7 @@ try {
 	$assert( 'An admitted deployment runner is already consumed.' === $expected->getMessage(), 'runner one-shot failure remains stable' );
 }
 
-$scenario = static function ( array $options ) use ( $assert ): string {
+$scenario = static function ( array $options, ?bool $fenced = null ) use ( $assert ): string {
 	$trace    = new RAN_WP_Branch_Updater_ArchitectureBaselineTrace();
 	$target   = new RAN_WP_Branch_Updater_ArchitectureBaselineTarget(
 		$trace,
@@ -295,27 +297,48 @@ $scenario = static function ( array $options ) use ( $assert ): string {
 		$options['initialPolicyFailure'] ?? null,
 		$options['lockedPolicyFailure'] ?? null
 	);
-	$artifact = new RAN_WP_Branch_Updater_ArchitectureBaselineArtifact( $trace, $options['version'] ?? '1.2.3', $options['integrityFailure'] ?? null );
+	$artifact = new RAN_WP_Branch_Updater_ArchitectureBaselineArtifact( $trace, $options['version'] ?? '1.2.3', $options['integrityFailure'] ?? null, $options['resolvedRef'] ?? 'abc123' );
 	$executor = new RAN_WP_Branch_Updater_ArchitectureBaselineExecutor(
 		$trace,
 		$options['result'] ?? CorePackageExecutionResult::succeeded(),
 		$options['firstPreflightFailure'] ?? null,
 		$options['secondPreflightFailure'] ?? null
 	);
-	$runner   = new AdmittedBranchRunner(
+	$selected = $options['selectedCommit'] ?? null;
+	$declared = new BranchDeploymentDeclaration(
+		'scenario-' . bin2hex( random_bytes( 4 ) ),
+		'plugin',
+		'demo',
+		'acme/demo',
+		'repository-id',
+		'main',
+		$options['expectedHead'] ?? ( null === $selected ? 'abc123' : null ),
+		$options['operation'] ?? 'update',
+		'demo',
+		'demo/demo.php',
+		selected_commit: $selected
+	);
+	$updater  = BranchUpdater::for_admitted_attempt(
+		$declared,
 		new RAN_WP_Branch_Updater_ArchitectureBaselineJournal( $trace ),
 		new RAN_WP_Branch_Updater_ArchitectureBaselineArchives( $trace, $artifact, $options['headFailure'] ?? null ),
 		$target,
 		$executor,
 		new RAN_WP_Branch_Updater_ArchitectureBaselineLock( $trace )
 	);
-	$outcome  = $runner->run( new BranchDeploymentDeclaration( 'scenario-' . bin2hex( random_bytes( 4 ) ), 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', 'abc123', $options['operation'] ?? 'update', 'demo', 'demo/demo.php' ) );
+	$outcome  = $updater->plugin( 'acme/demo', 'repository-id', 'main', package_slug: 'demo', subdirectory: 'demo' )->deploy();
 	$assert( end( $trace->events ) === 'journal.finish:' . $outcome, 'terminal outcome is journaled last for ' . $outcome );
+	if ( null !== $fenced ) {
+		$assert( in_array( 'journal.fence', $trace->events, true ) === $fenced, 'mutation fence for ' . $outcome );
+		$assert( in_array( 'executor.execute', $trace->events, true ) === $fenced, 'executor call for ' . $outcome );
+		$assert( 1 === count( array_keys( $trace->events, 'artifact.cleanup', true ) ), 'artifact cleanup runs once for ' . $outcome );
+	}
 	return $outcome;
 };
 
 $assert( 'policy_blocked' === $scenario( array( 'initialPolicyFailure' => new \RuntimeException( 'blocked' ) ) ), 'initial policy failure remains policy_blocked' );
 $assert( 'preflight_failed' === $scenario( array( 'firstPreflightFailure' => new \RuntimeException( 'preflight' ) ) ), 'first preflight failure remains preflight_failed' );
+$head = str_repeat( 'a', 40 );
 $assert(
 	'downgrade_blocked' === $scenario(
 		array(
@@ -324,22 +347,66 @@ $assert(
 				'version'    => '2.0.0',
 				'active'     => true,
 			),
-		)
+		),
+		false
 	),
 	'initial downgrade remains blocked'
 );
 $assert(
 	'downgrade_blocked' === $scenario(
 		array(
+			'expectedHead'   => $head,
+			'resolvedRef'    => $head,
 			'lockedBaseline' => array(
 				'identifier' => 'demo/demo.php',
 				'version'    => '2.0.0',
 				'active'     => true,
 			),
-		)
+		),
+		false
 	),
 	'locked baseline downgrade remains blocked'
 );
+
+$newer_baseline = array(
+	'identifier' => 'demo/demo.php',
+	'version'    => '2.0.0',
+	'active'     => true,
+);
+foreach ( array( 40, 64 ) as $length ) {
+	$commit   = str_repeat( 'a', $length );
+	$rollback = array(
+		'selectedCommit'  => $commit,
+		'resolvedRef'     => $commit,
+		'initialBaseline' => $newer_baseline,
+		'lockedBaseline'  => $newer_baseline,
+	);
+	$assert( 'deployed' === $scenario( $rollback, true ), 'an exact selected commit can deploy an older version' );
+	$assert( 'provider_failed' === $scenario( array_merge( $rollback, array( 'resolvedRef' => str_repeat( 'b', $length ) ) ), false ), 'rollback refuses a different commit' );
+}
+$assert( 'provider_failed' === $scenario( $rollback + array( 'headFailure' => new \RuntimeException( 'access revoked' ) ), false ), 'rollback still requires final source verification' );
+$assert( 'archive_integrity_failed' === $scenario( $rollback + array( 'integrityFailure' => new \RuntimeException( 'changed' ) ), false ), 'rollback still requires final archive verification' );
+$assert(
+	'installed_version_mismatch' === $scenario( $rollback + array( 'installedFacts' => $newer_baseline ), true ),
+	'rollback must install the selected archive version'
+);
+
+foreach (
+	array(
+		array( null, 'abc123' ),
+		array( null, str_repeat( 'A', 40 ) ),
+		array( null, str_repeat( 'a', 41 ) ),
+		array( null, ' ' . str_repeat( 'a', 40 ) ),
+		array( str_repeat( 'b', 40 ), str_repeat( 'a', 40 ) ),
+	) as [$expected_head, $selected_commit]
+) {
+	try {
+		new BranchDeploymentDeclaration( 'invalid-history', 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', $expected_head, selected_commit: $selected_commit );
+		throw new LogicException( 'Invalid or conflicting historical selection was admitted.' );
+	} catch ( RuntimeException $expected ) {
+		$assert( 'Invalid historical commit selection.' === $expected->getMessage(), 'admission requires a canonical historical identity and no expected head' );
+	}
+}
 $assert( 'provider_failed' === $scenario( array( 'headFailure' => new \RuntimeException( 'head advanced' ) ) ), 'locked source-head advancement remains provider_failed' );
 $assert( 'archive_integrity_failed' === $scenario( array( 'integrityFailure' => new \RuntimeException( 'changed' ) ) ), 'locked artifact replacement remains archive_integrity_failed' );
 $assert( 'deployment_maintenance_active' === $scenario( array( 'maintenanceStates' => array( true ) ) ), 'pre-mutation maintenance remains a closed failure' );
