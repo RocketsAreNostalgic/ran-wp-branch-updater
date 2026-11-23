@@ -322,7 +322,7 @@ final class ArchiveValidator {
 			if ( false === $count || 1 < $count ) {
 				$this->fail( $code, 'The package header is invalid.', $header );
 			}
-			$value = 1 === $count ? trim( (string) preg_replace( '/\s*(?:\*\/|\?>).*/', '', $matches[1][0] ) ) : '';
+			$value = 1 === $count ? trim( (string) preg_replace( '/\s*(?:\*\/|\?>).*/', '', $matches[1][0] ), " \t" ) : '';
 			if ( strlen( $value ) > 64 || 0 !== preg_match( '/[\p{Cc}\p{Cf}]/u', $value ) ) {
 				$this->fail( $code, 'The package header is invalid.', $header );
 			}
@@ -381,7 +381,7 @@ final class ArchiveValidator {
 	}
 	private static function normalize_php_version( string $version ): string {
 		$version = trim( $version );
-		if ( 1 !== preg_match( '/^([0-9]+(?:\.[0-9]+){0,3})(?:[-._]?(dev|alpha|beta|rc)(?:[.-]?([0-9]+))?(?=$|[-+~._]))?(?=$|[-+~._])/iD', $version, $match ) ) {
+		if ( 1 !== preg_match( '/^((?>[0-9]+(?:\.[0-9]+){0,3}))(?:[-~._]?(dev|alpha|beta|rc)(?:[.-]?([0-9]+))?(?=$|[-+~._])|(?=$|[-+~_]))/iD', $version, $match ) ) {
 			return '';
 		}
 		$normalized = self::pad_version_core( $match[1] );

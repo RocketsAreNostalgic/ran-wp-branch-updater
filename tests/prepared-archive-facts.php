@@ -600,6 +600,71 @@ PHP,
 );
 $assert( 'OK' === $post_validate_identity_output, 'post-validate custody recheck must detect identity drift and clean up the rejected file' );
 
+foreach ( array( 'file', 'symlink' ) as $swap_kind ) {
+	$post_validate_swap_output = $run_child(
+		<<<'PHP'
+require $argv[1];
+$staged_path = '';
+$source      = $argv[3];
+$swap_kind   = $argv[4];
+function wp_get_wp_version(): string {
+	global $staged_path, $source, $swap_kind;
+	if ( '' !== $staged_path ) {
+		if ( 'symlink' === $swap_kind ) {
+			unlink( $staged_path );
+			symlink( $source, $staged_path );
+		} else {
+			$replacement = $staged_path . '.replacement';
+			copy( $source, $replacement );
+			chmod( $replacement, 0600 );
+			rename( $replacement, $staged_path );
+		}
+	}
+	return '6.8';
+}
+$offer = new \RAN\WPBranchUpdater\V1\Archive\ArchiveOffer(
+	'fixture', 'repository-id', 'abc123',
+	static function ( string $destination, int $max ) use ( $source, &$staged_path ): void {
+		$staged_path = $destination;
+		if ( ! copy( $source, $destination ) ) {
+			throw new \RuntimeException( 'copy failed' );
+		}
+	},
+	static function (): void {}
+);
+$deployment = new \RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration(
+	'post-validate-swap-' . $swap_kind, 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', 'abc123', 'install', 'demo', null
+);
+$error = null;
+try {
+	\RAN\WPBranchUpdater\V1\Archive\PreparedArchive::download_and_validate( $offer, $deployment, $argv[2] );
+} catch ( \RuntimeException $e ) {
+	$error = $e;
+}
+$cause   = null === $error ? null : \RAN\WPBranchUpdater\V1\Runtime\ReasonedFailure::find( $error );
+$present = '' !== $staged_path && ( 'symlink' === $swap_kind ? is_link( $staged_path ) : ( is_file( $staged_path ) && ! is_link( $staged_path ) ) );
+if ( $present ) {
+	unlink( $staged_path );
+}
+if ( ! $error instanceof \RuntimeException
+	|| 'Rejected archive replacement could not be cleaned safely.' !== $error->getMessage()
+	|| ! $cause instanceof \RAN\WPBranchUpdater\V1\Runtime\ReasonedFailure
+	|| \RAN\WPBranchUpdater\V1\Runtime\FailureReason::ARCHIVE_CUSTODY_CHANGED->value !== $cause->reason
+	|| 'identity' !== $cause->detail
+	|| ! $present ) {
+	fwrite( STDERR, 'Post-validate replacement custody check failed for ' . $swap_kind );
+	exit( 1 );
+}
+echo 'OK';
+PHP,
+		$autoload_path,
+		$wp_ver_dir,
+		$wp_ver_zip,
+		$swap_kind
+	);
+	$assert( 'OK' === $post_validate_swap_output && array() === glob( $wp_ver_dir . '/*' ), 'post-validate ' . $swap_kind . ' replacement must preserve the foreign entry and chain archive_custody_changed:identity' );
+}
+
 $guarded_hash_output = $run_child(
 	<<<'PHP'
 namespace RAN\WPBranchUpdater\V1\Archive {

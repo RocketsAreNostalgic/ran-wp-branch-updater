@@ -385,7 +385,7 @@ class WordPressCorePackageExecutor {
 		if ( 0 === $count ) {
 			return '';
 		}
-		$value = trim( (string) preg_replace( '/\s*(?:\*\/|\?>).*/', '', $matches[1][0] ) );
+		$value = trim( (string) preg_replace( '/\s*(?:\*\/|\?>).*/', '', $matches[1][0] ), " \t" );
 		if ( 0 !== preg_match( '/[\p{Cc}\p{Cf}]/u', $value ) ) {
 			return false;
 		}

@@ -226,6 +226,32 @@ foreach ( array( '8.2.0-ubuntu1', '8.2.15-1+ubuntu22.04.1+deb.sury.org+1', '8.2.
 $reject( ArchiveValidator::CODE_REQUIRES_NEWER_PHP, $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires PHP: 8.2.1" ) ) ), $deployment( 'newer-distro-php' ), null, '6.8', '8.2.0-ubuntu1' );
 $reject( ArchiveValidator::CODE_REQUIRES_NEWER_PHP, $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires PHP: 8.3.0" ) ) ), $deployment( 'prerelease-php-rc' ), null, '6.8', '8.3.0-RC1' );
 $assert( '1.2.3' === $validate( $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires PHP: 8.3.0-beta1" ) ) ), $deployment( 'prerelease-php-ok' ), null, '6.8', '8.3.0-RC1' )['expected_version'], 'PHP RC satisfies lower prerelease requirement' );
+foreach ( array(
+	'8.3.0~rc1'                                  => '8.3.0',
+	'8.4.0~rc1-1+ubuntu22.04.1+deb.sury.org+1'   => '8.4.0',
+	'8.4.0~beta4-1+ubuntu24.04.1+deb.sury.org+1' => '8.4.0',
+	'8.4.0~alpha1-1+deb12u1'                     => '8.4.0',
+) as $tilde_prerelease_php => $stable_required_php ) {
+	$reject(
+		ArchiveValidator::CODE_REQUIRES_NEWER_PHP,
+		$zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires PHP: " . $stable_required_php ) ) ),
+		$deployment( 'tilde-prerelease-php' ),
+		null,
+		'6.8',
+		$tilde_prerelease_php
+	);
+}
+$assert( '1.2.3' === $validate( $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires PHP: 8.4.0-beta1" ) ) ), $deployment( 'tilde-prerelease-php-ok' ), null, '6.8', '8.4.0~rc1-1+ubuntu22.04.1+deb.sury.org+1' )['expected_version'], 'tilde-separated PHP RC still satisfies lower prerelease requirement' );
+foreach ( array( '8.invalid', '8.2.x', '8.2.0abc', '8.2.15abc', '8.2.0beta1foo', '8.2.0.1.2' ) as $malformed_php ) {
+	$reject(
+		ArchiveValidator::CODE_REQUIRES_NEWER_PHP,
+		$zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires PHP: 8.0" ) ) ),
+		$deployment( 'malformed-runtime-php' ),
+		null,
+		'6.8',
+		$malformed_php
+	);
+}
 
 foreach ( array( '6.8', '6.8.0' ) as $required_wp ) {
 	$compat_wp = $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires at least: " . $required_wp ) ) );
@@ -264,19 +290,26 @@ $helper_dup = $zip(
 );
 $assert( '1.2.3' === $validate( $helper_dup, $deployment( 'helper-dup-version' ) )['expected_version'], 'non-plugin helper files with duplicate Version comments do not fail plugin discovery' );
 
-foreach ( array( "\u{0085}", "\u{200B}", "\u{202E}", "\u{FEFF}", "\xFF" ) as $bad_char ) {
+foreach ( array( "\x00", "\x0B", "\u{0085}", "\u{200B}", "\u{202E}", "\u{FEFF}", "\xFF" ) as $bad_char ) {
 	$reject( ArchiveValidator::CODE_HEADER_UNREADABLE, $zip( array( 'repository/demo/demo.php' => $plugin( 'Plugin Name: Demo' . $bad_char . "\nVersion: 1.2.3" ) ) ), $deployment( 'unicode-name' ) );
+	$reject( ArchiveValidator::CODE_HEADER_UNREADABLE, $zip( array( 'repository/demo/demo.php' => $plugin( 'Plugin Name: ' . $bad_char . "Demo\nVersion: 1.2.3" ) ) ), $deployment( 'unicode-name-leading' ) );
 	$reject( ArchiveValidator::CODE_VERSION_INVALID, $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3" . $bad_char ) ) ), $deployment( 'unicode-version' ) );
 	$reject( ArchiveValidator::CODE_COMPATIBILITY_INVALID, $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires PHP: 8.2" . $bad_char ) ) ), $deployment( 'unicode-php' ) );
 }
 
-$dup_template_theme = $zip( array( 'repository/demo/style.css' => "/*\nTheme Name: Demo\nVersion: 1.2.3\nTemplate: parent-a\nTemplate: parent-b\n*/\n" ) );
-$dup_template_decl  = new BranchDeploymentDeclaration( 'dup-template', 'theme', 'demo', 'acme/demo', 'repository-id', 'main', 'abc123', 'install', 'demo' );
-$dup_template_art   = PreparedArchive::download_and_validate( ( new GitHubFixtureProvider( $dup_template_theme, 'abc123' ) )->prepare( $dup_template_decl ), $dup_template_decl, $root . '/custody' );
-try {
-	$assert( false === $parent_method->invoke( new WordPressCorePackageExecutor(), $dup_template_art, 'demo' ), 'duplicate Template header is rejected' );
-} finally {
-	$dup_template_art->cleanup();
+foreach ( array(
+	'duplicate template' => "/*\nTheme Name: Demo\nVersion: 1.2.3\nTemplate: parent-a\nTemplate: parent-b\n*/\n",
+	'trailing nul'       => "/*\nTheme Name: Demo\nVersion: 1.2.3\nTemplate: parent\x00\n*/\n",
+	'trailing vtab'      => "/*\nTheme Name: Demo\nVersion: 1.2.3\nTemplate: parent\x0B\n*/\n",
+) as $template_label => $template_css ) {
+	$bad_template_theme = $zip( array( 'repository/demo/style.css' => $template_css ) );
+	$bad_template_decl  = new BranchDeploymentDeclaration( 'bad-template', 'theme', 'demo', 'acme/demo', 'repository-id', 'main', 'abc123', 'install', 'demo' );
+	$bad_template_art   = PreparedArchive::download_and_validate( ( new GitHubFixtureProvider( $bad_template_theme, 'abc123' ) )->prepare( $bad_template_decl ), $bad_template_decl, $root . '/custody' );
+	try {
+		$assert( false === $parent_method->invoke( new WordPressCorePackageExecutor(), $bad_template_art, 'demo' ), 'invalid Template header is rejected: ' . $template_label );
+	} finally {
+		$bad_template_art->cleanup();
+	}
 }
 
 $uppercase_php = $zip( array( 'repository/demo/demo.PHP' => $plugin() ) );
