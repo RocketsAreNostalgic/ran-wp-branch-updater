@@ -100,12 +100,12 @@ $deployment = static fn(
 	$installed_identifier
 );
 $validator = new ArchiveValidator();
-$validate  = static function ( string $path, BranchDeploymentDeclaration $deployment, ?string $installed = null, string $wordpress_version = '6.5' ) use ( $validator ): array {
-	return $validator->validate( $path, $deployment, $installed, 10485760, 20971520, $wordpress_version );
+$validate  = static function ( string $path, BranchDeploymentDeclaration $deployment, ?string $installed = null, string $wordpress_version = '6.5', string $php_version = PHP_VERSION ) use ( $validator ): array {
+	return $validator->validate( $path, $deployment, $installed, 10485760, 20971520, $wordpress_version, $php_version );
 };
-$reject    = static function ( int $code, string $path, BranchDeploymentDeclaration $deployment, ?string $installed = null, string $wordpress_version = '6.5' ) use ( $validate, $assert ): void {
+$reject    = static function ( int $code, string $path, BranchDeploymentDeclaration $deployment, ?string $installed = null, string $wordpress_version = '6.5', string $php_version = PHP_VERSION ) use ( $validate, $assert ): void {
 	try {
-		$validate( $path, $deployment, $installed, $wordpress_version );
+		$validate( $path, $deployment, $installed, $wordpress_version, $php_version );
 		$assert( false, 'archive validation unexpectedly succeeded for code ' . $code );
 	} catch ( RuntimeException $expected ) {
 		$assert( $code === $expected->getCode(), 'archive validation code remains ' . $code . ', got ' . $expected->getCode() );
@@ -217,6 +217,126 @@ $reject( ArchiveValidator::CODE_PACKAGE_IDENTITY, $wrong_identity, $deployment( 
 
 $missing_main = $zip( array( 'repository/demo/demo.php' => $plugin() ) );
 $reject( ArchiveValidator::CODE_PLUGIN_MISSING, $missing_main, $deployment( 'missing-main', 'update', 'demo', 'demo/missing.php' ), 'demo/missing.php' );
+
+// Issue #135: Runtime WP/PHP version compatibility normalization and +build rejection.
+$compat_php = $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires PHP: 8.2.0" ) ) );
+foreach ( array( '8.2.0-ubuntu1', '8.2.15-1+ubuntu22.04.1+deb.sury.org+1', '8.2.20-1~deb12u1', '8.2.0+build1', '8.2.0-alpine1' ) as $distro_php ) {
+	$assert( '1.2.3' === $validate( $compat_php, $deployment( 'distro-php' ), null, '6.8', $distro_php )['expected_version'], 'distro-suffixed PHP satisfies Requires PHP: ' . $distro_php );
+}
+$reject( ArchiveValidator::CODE_REQUIRES_NEWER_PHP, $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires PHP: 8.2.1" ) ) ), $deployment( 'newer-distro-php' ), null, '6.8', '8.2.0-ubuntu1' );
+$reject( ArchiveValidator::CODE_REQUIRES_NEWER_PHP, $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires PHP: 8.3.0" ) ) ), $deployment( 'prerelease-php-rc' ), null, '6.8', '8.3.0-RC1' );
+$assert( '1.2.3' === $validate( $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires PHP: 8.3.0-beta1" ) ) ), $deployment( 'prerelease-php-ok' ), null, '6.8', '8.3.0-RC1' )['expected_version'], 'PHP RC satisfies lower prerelease requirement' );
+foreach ( array(
+	'8.3.0~rc1'                                  => '8.3.0',
+	'8.4.0~rc1-1+ubuntu22.04.1+deb.sury.org+1'   => '8.4.0',
+	'8.4.0~beta4-1+ubuntu24.04.1+deb.sury.org+1' => '8.4.0',
+	'8.4.0~alpha1-1+deb12u1'                     => '8.4.0',
+) as $tilde_prerelease_php => $stable_required_php ) {
+	$reject(
+		ArchiveValidator::CODE_REQUIRES_NEWER_PHP,
+		$zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires PHP: " . $stable_required_php ) ) ),
+		$deployment( 'tilde-prerelease-php' ),
+		null,
+		'6.8',
+		$tilde_prerelease_php
+	);
+}
+$assert( '1.2.3' === $validate( $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires PHP: 8.4.0-beta1" ) ) ), $deployment( 'tilde-prerelease-php-ok' ), null, '6.8', '8.4.0~rc1-1+ubuntu22.04.1+deb.sury.org+1' )['expected_version'], 'tilde-separated PHP RC still satisfies lower prerelease requirement' );
+foreach ( array( '8.invalid', '8.2.x', '8.2.0abc', '8.2.15abc', '8.2.0beta1foo', '8.2.0.1.2' ) as $malformed_php ) {
+	$reject(
+		ArchiveValidator::CODE_REQUIRES_NEWER_PHP,
+		$zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires PHP: 8.0" ) ) ),
+		$deployment( 'malformed-runtime-php' ),
+		null,
+		'6.8',
+		$malformed_php
+	);
+}
+
+foreach ( array( '6.8', '6.8.0' ) as $required_wp ) {
+	$compat_wp = $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires at least: " . $required_wp ) ) );
+	foreach ( array( '6.8-RC1', '6.8-beta1-59800', '6.8-alpha-59820', '6.8-src', '6.8+build1' ) as $runtime_wp ) {
+		$assert( '1.2.3' === $validate( $compat_wp, $deployment( 'wp-prerelease' ), null, $runtime_wp )['expected_version'], 'WordPress prerelease ' . $runtime_wp . ' satisfies ' . $required_wp );
+	}
+}
+$reject( ArchiveValidator::CODE_REQUIRES_NEWER_WP, $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires at least: 6.8.1" ) ) ), $deployment( 'wp-prerelease-older' ), null, '6.8-RC1' );
+$reject( ArchiveValidator::CODE_REQUIRES_NEWER_WP, $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires at least: 6.5" ) ) ), $deployment( 'wp-invalid-runtime' ), null, 'invalid-wp' );
+$reject( ArchiveValidator::CODE_VERSION_INVALID, $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3+build1" ) ) ), $deployment( 'version-build-meta' ) );
+$reject( ArchiveValidator::CODE_COMPATIBILITY_INVALID, $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires PHP: 8.2+build1" ) ) ), $deployment( 'php-build-meta' ) );
+$reject( ArchiveValidator::CODE_COMPATIBILITY_INVALID, $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires at least: 6.8+build1" ) ) ), $deployment( 'wp-build-meta' ) );
+
+// Issue #135: Header parsing edge cases ('0' values, duplicates, Unicode control/format, lowercase .php).
+$zero_plugin = $zip( array( 'repository/demo/demo.php' => "<?php\n/*\nPlugin Name:0\nVersion:0\n*/\n" ) );
+$assert( '0' === $validate( $zero_plugin, $deployment( 'zero-plugin' ) )['expected_version'], 'Plugin Name:0 and Version:0 are preserved' );
+$zero_theme = $zip( array( 'repository/demo/style.css' => "/*\nTheme Name:0\nVersion:0\nTemplate:0\n*/\n" ) );
+$zero_decl  = new BranchDeploymentDeclaration( 'zero-theme', 'theme', 'demo', 'acme/demo', 'repository-id', 'main', 'abc123', 'install', 'demo' );
+$assert( '0' === $validate( $zero_theme, $zero_decl )['expected_version'], 'Theme Name:0 and Version:0 are preserved' );
+$zero_artifact = PreparedArchive::download_and_validate( ( new GitHubFixtureProvider( $zero_theme, 'abc123' ) )->prepare( $zero_decl ), $zero_decl, $root . '/custody' );
+try {
+	$assert( '0' === $parent_method->invoke( new WordPressCorePackageExecutor(), $zero_artifact, 'demo' ), 'Template:0 is preserved' );
+} finally {
+	$zero_artifact->cleanup();
+}
+
+$reject( ArchiveValidator::CODE_HEADER_UNREADABLE, $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: First\nPlugin Name: Second\nVersion: 1.2.3" ) ) ), $deployment( 'dup-plugin-name' ) );
+$reject( ArchiveValidator::CODE_VERSION_INVALID, $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nversion: 2.0.0" ) ) ), $deployment( 'dup-version' ) );
+$reject( ArchiveValidator::CODE_COMPATIBILITY_INVALID, $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires PHP: 8.2\nRequires PHP: 8.3" ) ) ), $deployment( 'dup-requires-php' ) );
+$reject( ArchiveValidator::CODE_COMPATIBILITY_INVALID, $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires at least: 6.5\nRequires at least: 6.6" ) ) ), $deployment( 'dup-requires-wp' ) );
+$helper_dup = $zip(
+	array(
+		'repository/demo/demo.php'   => $plugin(),
+		'repository/demo/helper.php' => "<?php\n/*\nVersion: 1.0\nVersion: 2.0\n*/\n",
+	)
+);
+$assert( '1.2.3' === $validate( $helper_dup, $deployment( 'helper-dup-version' ) )['expected_version'], 'non-plugin helper files with duplicate Version comments do not fail plugin discovery' );
+
+foreach ( array( "\x00", "\x0B", "\u{0085}", "\u{200B}", "\u{202E}", "\u{FEFF}", "\xFF" ) as $bad_char ) {
+	$reject( ArchiveValidator::CODE_HEADER_UNREADABLE, $zip( array( 'repository/demo/demo.php' => $plugin( 'Plugin Name: Demo' . $bad_char . "\nVersion: 1.2.3" ) ) ), $deployment( 'unicode-name' ) );
+	$reject( ArchiveValidator::CODE_HEADER_UNREADABLE, $zip( array( 'repository/demo/demo.php' => $plugin( 'Plugin Name: ' . $bad_char . "Demo\nVersion: 1.2.3" ) ) ), $deployment( 'unicode-name-leading' ) );
+	$reject( ArchiveValidator::CODE_VERSION_INVALID, $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3" . $bad_char ) ) ), $deployment( 'unicode-version' ) );
+	$reject( ArchiveValidator::CODE_COMPATIBILITY_INVALID, $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires PHP: 8.2" . $bad_char ) ) ), $deployment( 'unicode-php' ) );
+}
+
+foreach ( array(
+	'duplicate template' => "/*\nTheme Name: Demo\nVersion: 1.2.3\nTemplate: parent-a\nTemplate: parent-b\n*/\n",
+	'trailing nul'       => "/*\nTheme Name: Demo\nVersion: 1.2.3\nTemplate: parent\x00\n*/\n",
+	'trailing vtab'      => "/*\nTheme Name: Demo\nVersion: 1.2.3\nTemplate: parent\x0B\n*/\n",
+) as $template_label => $template_css ) {
+	$bad_template_theme = $zip( array( 'repository/demo/style.css' => $template_css ) );
+	$bad_template_decl  = new BranchDeploymentDeclaration( 'bad-template', 'theme', 'demo', 'acme/demo', 'repository-id', 'main', 'abc123', 'install', 'demo' );
+	$bad_template_art   = PreparedArchive::download_and_validate( ( new GitHubFixtureProvider( $bad_template_theme, 'abc123' ) )->prepare( $bad_template_decl ), $bad_template_decl, $root . '/custody' );
+	try {
+		$assert( false === $parent_method->invoke( new WordPressCorePackageExecutor(), $bad_template_art, 'demo' ), 'invalid Template header is rejected: ' . $template_label );
+	} finally {
+		$bad_template_art->cleanup();
+	}
+}
+
+$uppercase_php = $zip( array( 'repository/demo/demo.PHP' => $plugin() ) );
+$reject( ArchiveValidator::CODE_PLUGIN_MISSING, $uppercase_php, $deployment( 'uppercase-php' ) );
+$mixed_php_ext = $zip(
+	array(
+		'repository/demo/demo.php'  => $plugin(),
+		'repository/demo/other.PHP' => $plugin( "Plugin Name: Other\nVersion: 1.2.3" ),
+	)
+);
+$assert( '1.2.3' === $validate( $mixed_php_ext, $deployment( 'mixed-php-ext' ) )['expected_version'], 'uppercase .PHP files are ignored during plugin discovery' );
+
+// Issue #135: Nested installed identifier rejection and separate subdirectory configuration validation.
+$nested_id_zip = $zip( array( 'repository/demo/demo.php' => $plugin() ) );
+$reject( ArchiveValidator::CODE_PACKAGE_IDENTITY, $nested_id_zip, $deployment( 'nested-id', 'update', 'demo', 'other/demo/demo.php' ), 'other/demo/demo.php' );
+
+foreach ( array( '../escape', '/demo', 'demo\\sub', 'packages//demo', "demo\n", 'packages/%2e%2e/demo' ) as $bad_subdir ) {
+	try {
+		$validate( $valid, $deployment( 'bad-subdir', 'install', $bad_subdir ) );
+		$assert( false, 'invalid subdirectory configuration unexpectedly succeeded: ' . $bad_subdir );
+	} catch ( InvalidArgumentException $expected ) {
+		$assert( 'The package subdirectory must be a normalized relative path.' === $expected->getMessage(), 'invalid subdirectory throws configuration error rather than archive CODE_PATH_UNSAFE: ' . $bad_subdir );
+	}
+}
+$assert( '1.2.3' === $validate( $valid, $deployment( 'padded-subdir', 'install', '  demo/  ' ) )['expected_version'], 'subdirectory configuration normalizes whitespace and trailing slash' );
+$root_plugin = $zip( array( 'repository/demo.php' => $plugin() ) );
+$assert( '1.2.3' === $validate( $root_plugin, $deployment( 'blank-subdir', 'install', '   ' ) )['expected_version'], 'whitespace-only subdirectory normalizes to root package' );
 
 // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- glob returns an array or false; both no matches and failure retain the existing empty-corpus fallback.
 // phpcs:ignore Universal.Operators.DisallowShortTernary.Found,WordPress.WP.GlobalVariablesOverride.Prohibited -- Standalone CLI fixture variable does not share WordPress runtime globals.

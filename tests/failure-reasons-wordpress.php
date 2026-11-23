@@ -153,10 +153,12 @@ $core         = new WordPressCorePackageExecutor( static fn(): bool => true );
 $result       = $core->install_plugin( $artifact, 'bad/slug', 'demo' );
 $assert( CorePackageExecutionFailure::INVALID_REQUEST === $result->get_failure() && 'input_invalid' === $result->get_detail(), 'an invalid slug is input_invalid' );
 $before = RAN_WP_Branch_Updater_WordPressState::$hook_calls;
-foreach ( array( 'other/demo.php', 'Demo/demo.php', 'x/demo/demo.php' ) as $identifier ) {
+foreach ( array( 'other/demo.php', 'Demo/demo.php' ) as $identifier ) {
 	$result = $core->update_plugin( $artifact, 'demo', 'demo', $identifier );
-	$assert( CorePackageExecutionFailure::INVALID_REQUEST === $result->get_failure() && 'identifier_mismatch' === $result->get_detail(), 'foreign, case-only and nested plugin identifiers are identifier_mismatch' );
+	$assert( CorePackageExecutionFailure::INVALID_REQUEST === $result->get_failure() && 'identifier_mismatch' === $result->get_detail(), 'foreign and case-only plugin identifiers are identifier_mismatch' );
 }
+$result = $core->update_plugin( $artifact, 'demo', 'demo', 'x/demo/demo.php' );
+$assert( CorePackageExecutionFailure::INVALID_REQUEST === $result->get_failure() && 'input_invalid' === $result->get_detail(), 'nested multi-level plugin identifiers are input_invalid' );
 foreach ( array( 'other', 'Demo', 'x/demo' ) as $identifier ) {
 	$result = $core->update_theme( $artifact, 'demo', 'demo', $identifier );
 	$assert( CorePackageExecutionFailure::INVALID_REQUEST === $result->get_failure() && 'identifier_mismatch' === $result->get_detail(), 'foreign, case-only and nested theme identifiers are identifier_mismatch' );
@@ -197,7 +199,10 @@ foreach ( array(
 	'parent is itself'               => array( "Template: demo\n", 'theme_parent_invalid' ),
 	'parent is itself in other case' => array( "Template: Demo\n", 'theme_parent_invalid' ),
 	'parent unknown'                 => array( "Template: parent\n", 'theme_parent_invalid' ),
+	'parent zero preserved'          => array( "Template:0\n", 'theme_parent_invalid' ),
 	'invalid parent'                 => array( "Template: bad/parent\n", 'theme_archive_invalid' ),
+	'duplicate template'             => array( "Template: parent-a\nTemplate: parent-b\n", 'theme_archive_invalid' ),
+	'unicode format in template'     => array( "Template: parent\u{200B}\n", 'theme_archive_invalid' ),
 ) as $label => [$template, $expected_detail] ) {
 	[, $artifact] = $prepared( 'theme', $theme_zip( $template ) );
 	$core         = new WordPressCorePackageExecutor( static fn(): bool => true );

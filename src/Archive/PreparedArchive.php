@@ -161,7 +161,8 @@ final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchAr
 			) {
 				throw new RuntimeException( 'Archive file identity or size is invalid.' );
 			}
-			$digest = hash_file( 'sha256', $path );
+			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Concurrent removal or read failure during initial fingerprinting fails closed cleanly.
+			$digest = @hash_file( 'sha256', $path );
 			if ( ! is_string( $digest ) ) {
 				throw new RuntimeException( 'Cannot fingerprint archive.' );
 			}
@@ -171,9 +172,11 @@ final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchAr
 				'update' === $d->operation ? $d->installed_identifier : null,
 				$maximum_artifact_bytes,
 				$maximum_expanded_bytes,
-				function_exists( 'get_bloginfo' ) ? (string) get_bloginfo( 'version' ) : ''
+				self::runtime_wordpress_version()
 			);
-			return new self( $path, $offer->resolved_ref, $identity, $digest, $inspection['expected_version'], $inspection['expanded'] );
+			$archive    = new self( $path, $offer->resolved_ref, $identity, $digest, $inspection['expected_version'], $inspection['expanded'] );
+			$archive->assert_unchanged();
+			return $archive;
 		} catch ( \Throwable $e ) {
 			self::cleanup_matching_file( $path, $created['dev'], $created['ino'], $e );
 			throw $e;
@@ -207,12 +210,18 @@ final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchAr
 	}
 
 	public function assert_unchanged(): void {
-		$changed = match ( true ) {
-			$this->cleaned => 'cleaned',
-			self::identity( $this->path ) !== $this->identity => 'identity',
-			! hash_equals( $this->digest, (string) hash_file( 'sha256', $this->path ) ) => 'digest',
-			default => null,
-		};
+		$changed = null;
+		if ( $this->cleaned ) {
+			$changed = 'cleaned';
+		} elseif ( self::identity( $this->path ) !== $this->identity ) {
+			$changed = 'identity';
+		} else {
+			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Concurrent removal or read failure during custody fingerprinting fails closed as a digest mismatch.
+			$current_digest = @hash_file( 'sha256', $this->path );
+			if ( ! is_string( $current_digest ) || ! hash_equals( $this->digest, $current_digest ) ) {
+				$changed = 'digest';
+			}
+		}
 		if ( null !== $changed ) {
 			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- A closed reason id and closed cause are recorded outcome data, not rendered output.
 			throw new ReasonedFailure( 'Prepared archive changed before use.', FailureReason::ARCHIVE_CUSTODY_CHANGED->value, $changed );
@@ -229,6 +238,14 @@ final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchAr
 			throw new RuntimeException( 'Cannot safely remove archive.' );
 		}
 		$this->cleaned = true;
+	}
+
+	private static function runtime_wordpress_version(): string {
+		if ( function_exists( 'wp_get_wp_version' ) ) {
+			return wp_get_wp_version();
+		}
+
+		return isset( $GLOBALS['wp_version'] ) && is_string( $GLOBALS['wp_version'] ) ? $GLOBALS['wp_version'] : '';
 	}
 
 	private static function maximum_artifact_bytes( mixed $maximum_artifact_bytes ): int {
