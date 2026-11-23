@@ -41,6 +41,8 @@ final class ArchiveValidator {
 	public const CODE_THEME_IDENTITY_MISMATCH   = 1026;
 	public const CODE_FILE_PARENT_COLLISION     = 1027;
 	private const MAX_ENTRIES                   = 10000;
+	private const MAX_COMPRESSION_RATIO         = 100;
+	private const COMPRESSION_RATIO_MIN_BYTES   = 131072;
 	/** Stable grouping of the numeric causes into the closed FailureReason set. */
 	private const REASONS = array(
 		self::CODE_ZIP_UNAVAILABLE           => FailureReason::ZIP_UNAVAILABLE,
@@ -95,28 +97,31 @@ final class ArchiveValidator {
 			// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- ZipArchive::$numFiles is an externally imposed extension property.
 			for ( $index = 0; $index < $zip->numFiles; ++$index ) {
 				$stat = $zip->statIndex( $index, ZipArchive::FL_UNCHANGED );
-				if ( false === $stat || ! is_string( $stat['name'] ?? null ) || ! is_int( $stat['size'] ?? null ) || $stat['size'] < 0 || ! is_int( $stat['crc'] ?? null ) ) {
+				if ( false === $stat || ! is_string( $stat['name'] ?? null ) || ! is_int( $stat['size'] ?? null ) || $stat['size'] < 0 || ! is_int( $stat['comp_size'] ?? null ) || $stat['comp_size'] < 0 || ! is_int( $stat['crc'] ?? null ) ) {
 					$this->fail( self::CODE_ENTRY_INVALID, 'The archive contains invalid entry metadata.' );
 				}
-				$name       = $stat['name'];
-				$normalized = $this->validate_entry_name( $name );
+				$name         = $stat['name'];
+				$is_directory = str_ends_with( $name, '/' );
+				$normalized   = $this->validate_entry_name( $name );
 				if ( isset( $entries[ $normalized ] ) ) {
 					$this->fail( self::CODE_PATH_COLLISION, 'The archive contains duplicate paths.' );
 				}
 				$entries[ $normalized ] = array(
 					'index'     => $index,
-					'directory' => str_ends_with( $name, '/' ),
+					'directory' => $is_directory,
 				);
 				$entry_root             = explode( '/', $normalized, 2 )[0];
 				$root                 ??= $entry_root;
 				if ( ! hash_equals( $root, $entry_root ) ) {
 					$this->fail( self::CODE_MULTIPLE_ROOTS, 'The archive must contain one package root.' );
 				}
-				$this->assert_safe_entry_type( $zip, $index, $stat, str_ends_with( $name, '/' ) );
-				$expanded = $this->add_expanded_bytes( $expanded, $stat['size'], $expanded_limit );
-				if ( ! str_ends_with( $name, '/' ) ) {
-					$this->verify_entry_contents( $zip, $index, $stat['size'], $stat['crc'], $expanded_limit );
+				$this->assert_safe_entry_type( $zip, $index, $stat, $is_directory );
+				if ( $is_directory && 0 !== $stat['size'] ) {
+					$this->fail( self::CODE_ARCHIVE_INTEGRITY, 'The archive contains unreadable entry data.' );
 				}
+				$this->assert_compression_ratio( $stat['size'], $stat['comp_size'] );
+				$expanded = $this->add_expanded_bytes( $expanded, $stat['size'], $expanded_limit );
+				$this->verify_entry_contents( $zip, $index, $stat['size'], $stat['crc'], $expanded_limit );
 			}
 			if ( null === $root ) {
 				$this->fail( self::CODE_LAYOUT_INVALID, 'The archive does not contain a package.' );
@@ -211,6 +216,14 @@ final class ArchiveValidator {
 			$this->fail( self::CODE_ENTRY_INVALID, 'The archive contains invalid entry metadata.' );
 		}
 	}
+	private function assert_compression_ratio( int $size, int $compressed_size ): void {
+		if ( $size < self::COMPRESSION_RATIO_MIN_BYTES ) {
+			return;
+		}
+		if ( 0 === $compressed_size || ( $compressed_size <= intdiv( PHP_INT_MAX, self::MAX_COMPRESSION_RATIO ) && $size > self::MAX_COMPRESSION_RATIO * $compressed_size ) ) {
+			$this->fail( self::CODE_EXPANDED_TOO_LARGE, 'The archive exceeds the expanded-size limit.' );
+		}
+	}
 	private function verify_entry_contents( ZipArchive $zip, int $index, int $expected_size, int $expected_crc, int $expanded_limit ): void {
 		$stream = $zip->getStreamIndex( $index, ZipArchive::FL_UNCHANGED );
 		if ( false === $stream ) {
@@ -220,8 +233,10 @@ final class ArchiveValidator {
 		$hash = hash_init( 'crc32b' );
 		try {
 			while ( ! feof( $stream ) ) {
+				$remaining = $expected_size - $read;
+				$to_read   = $remaining >= 65536 ? 65536 : max( 1, $remaining + 1 );
 				// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fread -- Bounded ZIP-entry stream reads preserve expanded-byte and CRC verification.
-				$chunk = fread( $stream, 65536 );
+				$chunk = fread( $stream, $to_read );
 				if ( false === $chunk || ( '' === $chunk && ! feof( $stream ) ) ) {
 					$this->fail( self::CODE_ARCHIVE_INTEGRITY, 'The archive contains unreadable entry data.' );
 				}
@@ -229,6 +244,9 @@ final class ArchiveValidator {
 					break;
 				}
 				$read = $this->add_expanded_bytes( $read, strlen( $chunk ), $expanded_limit );
+				if ( $read > $expected_size ) {
+					$this->fail( self::CODE_ARCHIVE_INTEGRITY, 'The archive contains unreadable entry data.' );
+				}
 				hash_update( $hash, $chunk );
 			}
 		} finally {

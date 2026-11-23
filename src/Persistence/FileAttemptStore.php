@@ -15,6 +15,9 @@ use Throwable;
  * @phpstan-type AttemptRecord array{id:string,state:string,package_type:string,slug:string,repository:string,branch:string,expected_head:string|null,selected_commit:string|null,expected_identifier:string|null,resolved_ref:string|null,mutation_started_at:string|null,outcome:string|null,finished_at:string|null}
  */
 final class FileAttemptStore {
+	/** @var array{dev:int,ino:int}|null */
+	private ?array $active_parent_identity = null;
+
 	public function __construct( private readonly string $path ) {}
 
 	/**
@@ -159,11 +162,31 @@ final class FileAttemptStore {
 
 	/** @return array<string,AttemptRecord> */
 	private function read(): array {
-		if ( ! file_exists( $this->path ) && ! is_link( $this->path ) ) {
+		$this->assert_parent_identity();
+		clearstatcache( true, $this->path );
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Missing journal paths return an empty store; suppress only the native missing-path warning.
+		$existing = @lstat( $this->path );
+		if ( false === $existing ) {
 			return array();
 		}
-		if ( is_link( $this->path ) || ! is_file( $this->path ) || ! is_readable( $this->path ) ) {
+		$stat = $this->regular_single_link_stat( $this->path );
+		if ( null === $stat || ! is_readable( $this->path ) ) {
 			$this->fail( 'Journal path is unsafe.' );
+		}
+		if ( ( $stat['mode'] & 0777 ) !== 0600 ) {
+			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged,WordPress.WP.AlternativeFunctions.file_system_operations_chmod -- Tighten verified legacy single-link journal permissions to owner-only under the lock.
+			if ( ! @chmod( $this->path, 0600 ) ) {
+				$this->fail( 'Journal path is unsafe.' );
+			}
+			$this->assert_parent_identity();
+			$tightened = $this->regular_single_link_stat( $this->path );
+			if ( null === $tightened
+				|| $tightened['dev'] !== $stat['dev']
+				|| $tightened['ino'] !== $stat['ino']
+				|| ( $tightened['mode'] & 0777 ) !== 0600
+			) {
+				$this->fail( 'Journal path is unsafe.' );
+			}
 		}
 		try {
 			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Read the native journal under its descriptor lock before validating every record.
@@ -256,6 +279,13 @@ final class FileAttemptStore {
 	 * @param array<array-key,AttemptRecord> $records
 	 */
 	private function write( array $records ): void {
+		$this->assert_parent_identity();
+		clearstatcache( true, $this->path );
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Missing journal paths are valid on first write; suppress only the native missing-path warning.
+		$existing = @lstat( $this->path );
+		if ( false !== $existing && null === $this->regular_single_link_stat( $this->path ) ) {
+			$this->fail( 'Journal path is unsafe.' );
+		}
 		try {
 			// phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- Preserve JSON_THROW_ON_ERROR and exact journal serialization before atomic replacement and readback.
 			$json = json_encode( $records, JSON_THROW_ON_ERROR );
@@ -263,13 +293,78 @@ final class FileAttemptStore {
 			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Preserve the previous Throwable for internal journal diagnostics; this is not rendered output.
 			throw new BranchDeploymentJournalFailure( 'Journal cannot be encoded.', 0, $e );
 		}
-		$tmp = $this->path . '.new';
-		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents,WordPress.WP.AlternativeFunctions.rename_rename -- Write the locked sibling file and atomically replace the native journal before readback.
-		if ( false === file_put_contents( $tmp, $json, LOCK_EX ) || ! rename( $tmp, $this->path ) ) {
+		try {
+			$suffix = bin2hex( random_bytes( 8 ) );
+		} catch ( Throwable $e ) {
+			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Preserve the previous Throwable for internal journal diagnostics; this is not rendered output.
+			throw new BranchDeploymentJournalFailure( 'Journal temporary name cannot be generated.', 0, $e );
+		}
+		$tmp = dirname( $this->path ) . DIRECTORY_SEPARATOR . '.journal-' . $suffix . '.tmp';
+		clearstatcache( true, $tmp );
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Pre-check unique temporary path before exclusive creation.
+		if ( false !== @lstat( $tmp ) ) {
+			$this->fail( 'Journal temporary path is unsafe.' );
+		}
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged,WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- Exclusively create the unique sibling journal file before atomic replacement.
+		$handle = @fopen( $tmp, 'x+b' );
+		if ( false === $handle ) {
 			$this->fail( 'Journal replacement failed.' );
 		}
-		clearstatcache( true, $this->path );
-		if ( is_link( $this->path ) || ! is_file( $this->path ) ) {
+		$created = $this->handle_single_link_stat( $handle );
+		$ok      = null !== $created;
+		try {
+			if ( $ok ) {
+				$path_stat = $this->regular_single_link_stat( $tmp );
+				if ( null === $path_stat || $path_stat['dev'] !== $created['dev'] || $path_stat['ino'] !== $created['ino'] ) {
+					$ok = false;
+				}
+			}
+			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged,WordPress.WP.AlternativeFunctions.file_system_operations_chmod -- Restrict the native temporary journal file to owner-only permissions before writing.
+			if ( $ok && ! @chmod( $tmp, 0600 ) ) {
+				$ok = false;
+			}
+			if ( $ok ) {
+				$after_chmod = $this->handle_single_link_stat( $handle );
+				if ( null === $after_chmod || $after_chmod['dev'] !== $created['dev'] || $after_chmod['ino'] !== $created['ino'] || ( $after_chmod['mode'] & 0777 ) !== 0600 ) {
+					$ok = false;
+				}
+			}
+			$length = strlen( $json );
+			for ( $written = 0; $ok && $written < $length; ) {
+				// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fwrite -- Write exact journal JSON bytes to the exclusively created sibling file.
+				$chunk = fwrite( $handle, substr( $json, $written ) );
+				if ( false === $chunk || 0 === $chunk ) {
+					$ok = false;
+					break;
+				}
+				$written += $chunk;
+			}
+			if ( $ok && ! fflush( $handle ) ) {
+				$ok = false;
+			}
+		} finally {
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Close the exclusively created sibling journal descriptor before rename or cleanup.
+			if ( ! fclose( $handle ) ) {
+				$ok = false;
+			}
+		}
+		$this->assert_parent_identity();
+		$tmp_stat = $this->regular_single_link_stat( $tmp );
+		$matches  = null !== $created
+			&& null !== $tmp_stat
+			&& $tmp_stat['dev'] === $created['dev']
+			&& $tmp_stat['ino'] === $created['ino']
+			&& ( $tmp_stat['mode'] & 0777 ) === 0600;
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.rename_rename -- Atomically replace the native journal with the private sibling file before readback.
+		if ( ! $ok || ! $matches || ! rename( $tmp, $this->path ) ) {
+			if ( null !== $created && null !== $tmp_stat && $tmp_stat['dev'] === $created['dev'] && $tmp_stat['ino'] === $created['ino'] ) {
+				// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Clean up only the matching failed unique temporary journal file.
+				unlink( $tmp );
+			}
+			$this->fail( 'Journal replacement failed.' );
+		}
+		$final_stat = $this->regular_single_link_stat( $this->path );
+		if ( null === $final_stat || ( $final_stat['mode'] & 0777 ) !== 0600 ) {
 			$this->fail( 'Journal replacement is unsafe.' );
 		}
 	}
@@ -281,15 +376,65 @@ final class FileAttemptStore {
 	 * @return TResult
 	 */
 	private function locked( int $mode, callable $operation ): mixed {
-		$this->ensure_parent();
-		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- flock requires the native journal lock descriptor across the complete read or mutation.
-		$handle = fopen( $this->path . '.lock', 'c+' );
-		if ( false === $handle || ! flock( $handle, $mode ) ) {
+		$parent_identity = $this->ensure_parent();
+		$lock_path       = $this->path . '.lock';
+		clearstatcache( true, $lock_path );
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Missing lock files are created by fopen('c+'); suppress only the native missing-path warning.
+		$existing = @lstat( $lock_path );
+		if ( false !== $existing && null === $this->regular_single_link_stat( $lock_path ) ) {
+			$this->fail( 'Journal lock path is unsafe.' );
+		}
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged,WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- flock requires the native journal lock descriptor across the complete read or mutation.
+		$handle = @fopen( $lock_path, 'c+' );
+		if ( false === $handle ) {
 			throw new BranchDeploymentJournalFailure( 'Journal lock is unavailable.' );
 		}
+		$opened = $this->handle_single_link_stat( $handle );
+		if ( null === $opened ) {
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Close the unsafe lock descriptor without mutating pathname permissions.
+			fclose( $handle );
+			$this->fail( 'Journal lock path is unsafe.' );
+		}
+		if ( ! flock( $handle, $mode ) ) {
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Close the lock descriptor when lock acquisition fails.
+			fclose( $handle );
+			throw new BranchDeploymentJournalFailure( 'Journal lock is unavailable.' );
+		}
+		$previous_parent              = $this->active_parent_identity;
+		$this->active_parent_identity = $parent_identity;
 		try {
+			$this->assert_parent_identity();
+			$locked_handle = $this->handle_single_link_stat( $handle );
+			$locked_path   = $this->regular_single_link_stat( $lock_path );
+			if ( null === $locked_handle
+				|| null === $locked_path
+				|| $locked_handle['dev'] !== $locked_path['dev']
+				|| $locked_handle['ino'] !== $locked_path['ino']
+			) {
+				$this->fail( 'Journal lock path is unsafe.' );
+			}
+			if ( ( $locked_handle['mode'] & 0777 ) !== 0600 ) {
+				// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged,WordPress.WP.AlternativeFunctions.file_system_operations_chmod -- Restrict the verified single-link native journal lock file to owner-only permissions under the lock.
+				if ( ! @chmod( $lock_path, 0600 ) ) {
+					$this->fail( 'Journal lock path is unsafe.' );
+				}
+				$this->assert_parent_identity();
+				$after_handle = $this->handle_single_link_stat( $handle );
+				$after_path   = $this->regular_single_link_stat( $lock_path );
+				if ( null === $after_handle
+					|| null === $after_path
+					|| $after_handle['dev'] !== $locked_handle['dev']
+					|| $after_handle['ino'] !== $locked_handle['ino']
+					|| $after_path['dev'] !== $locked_handle['dev']
+					|| $after_path['ino'] !== $locked_handle['ino']
+					|| ( $after_handle['mode'] & 0777 ) !== 0600
+				) {
+					$this->fail( 'Journal lock path is unsafe.' );
+				}
+			}
 			return $operation();
 		} finally {
+			$this->active_parent_identity = $previous_parent;
 			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Close the same journal descriptor after unlocking and preserve failure reporting.
 			if ( ! flock( $handle, LOCK_UN ) || ! fclose( $handle ) ) {
 				throw new BranchDeploymentJournalFailure( 'Journal lock release failed.' );
@@ -297,16 +442,97 @@ final class FileAttemptStore {
 		}
 	}
 
-	private function ensure_parent(): void {
+	/** @return array{dev:int,ino:int} */
+	private function ensure_parent(): array {
 		$parent = dirname( $this->path );
-		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_mkdir -- Create the native private journal directory before opening the lock descriptor.
-		if ( ! is_dir( $parent ) && ! mkdir( $parent, 0700, true ) ) {
-			$this->fail( 'Journal directory cannot be created.' );
-		}
-		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_chmod -- Require a real private native journal directory before accessing persistent state.
-		if ( ! is_dir( $parent ) || is_link( $parent ) || ! chmod( $parent, 0700 ) ) {
+		clearstatcache( true, $parent );
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Missing journal parent directories are created below; suppress only the native missing-path warning.
+		$existing = @lstat( $parent );
+		if ( false !== $existing && ( $existing['mode'] & 0170000 ) !== 0040000 ) {
 			$this->fail( 'Journal directory is unsafe.' );
 		}
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_mkdir -- Create the native private journal directory before opening the lock descriptor.
+		if ( false === $existing && ! mkdir( $parent, 0700, true ) ) {
+			$this->fail( 'Journal directory cannot be created.' );
+		}
+		clearstatcache( true, $parent );
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Re-verify parent directory type and ownership before applying permissions.
+		$created = @lstat( $parent );
+		if ( ! is_array( $created ) || ( $created['mode'] & 0170000 ) !== 0040000 || ( function_exists( 'posix_geteuid' ) && posix_geteuid() !== (int) $created['uid'] ) ) {
+			$this->fail( 'Journal directory is unsafe.' );
+		}
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged,WordPress.WP.AlternativeFunctions.file_system_operations_chmod -- Require a real private native journal directory before accessing persistent state.
+		if ( ! @chmod( $parent, 0700 ) ) {
+			$this->fail( 'Journal directory is unsafe.' );
+		}
+		$identity = $this->directory_identity( $parent );
+		if ( null === $identity || $identity['dev'] !== (int) $created['dev'] || $identity['ino'] !== (int) $created['ino'] ) {
+			$this->fail( 'Journal directory is unsafe.' );
+		}
+		return $identity;
+	}
+
+	private function assert_parent_identity(): void {
+		if ( null === $this->active_parent_identity ) {
+			return;
+		}
+		$current = $this->directory_identity( dirname( $this->path ) );
+		if ( null === $current || $current !== $this->active_parent_identity ) {
+			$this->fail( 'Journal directory is unsafe.' );
+		}
+	}
+
+	/** @return array{dev:int,ino:int}|null */
+	private function directory_identity( string $directory ): ?array {
+		clearstatcache( true, $directory );
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Missing or replaced parent directories fail the identity check.
+		$stat = @lstat( $directory );
+		if ( ! is_array( $stat )
+			|| ( $stat['mode'] & 0170000 ) !== 0040000
+			|| ( $stat['mode'] & 0777 ) !== 0700
+			|| ( function_exists( 'posix_geteuid' ) && posix_geteuid() !== (int) $stat['uid'] )
+		) {
+			return null;
+		}
+		return array(
+			'dev' => (int) $stat['dev'],
+			'ino' => (int) $stat['ino'],
+		);
+	}
+
+	/** @return array{dev:int,ino:int,mode:int}|null */
+	private function regular_single_link_stat( string $path ): ?array {
+		clearstatcache( true, $path );
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Missing or replaced paths fail the safety check without leaking warnings.
+		$stat = @lstat( $path );
+		return $this->validate_single_link_stat( $stat );
+	}
+
+	/**
+	 * @param resource $handle
+	 * @return array{dev:int,ino:int,mode:int}|null
+	 */
+	private function handle_single_link_stat( $handle ): ?array {
+		return $this->validate_single_link_stat( fstat( $handle ) );
+	}
+
+	/**
+	 * @param array<int|string,int>|false $stat
+	 * @return array{dev:int,ino:int,mode:int}|null
+	 */
+	private function validate_single_link_stat( array|false $stat ): ?array {
+		if ( ! is_array( $stat )
+			|| ( $stat['mode'] & 0170000 ) !== 0100000
+			|| 1 !== (int) $stat['nlink']
+			|| ( function_exists( 'posix_geteuid' ) && posix_geteuid() !== (int) $stat['uid'] )
+		) {
+			return null;
+		}
+		return array(
+			'dev'  => (int) $stat['dev'],
+			'ino'  => (int) $stat['ino'],
+			'mode' => (int) $stat['mode'],
+		);
 	}
 
 	/** @return never */

@@ -194,6 +194,204 @@ try {
 } catch ( RuntimeException $expected ) {
 	$assert( 'Prepared archive changed before use.' === $expected->getMessage() && is_file( $path ), 'cleanup preserves the changed archive for host recovery' );
 }
+// Unwritable / non-private staging directory and exclusive creation collisions must fail closed without falling back to system temp.
+$before_tmp = glob( rtrim( sys_get_temp_dir(), '/\\' ) . '/ran-branch-*' );
+$before_tmp = is_array( $before_tmp ) ? $before_tmp : array();
+$non_dir    = $root . '/not-a-directory';
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Create a regular file to verify non-directory staging target refusal.
+file_put_contents( $non_dir, 'x' );
+$non_dir_acquired = false;
+$non_dir_offer    = new ArchiveOffer(
+	provider: 'fixture',
+	repository_id: 'repository-id',
+	resolved_ref: 'abc123',
+	copy_to: static function ( string $destination, int $maximum_artifact_bytes ) use ( &$non_dir_acquired ): void {
+		$non_dir_acquired = '' !== $destination || $maximum_artifact_bytes >= 0;
+	},
+	verify_head: static function (): void {}
+);
+$non_dir_error    = null;
+try {
+	PreparedArchive::download_and_validate( $non_dir_offer, $deployment, $non_dir );
+} catch ( RuntimeException $expected ) {
+	$non_dir_error = $expected;
+}
+$assert(
+	$non_dir_error instanceof RuntimeException
+		&& 'Archive directory is unsafe.' === $non_dir_error->getMessage()
+		&& ! $non_dir_acquired,
+	'non-directory staging path must fail before file creation or acquisition'
+);
+// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Remove non-directory fixture file.
+unlink( $non_dir );
+
+$blocked_parent = $root . '/file-parent';
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Create a regular file parent so nested mkdir() fails deterministically even under privileged workers.
+file_put_contents( $blocked_parent, 'not-a-directory' );
+$blocked_acquired = false;
+$blocked_offer    = new ArchiveOffer(
+	provider: 'fixture',
+	repository_id: 'repository-id',
+	resolved_ref: 'abc123',
+	copy_to: static function ( string $destination, int $maximum_artifact_bytes ) use ( &$blocked_acquired ): void {
+		$blocked_acquired = '' !== $destination || $maximum_artifact_bytes >= 0;
+	},
+	verify_head: static function (): void {}
+);
+$blocked_error    = null;
+try {
+	PreparedArchive::download_and_validate( $blocked_offer, $deployment, $blocked_parent . '/nested' );
+} catch ( RuntimeException $expected ) {
+	$blocked_error = $expected;
+} finally {
+	// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Remove regular-file parent fixture.
+	unlink( $blocked_parent );
+}
+$assert(
+	$blocked_error instanceof RuntimeException
+		&& 'Cannot create private archive directory.' === $blocked_error->getMessage()
+		&& ! $blocked_acquired,
+	'uncreatable staging directory must fail closed without invoking acquisition'
+);
+
+// Deterministic exclusive file-creation failure (EEXIST) and RandomException classification must fail closed without invoking acquisition.
+$run_child = static function ( string $code, string ...$arguments ) use ( $assert ): string {
+	$descriptors = array(
+		0 => array( 'pipe', 'r' ),
+		1 => array( 'pipe', 'w' ),
+		2 => array( 'pipe', 'w' ),
+	);
+	// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.system_calls_proc_open -- Run an isolated PHP process to test namespace-scoped entropy failure and exclusive creation collisions.
+	$process = proc_open( array_values( array_merge( array( PHP_BINARY, '-r', $code, '--' ), $arguments ) ), $descriptors, $pipes );
+	if ( ! is_resource( $process ) ) {
+		throw new RuntimeException( 'FAIL: isolated staging proof subprocess must start' );
+	}
+	// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Close unused child stdin pipe.
+	fclose( $pipes[0] );
+	$stdout = (string) stream_get_contents( $pipes[1] );
+	$stderr = (string) stream_get_contents( $pipes[2] );
+	// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Close child output pipes before proc_close.
+	fclose( $pipes[1] );
+	// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Close child error pipe before proc_close.
+	fclose( $pipes[2] );
+	$exit_code = proc_close( $process );
+	$assert( 0 === $exit_code, 'isolated staging proof failed: ' . trim( $stderr . "\n" . $stdout ) );
+	return trim( $stdout );
+};
+
+$autoload_path = dirname( __DIR__ ) . '/vendor/autoload.php';
+$collision_dir = $root . '/exclusive-collision';
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_mkdir -- Create private staging directory for deterministic exclusive-create refusal proof.
+mkdir( $collision_dir, 0700, true );
+$collision_file = $collision_dir . '/ran-branch-' . str_repeat( '00', 16 );
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Pre-create colliding staging path to force fopen('x+b') failure.
+file_put_contents( $collision_file, 'sentinel' );
+$collision_output = $run_child(
+	<<<'PHP'
+namespace RAN\WPBranchUpdater\V1\Archive {
+	function random_bytes( int $length ): string {
+		return str_repeat( "\0", $length );
+	}
+}
+namespace {
+	require $argv[1];
+	$acquired = false;
+	$offer = new \RAN\WPBranchUpdater\V1\Archive\ArchiveOffer(
+		provider: 'fixture',
+		repository_id: 'repository-id',
+		resolved_ref: 'abc123',
+		copy_to: static function ( string $destination, int $max ) use ( &$acquired ): void {
+			$acquired = '' !== $destination || $max >= 0;
+		},
+		verify_head: static function (): void {}
+	);
+	$deployment = new \RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration(
+		'exclusive-collision', 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', 'abc123', 'install', 'demo', null
+	);
+	$error = null;
+	try {
+		\RAN\WPBranchUpdater\V1\Archive\PreparedArchive::download_and_validate( $offer, $deployment, $argv[2] );
+	} catch ( \RuntimeException $e ) {
+		$error = $e;
+	}
+	if ( ! $error instanceof \RuntimeException || 'Cannot create private archive file.' !== $error->getMessage() || $acquired ) {
+		fwrite( STDERR, 'Unexpected exclusive-create result' );
+		exit( 1 );
+	}
+	echo 'OK';
+}
+PHP,
+	$autoload_path,
+	$collision_dir
+);
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Verify pre-existing colliding file was untouched.
+$assert( 'OK' === $collision_output && 'sentinel' === file_get_contents( $collision_file ), 'exclusive file creation collision must fail closed and leave pre-existing files untouched' );
+// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Remove colliding fixture file.
+unlink( $collision_file );
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Remove colliding fixture directory.
+rmdir( $collision_dir );
+
+$entropy_dir = $root . '/entropy-failure';
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_mkdir -- Create private staging directory for entropy-failure classification proof.
+mkdir( $entropy_dir, 0700, true );
+$entropy_output = $run_child(
+	<<<'PHP'
+namespace RAN\WPBranchUpdater\V1\Archive {
+	function random_bytes( int $length ): string {
+		throw new \Random\RandomException( 'Entropy unavailable.' );
+	}
+}
+namespace {
+	require $argv[1];
+	$acquired = false;
+	$provider = new class( $acquired ) implements \RAN\WPBranchUpdater\V1\Contract\BranchProvider {
+		public function __construct( public bool &$acquired ) {}
+		public function supports_selected_commit(): bool { return false; }
+		public function prepare( \RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration $d ): \RAN\WPBranchUpdater\V1\Archive\ArchiveOffer {
+			$acquired =& $this->acquired;
+			return new \RAN\WPBranchUpdater\V1\Archive\ArchiveOffer(
+				provider: 'fixture',
+				repository_id: 'repository-id',
+				resolved_ref: 'abc123',
+				copy_to: static function ( string $destination, int $max ) use ( &$acquired ): void {
+					$acquired = '' !== $destination || $max >= 0;
+				},
+				verify_head: static function (): void {}
+			);
+		}
+	};
+	$deployment = new \RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration(
+		'entropy-failure', 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', 'abc123', 'install', 'demo', null
+	);
+	$source = new \RAN\WPBranchUpdater\V1\Runtime\ProviderArchiveSource( $provider, $argv[2] );
+	$stage = null;
+	try {
+		$source->prepare( $deployment, null );
+	} catch ( \RAN\WPBranchUpdater\V1\Runtime\AdmittedBranchStageFailure $e ) {
+		$stage = $e;
+	}
+	if ( ! $stage instanceof \RAN\WPBranchUpdater\V1\Runtime\AdmittedBranchStageFailure
+		|| 'archive_integrity_failed' !== $stage->outcome_code
+		|| \RAN\WPBranchUpdater\V1\Runtime\FailureReason::ARCHIVE_PREPARE_FAILED->value !== $stage->reason
+		|| $acquired
+	) {
+		fwrite( STDERR, 'Unexpected entropy failure classification' );
+		exit( 1 );
+	}
+	echo 'OK';
+}
+PHP,
+	$autoload_path,
+	$entropy_dir
+);
+$assert( 'OK' === $entropy_output, 'archive staging entropy failure must classify as archive_integrity_failed / archive_prepare_failed' );
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Remove entropy-failure fixture directory.
+rmdir( $entropy_dir );
+
+$after_tmp = glob( rtrim( sys_get_temp_dir(), '/\\' ) . '/ran-branch-*' );
+$after_tmp = is_array( $after_tmp ) ? $after_tmp : array();
+$assert( $before_tmp === $after_tmp, 'failed archive staging must never fall back to the system temporary directory' );
+
 // phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Standalone CLI proof creates or cleans only its isolated local fixture files with native filesystem semantics.
 unlink( $path );
 // phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Standalone CLI proof creates or cleans only its isolated local fixture files with native filesystem semantics.
