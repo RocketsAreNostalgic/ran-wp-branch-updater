@@ -8,6 +8,7 @@ use RAN\WPBranchUpdater\V1\Archive\PreparedArchive;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedTargetFacts;
 use RAN\WPBranchUpdater\V1\Contract\PackageExecutor;
 use RAN\WPBranchUpdater\V1\WordPress\WordPressPackageExecutor;
+use RuntimeException;
 
 final class StandaloneTargetFacts implements AdmittedTargetFacts {
 	/** @var array{identifier:string,version:string,active:bool}|null */
@@ -43,7 +44,11 @@ final class StandaloneTargetFacts implements AdmittedTargetFacts {
 
 	public function baseline_now( BranchDeploymentDeclaration $deployment, array $baseline ): ?array {
 		if ( $this->executor instanceof WordPressPackageExecutor ) {
-			return $this->executor->installed_facts( $deployment );
+			try {
+				return $this->executor->installed_facts( $deployment );
+			} catch ( RuntimeException ) {
+				return null;
+			}
 		}
 		return $this->installed;
 	}
