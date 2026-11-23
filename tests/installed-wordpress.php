@@ -18,6 +18,7 @@ use RAN\WPBranchUpdater\V1\Archive\PreparedArchive;
 use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionFailure;
 use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentLockStorageFailure;
+use RAN\WPBranchUpdater\V1\Runtime\StandaloneTargetFacts;
 use RAN\WPBranchUpdater\V1\WordPress\WordPressPackageExecutor;
 use RAN\WPBranchUpdater\V1\WordPress\WordPressUpdaterLock;
 use RuntimeException;
@@ -224,22 +225,18 @@ final class InstalledWordPressProof {
 		if ( ! $filesystem instanceof \WP_Filesystem_Base ) {
 			throw new RuntimeException( 'Installed proof requires the native filesystem.' );
 		}
-		$style = get_theme_root() . '/' . $slug . '/style.css';
+		$style    = get_theme_root() . '/' . $slug . '/style.css';
+		$d        = new BranchDeploymentDeclaration( 'missing-version', 'theme', $slug, 'fixture/repository', 'fixture', 'main', null, 'update', null, $slug );
+		$executor = new WordPressPackageExecutor();
+		$baseline = $executor->installed_facts( $d );
+		$target   = new StandaloneTargetFacts( $executor );
 		self::check( $filesystem->move( $style, $style . '.proof-backup', false ), 'Temporarily remove the installed theme stylesheet.' );
 		try {
-			wp_clean_themes_cache();
-			$theme = wp_get_theme( $slug );
-			self::check( $theme->exists() && false === $theme->get( 'Version' ), 'Real malformed theme must expose the false-version boundary.' );
-			$d      = new BranchDeploymentDeclaration( 'missing-version', 'theme', $slug, 'fixture/repository', 'fixture', 'main', null, 'update', null, $slug );
-			$failed = false;
-			try {
-				( new WordPressPackageExecutor() )->installed_facts( $d );
-			} catch ( RuntimeException $error ) {
-				$failed = 'WordPress did not report an installed package version.' === $error->getMessage();
-			}
-			self::check( $failed, 'Unavailable theme version must not become an admitted installed fact.' );
+			self::check( null === $target->baseline_now( $d, $baseline ), 'A primed theme cache must not mask a missing stylesheet during restoration.' );
+			self::check( $filesystem->put_contents( $style, '/* Theme Name: Branch proof */', FS_CHMOD_FILE ), 'Create a stylesheet with no version for the malformed-theme proof.' );
+			self::check( null === $target->baseline_now( $d, $baseline ), 'An empty theme version must not become an admitted installed fact.' );
 		} finally {
-			self::check( $filesystem->move( $style . '.proof-backup', $style, false ), 'Restore installed theme stylesheet.' );
+			self::check( $filesystem->move( $style . '.proof-backup', $style, true ), 'Restore installed theme stylesheet.' );
 			wp_clean_themes_cache();
 		}
 	}
@@ -516,10 +513,29 @@ final class InstalledWordPressProof {
 			self::check( 'deployed' === $outcome && 1 === $journal->fences && 1 === $executor->calls && 1 === $target->adoptions, 'Exact identity must install and adopt once.' );
 			$facts = $target->installed( $d );
 			self::check( $identifier === $facts['identifier'] && '1.0.0' === $facts['version'] && ! $facts['active'], 'WordPress must report the exact inactive identity and version.' );
+			if ( 'plugin' === $type ) {
+				$standalone = new BranchDeploymentDeclaration( 'discover-' . $slug, $type, $slug, 'fixture/repository', 'fixture', 'main', null, 'install' );
+				self::check( ( new WordPressPackageExecutor() )->installed_facts( $standalone ) === $facts, 'Standalone install must discover the top-level entrypoint despite a nested plugin header.' );
+				$this->plugin_activation( $d, $identifier );
+			}
 			self::check( is_file( $path . '/proof.txt' ) && ! file_exists( $path . '/outside.txt' ), 'Only the selected repository subdirectory may be installed.' );
 		}
 		self::check( false === get_option( 'auto_updater.lock' ) && ! file_exists( ABSPATH . '.maintenance' ), 'Identity proof must release native lock and maintenance scope.' );
 		self::check( array() === glob( get_temp_dir() . 'ran-branch-proof-custody/*' ), 'Accepted and rejected archives must leave no custody files.' );
+	}
+
+	private function plugin_activation( BranchDeploymentDeclaration $d, string $identifier ): void {
+		global $wpdb;
+		$active = (array) get_option( 'active_plugins', array() );
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Bypass only this disposable site's in-process option cache to simulate a separate activation request.
+		$changed = $wpdb->update( $wpdb->options, array( 'option_value' => maybe_serialize( array_merge( $active, array( $identifier ) ) ) ), array( 'option_name' => 'active_plugins' ) );
+		try {
+			self::check( 1 === $changed && ! is_plugin_active( $identifier ), 'The database must change while the WordPress activation cache stays primed.' );
+			self::check( ( new WordPressPackageExecutor() )->installed_facts( $d )['active'], 'Installed facts must use refreshed plugin activation state.' );
+		} finally {
+			wp_cache_delete_multiple( array( 'alloptions', 'notoptions', 'active_plugins' ), 'options' );
+			update_option( 'active_plugins', $active );
+		}
 	}
 
 	private function package( string $type, bool $mixed_case = false ): void {
@@ -713,6 +729,9 @@ final class InstalledWordPressProof {
 		$prefix = 'repository/' . ( $d->subdirectory ?? 'packages/target' ) . '/';
 		if ( 'plugin' === $d->package_type ) {
 			$zip->addFromString( $prefix . ( $main_file ?? $d->slug . '.php' ), "<?php\n/*\nPlugin Name: Branch proof\nVersion: " . $version . "\n*/\n" );
+			if ( 'Bootstrap.php' === $main_file ) {
+				$zip->addFromString( $prefix . 'fixtures/nested.php', "<?php\n/*\nPlugin Name: Nested fixture\nVersion: 1.0.0\n*/\n" );
+			}
 		} else {
 			$zip->addFromString( $prefix . ( $omit_style ? 'missing-style.css' : 'style.css' ), "/*\nTheme Name: Branch proof\nVersion: " . $version . "\n*/\n" );
 			$zip->addFromString( $prefix . 'index.php', '<?php // Local fixture.' );
