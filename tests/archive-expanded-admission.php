@@ -49,7 +49,9 @@ $assert( true === $zip->open( $archive_path, ZipArchive::CREATE | ZipArchive::OV
 $header = "<?php\n/*\nPlugin Name: Demo\nVersion: 1.2.3\n*/\n";
 $zip->addFromString( 'repo/demo.php', $header );
 $zip->addFromString( 'repo/a.txt', str_repeat( 'a', 700000 ) );
+$zip->setCompressionName( 'repo/a.txt', ZipArchive::CM_STORE );
 $zip->addFromString( 'repo/b.txt', str_repeat( 'b', 700000 ) );
+$zip->setCompressionName( 'repo/b.txt', ZipArchive::CM_STORE );
 $zip->close();
 $deployment = new BranchDeploymentDeclaration( 'expanded-admission', 'plugin', 'demo', 'synthetic/demo', 'fixture', 'main', null, 'install' );
 /** @return array{code:int,bytes:int,facts:array{expanded:int,expected_version:string}|null} */
@@ -122,7 +124,69 @@ foreach ( array( array( PHP_INT_MAX, 1, PHP_INT_MAX ), array( 0, PHP_INT_MAX, PH
 		$assert( ArchiveValidator::CODE_EXPANDED_TOO_LARGE === $error->getCode(), 'Overflow boundary must retain expanded-size error.' );
 	}
 }
-foreach ( array( 'valid', 'crc', 'size', 'compressed' ) as $case ) {
+// Entry claiming size=0 while carrying compressed bytes must stop immediately instead of inflating to the archive ceiling.
+$zero_claimed_path = $root . '/zero-claimed.zip';
+$zero_zip          = new ZipArchive();
+$assert( true === $zero_zip->open( $zero_claimed_path, ZipArchive::CREATE | ZipArchive::OVERWRITE ), 'Zero-claimed fixture ZIP must open.' );
+$zero_zip->addFromString( 'repo/demo.php', $header );
+$zero_zip->addFromString( 'repo/boom.txt', str_repeat( 'z', 200000 ) );
+$zero_zip->setCompressionName( 'repo/boom.txt', ZipArchive::CM_STORE );
+$zero_zip->close();
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Patch synthetic ZIP central and local size to 0.
+$zero_bytes   = (string) file_get_contents( $zero_claimed_path );
+$zero_central = strrpos( $zero_bytes, "PK\x01\x02" );
+if ( false === $zero_central ) {
+	throw new RuntimeException( 'Missing central entry for zero-claimed fixture.' );
+}
+$zero_local = unpack( 'Voffset', substr( $zero_bytes, $zero_central + 42, 4 ) );
+if ( ! is_array( $zero_local ) || ! is_int( $zero_local['offset'] ) ) {
+	throw new RuntimeException( 'Invalid local offset for zero-claimed fixture.' );
+}
+$zero_bytes = substr_replace( $zero_bytes, pack( 'V', 0 ), $zero_central + 24, 4 );
+$zero_bytes = substr_replace( $zero_bytes, pack( 'V', 0 ), $zero_local['offset'] + 22, 4 );
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Write synthetic zero-claimed ZIP fixture.
+file_put_contents( $zero_claimed_path, $zero_bytes );
+$zero_result = $inspect( $zero_claimed_path, 209715200 );
+$assert(
+	ArchiveValidator::CODE_ARCHIVE_INTEGRITY === $zero_result['code'] && $zero_result['bytes'] <= strlen( $header ) + 1,
+	'Entry claiming size=0 must abort immediately after bounding per-entry stream reads.'
+);
+
+// High compression-ratio archive above the minimum decompressed floor must be rejected before streaming.
+$ratio_bomb_path = $root . '/ratio-bomb.zip';
+$ratio_zip       = new ZipArchive();
+$assert( true === $ratio_zip->open( $ratio_bomb_path, ZipArchive::CREATE | ZipArchive::OVERWRITE ), 'Ratio-bomb fixture ZIP must open.' );
+$ratio_zip->addFromString( 'repo/demo.php', $header );
+$ratio_zip->addFromString( 'repo/dense.txt', str_repeat( 'A', 262144 ) );
+$ratio_zip->close();
+$ratio_result = $inspect( $ratio_bomb_path, 209715200 );
+$assert(
+	ArchiveValidator::CODE_EXPANDED_TOO_LARGE === $ratio_result['code'] && strlen( $header ) === $ratio_result['bytes'],
+	'High compression-ratio entry above the floor must fail before streaming its payload.'
+);
+
+// Small legitimate highly compressible asset below the decompressed floor must remain admissible.
+$small_asset_path = $root . '/small-asset.zip';
+$small_zip        = new ZipArchive();
+$assert( true === $small_zip->open( $small_asset_path, ZipArchive::CREATE | ZipArchive::OVERWRITE ), 'Small-asset fixture ZIP must open.' );
+$small_zip->addFromString( 'repo/demo.php', $header );
+$small_zip->addFromString( 'repo/icon.svg', '<svg>' . str_repeat( ' ', 32768 ) . '</svg>' );
+$small_zip->close();
+$small_result = $inspect( $small_asset_path, 209715200 );
+$assert( 0 === $small_result['code'], 'Small compressible asset below the ratio floor must remain admissible.' );
+
+// Directory entry carrying non-zero payload bytes must be rejected.
+$dir_payload_path = $root . '/dir-payload.zip';
+$dir_zip          = new ZipArchive();
+$assert( true === $dir_zip->open( $dir_payload_path, ZipArchive::CREATE | ZipArchive::OVERWRITE ), 'Directory-payload fixture ZIP must open.' );
+$dir_zip->addFromString( 'repo/demo.php', $header );
+$dir_zip->addFromString( 'repo/sub/', 'unexpected-directory-payload' );
+$dir_zip->setExternalAttributesName( 'repo/sub/', ZipArchive::OPSYS_UNIX, 0040755 << 16 );
+$dir_zip->close();
+$dir_result = $inspect( $dir_payload_path, 209715200 );
+$assert( ArchiveValidator::CODE_ARCHIVE_INTEGRITY === $dir_result['code'], 'Directory entry carrying payload bytes must fail integrity validation.' );
+
+foreach ( array( 'valid', 'crc', 'size', 'compressed', 'zero-claimed', 'ratio-bomb', 'small-asset', 'dir-payload' ) as $case ) {
 	// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Delete only this proof's known synthetic ZIP paths.
 	unlink( $root . '/' . $case . '.zip' );
 }

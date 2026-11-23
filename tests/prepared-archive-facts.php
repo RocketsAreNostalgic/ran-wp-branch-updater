@@ -194,6 +194,40 @@ try {
 } catch ( RuntimeException $expected ) {
 	$assert( 'Prepared archive changed before use.' === $expected->getMessage() && is_file( $path ), 'cleanup preserves the changed archive for host recovery' );
 }
+// Unwritable / non-private staging directory must fail closed without falling back to system temp.
+$before_tmp = glob( rtrim( sys_get_temp_dir(), '/\\' ) . '/ran-branch-*' );
+$before_tmp = is_array( $before_tmp ) ? $before_tmp : array();
+$non_dir    = $root . '/not-a-directory';
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Create a regular file to verify non-directory staging target refusal.
+file_put_contents( $non_dir, 'x' );
+try {
+	PreparedArchive::download_and_validate( $offer(), $deployment, $non_dir );
+	$assert( false, 'non-directory staging path must fail closed' );
+} catch ( RuntimeException $expected ) {
+	$assert( 'Archive directory is unsafe.' === $expected->getMessage(), 'non-directory staging path fails before file creation' );
+}
+// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Remove non-directory fixture file.
+unlink( $non_dir );
+$readonly_parent = $root . '/readonly-parent';
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_mkdir -- Create a read-only parent directory to test exclusive staging refusal.
+mkdir( $readonly_parent, 0700, true );
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_chmod -- Restrict parent permissions to prove no system temp fallback occurs.
+chmod( $readonly_parent, 0500 );
+try {
+	PreparedArchive::download_and_validate( $offer(), $deployment, $readonly_parent . '/nested' );
+	$assert( false, 'uncreatable staging directory must fail closed' );
+// phpcs:ignore Generic.CodeAnalysis.EmptyStatement.DetectedCatch -- Reaching this catch proves the expected refusal.
+} catch ( RuntimeException ) {
+} finally {
+	// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_chmod -- Restore permissions for cleanup.
+	chmod( $readonly_parent, 0700 );
+	// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Remove read-only parent fixture directory.
+	rmdir( $readonly_parent );
+}
+$after_tmp = glob( rtrim( sys_get_temp_dir(), '/\\' ) . '/ran-branch-*' );
+$after_tmp = is_array( $after_tmp ) ? $after_tmp : array();
+$assert( $before_tmp === $after_tmp, 'failed archive staging must never fall back to the system temporary directory' );
+
 // phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Standalone CLI proof creates or cleans only its isolated local fixture files with native filesystem semantics.
 unlink( $path );
 // phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Standalone CLI proof creates or cleans only its isolated local fixture files with native filesystem semantics.

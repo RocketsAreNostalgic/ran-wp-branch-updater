@@ -256,6 +256,10 @@ final class FileAttemptStore {
 	 * @param array<array-key,AttemptRecord> $records
 	 */
 	private function write( array $records ): void {
+		clearstatcache( true, $this->path );
+		if ( is_link( $this->path ) || ( file_exists( $this->path ) && ! is_file( $this->path ) ) ) {
+			$this->fail( 'Journal path is unsafe.' );
+		}
 		try {
 			// phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- Preserve JSON_THROW_ON_ERROR and exact journal serialization before atomic replacement and readback.
 			$json = json_encode( $records, JSON_THROW_ON_ERROR );
@@ -263,13 +267,53 @@ final class FileAttemptStore {
 			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Preserve the previous Throwable for internal journal diagnostics; this is not rendered output.
 			throw new BranchDeploymentJournalFailure( 'Journal cannot be encoded.', 0, $e );
 		}
-		$tmp = $this->path . '.new';
-		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents,WordPress.WP.AlternativeFunctions.rename_rename -- Write the locked sibling file and atomically replace the native journal before readback.
-		if ( false === file_put_contents( $tmp, $json, LOCK_EX ) || ! rename( $tmp, $this->path ) ) {
+		$tmp = $this->path . '.new.' . bin2hex( random_bytes( 8 ) );
+		clearstatcache( true, $tmp );
+		if ( is_link( $tmp ) || file_exists( $tmp ) ) {
+			$this->fail( 'Journal temporary path is unsafe.' );
+		}
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- Exclusively create the unique sibling journal file before atomic replacement.
+		$handle = fopen( $tmp, 'x+b' );
+		if ( false === $handle ) {
+			$this->fail( 'Journal replacement failed.' );
+		}
+		$ok = true;
+		try {
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_chmod -- Restrict the native temporary journal file to owner-only permissions before writing.
+			if ( ! chmod( $tmp, 0600 ) ) {
+				$ok = false;
+			}
+			$length = strlen( $json );
+			for ( $written = 0; $ok && $written < $length; ) {
+				// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fwrite -- Write exact journal JSON bytes to the exclusively created sibling file.
+				$chunk = fwrite( $handle, substr( $json, $written ) );
+				if ( false === $chunk || 0 === $chunk ) {
+					$ok = false;
+					break;
+				}
+				$written += $chunk;
+			}
+			if ( $ok && ! fflush( $handle ) ) {
+				$ok = false;
+			}
+		} finally {
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Close the exclusively created sibling journal descriptor before rename or cleanup.
+			if ( ! fclose( $handle ) ) {
+				$ok = false;
+			}
+		}
+		clearstatcache( true, $tmp );
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.rename_rename -- Atomically replace the native journal with the private sibling file before readback.
+		if ( ! $ok || is_link( $tmp ) || ! is_file( $tmp ) || ! rename( $tmp, $this->path ) ) {
+			if ( file_exists( $tmp ) && ! is_link( $tmp ) ) {
+				// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Clean up the failed unique temporary journal file.
+				unlink( $tmp );
+			}
 			$this->fail( 'Journal replacement failed.' );
 		}
 		clearstatcache( true, $this->path );
-		if ( is_link( $this->path ) || ! is_file( $this->path ) ) {
+		$perms = fileperms( $this->path );
+		if ( is_link( $this->path ) || ! is_file( $this->path ) || false === $perms || ( $perms & 0777 ) !== 0600 ) {
 			$this->fail( 'Journal replacement is unsafe.' );
 		}
 	}
@@ -282,9 +326,21 @@ final class FileAttemptStore {
 	 */
 	private function locked( int $mode, callable $operation ): mixed {
 		$this->ensure_parent();
+		$lock_path = $this->path . '.lock';
+		clearstatcache( true, $lock_path );
+		if ( is_link( $lock_path ) || ( file_exists( $lock_path ) && ! is_file( $lock_path ) ) ) {
+			$this->fail( 'Journal lock path is unsafe.' );
+		}
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- flock requires the native journal lock descriptor across the complete read or mutation.
-		$handle = fopen( $this->path . '.lock', 'c+' );
-		if ( false === $handle || ! flock( $handle, $mode ) ) {
+		$handle = fopen( $lock_path, 'c+' );
+		if ( false === $handle ) {
+			throw new BranchDeploymentJournalFailure( 'Journal lock is unavailable.' );
+		}
+		clearstatcache( true, $lock_path );
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_chmod -- Restrict the native journal lock file to owner-only permissions.
+		if ( is_link( $lock_path ) || ! is_file( $lock_path ) || ! chmod( $lock_path, 0600 ) || ! flock( $handle, $mode ) ) {
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Close the lock descriptor when lock setup fails.
+			fclose( $handle );
 			throw new BranchDeploymentJournalFailure( 'Journal lock is unavailable.' );
 		}
 		try {

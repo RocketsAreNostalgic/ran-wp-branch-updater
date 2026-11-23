@@ -45,15 +45,39 @@ final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchAr
 		if ( ! is_dir( $directory ) && ! mkdir( $directory, 0700, true ) ) {
 			throw new RuntimeException( 'Cannot create private archive directory.' );
 		}
-		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_chmod -- Set native private-directory permissions before the custody recheck.
-		chmod( $directory, 0700 );
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged,WordPress.WP.AlternativeFunctions.file_system_operations_chmod -- Set native private-directory permissions before the custody recheck; failures reject the directory.
+		if ( ! @chmod( $directory, 0700 ) ) {
+			throw new RuntimeException( 'Archive directory is not private.' );
+		}
 		// @phpstan-ignore booleanOr.leftAlwaysFalse (retain symlink recheck at the custody boundary)
 		if ( is_link( $directory ) || ( fileperms( $directory ) & 0777 ) !== 0700 ) {
 			throw new RuntimeException( 'Archive directory is not private.' );
 		}
-		$path = tempnam( $directory, 'ran-branch-' );
+		clearstatcache( true, $directory );
+		$resolved_directory = realpath( $directory );
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_is_writable -- Verify native staging directory writability before exclusive archive creation.
+		if ( false === $resolved_directory || ! is_dir( $resolved_directory ) || ! is_writable( $resolved_directory ) ) {
+			throw new RuntimeException( 'Archive directory is not writable.' );
+		}
+		if ( function_exists( 'posix_geteuid' ) ) {
+			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Verify native archive directory ownership without leaking warnings.
+			$directory_stat = @lstat( $resolved_directory );
+			if ( ! is_array( $directory_stat ) || posix_geteuid() !== $directory_stat['uid'] ) {
+				throw new RuntimeException( 'Archive directory ownership is invalid.' );
+			}
+		}
+		$path = $resolved_directory . DIRECTORY_SEPARATOR . 'ran-branch-' . bin2hex( random_bytes( 16 ) );
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged,WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- Exclusively create the private archive file inside the verified directory without tempnam fallback.
+		$handle = @fopen( $path, 'x+b' );
+		if ( false === $handle ) {
+			throw new RuntimeException( 'Cannot create private archive file.' );
+		}
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Close the exclusively created archive file descriptor before permissions and acquisition.
+		fclose( $handle );
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_chmod -- Make the newly created native archive file private before acquisition.
-		if ( false === $path || ! chmod( $path, 0600 ) ) {
+		if ( ! chmod( $path, 0600 ) ) {
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Remove the newly created archive file if private permissions cannot be applied.
+			unlink( $path );
 			throw new RuntimeException( 'Cannot create private archive file.' );
 		}
 		$created = null;

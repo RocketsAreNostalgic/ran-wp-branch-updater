@@ -275,4 +275,35 @@ foreach ( array( 'Demo', 'demo' ) as $target_slug ) {
 }
 $collision_store->begin( new BranchDeploymentDeclaration( 'other-type', 'theme', 'demo', 'acme/demo', 'repository-id', 'main', null ) );
 
+// Journal and lock files must enforce 0600 permissions and reject symlinked paths.
+clearstatcache( true, $root . '/collision.json' );
+clearstatcache( true, $root . '/collision.json.lock' );
+$journal_perms = fileperms( $root . '/collision.json' );
+$lock_perms    = fileperms( $root . '/collision.json.lock' );
+if ( false === $journal_perms || ( $journal_perms & 0777 ) !== 0600 || false === $lock_perms || ( $lock_perms & 0777 ) !== 0600 ) {
+	throw new RuntimeException( 'Journal and lock files must enforce 0600 permissions.' );
+}
+
+$symlink_target = $root . '/external-target.json';
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Create fixture target for symlink refusal checks.
+file_put_contents( $symlink_target, '{}' );
+
+$symlink_journal = $root . '/symlink-journal.json';
+symlink( $symlink_target, $symlink_journal );
+try {
+	( new FileAttemptStore( $symlink_journal ) )->begin( new BranchDeploymentDeclaration( 'sym-target', 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', null ) );
+	throw new RuntimeException( 'Symlinked journal path was accepted.' );
+// phpcs:ignore Generic.CodeAnalysis.EmptyStatement.DetectedCatch -- Reaching this catch proves the expected rejection.
+} catch ( BranchDeploymentJournalFailure ) {
+}
+
+$symlink_lock_base = $root . '/symlink-lock.json';
+symlink( $symlink_target, $symlink_lock_base . '.lock' );
+try {
+	( new FileAttemptStore( $symlink_lock_base ) )->begin( new BranchDeploymentDeclaration( 'sym-lock', 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', null ) );
+	throw new RuntimeException( 'Symlinked lock path was accepted.' );
+// phpcs:ignore Generic.CodeAnalysis.EmptyStatement.DetectedCatch -- Reaching this catch proves the expected rejection.
+} catch ( BranchDeploymentJournalFailure ) {
+}
+
 echo "PASS persisted journal state invariants and custom attempt ID admission\n";
