@@ -65,7 +65,7 @@ final class AdmittedBranchRunner {
 			$this->journal->record_resolved_ref( $artifact->resolved_ref() );
 			$stage   = 'lock_unavailable';
 			$outcome = $this->lock->run(
-				function () use ( $deployment, $baseline, $artifact, &$fenced, &$cleanup_attempted, &$stage, &$reason, &$primary_outcome, &$cleanup_failed ): string {
+				function () use ( $deployment, $artifact, &$fenced, &$cleanup_attempted, &$stage, &$reason, &$primary_outcome, &$cleanup_failed ): string {
 					$primary  = null;
 					$returned = null;
 					$done     = static function ( string $code ) use ( &$returned ): string {
@@ -73,9 +73,9 @@ final class AdmittedBranchRunner {
 						return $code;
 					};
 					try {
-						$stage            = 'policy_blocked';
-						$current_baseline = $this->target->frozen_target( $deployment, false );
-						if ( null !== $current_baseline && version_compare( $artifact->expected_version(), $current_baseline['version'], '<' ) ) {
+						$stage    = 'policy_blocked';
+						$baseline = $this->target->frozen_target( $deployment, false );
+						if ( null !== $baseline && version_compare( $artifact->expected_version(), $baseline['version'], '<' ) ) {
 							throw new AdmittedBranchStageFailure( 'downgrade_blocked' );
 						}
 						$stage = 'provider_failed';

@@ -72,11 +72,18 @@ final class RAN_WP_Branch_Updater_RunnerFixtureTarget implements AdmittedTargetF
 	}
 
 	public int $adoptions = 0;
-	public function __construct( private ?\Throwable $first_frozen_failure = null, private bool $installed_active = false, private string $identifier = 'demo' ) {}
+	public function __construct( private ?\Throwable $first_frozen_failure = null, private bool $installed_active = false, private string $identifier = 'demo', private ?bool $pre_lock_active = null ) {}
 	public function assert_mutation_allowed(): void {}
 	public function frozen_target( BranchDeploymentDeclaration $deployment, bool $defer_existing ): ?array {
 		if ( $defer_existing && null !== $this->first_frozen_failure ) {
 			throw $this->first_frozen_failure;
+		}
+		if ( null !== $this->pre_lock_active ) {
+			return array(
+				'identifier' => $this->identifier,
+				'version'    => '1.2.2',
+				'active'     => $defer_existing ? $this->pre_lock_active : $this->installed_active,
+			);
 		}
 		return null;
 	}
@@ -115,14 +122,19 @@ final class RAN_WP_Branch_Updater_RunnerFixtureLock implements MutationLock {
 	}
 }
 
-$assert        = static function ( bool $actual, string $message ): void {
+$assert              = static function ( bool $actual, string $message ): void {
 	if ( ! $actual ) {
 		// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- CLI assertion diagnostics are not HTML; preserve the actual failing fixture detail.
 		throw new \RuntimeException( 'FAIL: ' . $message );
 	}
 };
-$deployment    = new BranchDeploymentDeclaration( 'focused-runner', 'plugin', 'demo', 'acme/demo', 'fixture-1', 'main', 'abc123', 'update', 'demo', 'demo/demo.php' );
-$runner        = static fn( RAN_WP_Branch_Updater_RunnerFixtureJournal $journal, RAN_WP_Branch_Updater_RunnerFixtureArtifact $artifact, RAN_WP_Branch_Updater_RunnerFixtureTarget $target, RAN_WP_Branch_Updater_RunnerFixtureLock $lock ): AdmittedBranchRunner => new AdmittedBranchRunner( $journal, new RAN_WP_Branch_Updater_RunnerFixtureArchives( $artifact ), $target, new RAN_WP_Branch_Updater_RunnerFixtureExecutor(), $lock );
+$deployment          = new BranchDeploymentDeclaration( 'focused-runner', 'plugin', 'demo', 'acme/demo', 'fixture-1', 'main', 'abc123', 'update', 'demo', 'demo/demo.php' );
+$runner              = static fn( RAN_WP_Branch_Updater_RunnerFixtureJournal $journal, RAN_WP_Branch_Updater_RunnerFixtureArtifact $artifact, RAN_WP_Branch_Updater_RunnerFixtureTarget $target, RAN_WP_Branch_Updater_RunnerFixtureLock $lock ): AdmittedBranchRunner => new AdmittedBranchRunner( $journal, new RAN_WP_Branch_Updater_RunnerFixtureArchives( $artifact ), $target, new RAN_WP_Branch_Updater_RunnerFixtureExecutor(), $lock );
+$changed_before_lock = new RAN_WP_Branch_Updater_RunnerFixtureTarget( installed_active: true, pre_lock_active: false );
+$assert(
+	'deployed' === $runner( new RAN_WP_Branch_Updater_RunnerFixtureJournal(), new RAN_WP_Branch_Updater_RunnerFixtureArtifact(), $changed_before_lock, new RAN_WP_Branch_Updater_RunnerFixtureLock() )->run( $deployment ),
+	'activation changes before the lock must not be attributed to the updater'
+);
 $accepted_slug = 'package.' . str_repeat( 'a', 183 );
 $accepted      = new BranchDeploymentDeclaration( 'accepted-dotted-slug', 'plugin', $accepted_slug, 'acme/demo', 'fixture-1', 'main', 'abc123' );
 $assert( $accepted_slug === $accepted->slug, 'admitted Core dotted package slugs remain accepted through 191 characters' );

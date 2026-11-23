@@ -70,7 +70,17 @@ final class WordPressPackageExecutor implements PackageExecutor {
 	 */
 	public function installed_facts( BranchDeploymentDeclaration $d ): array {
 		$identifier = $d->expected_identifier ?? $d->installed_identifier ?? ( 'plugin' === $d->package_type ? $d->slug . '/' . $d->slug . '.php' : $d->slug );
-		$state      = $this->installed_state( $d->package_type, $identifier );
+		if ( 'install' === $d->operation && 'plugin' === $d->package_type
+			&& null === $d->expected_identifier && null === $d->installed_identifier ) {
+			require_once ABSPATH . 'wp-admin/includes/plugin.php';
+			wp_clean_plugins_cache( false );
+			$entrypoints = array_keys( get_plugins( '/' . $d->slug ) );
+			if ( 1 !== count( $entrypoints ) || 1 !== preg_match( '/\A[A-Za-z0-9][A-Za-z0-9._-]*\.php\z/D', $entrypoints[0] ) ) {
+				throw new RuntimeException( 'WordPress did not report a unique installed plugin entrypoint.' );
+			}
+			$identifier = $d->slug . '/' . $entrypoints[0];
+		}
+		$state = $this->installed_state( $d->package_type, $identifier );
 		if ( ! is_string( $state['version'] ) ) {
 			throw new RuntimeException( 'WordPress did not report an installed package version.' );
 		}
@@ -88,13 +98,15 @@ final class WordPressPackageExecutor implements PackageExecutor {
 		require_once ABSPATH . 'wp-admin/includes/theme.php';
 		if ( 'plugin' === $type ) {
 			$absolute = WP_PLUGIN_DIR . '/' . $identifier;
-			$data     = is_file( $absolute ) ? get_plugin_data( $absolute, false, false ) : array();
+			clearstatcache( true, $absolute );
+			$data = is_file( $absolute ) ? get_plugin_data( $absolute, false, false ) : array();
 			return array(
-				'version' => isset( $data['Version'] ) && is_string( $data['Version'] ) ? $data['Version'] : null,
+				'version' => isset( $data['Version'] ) && is_string( $data['Version'] ) && '' !== $data['Version'] ? $data['Version'] : null,
 				'active'  => is_plugin_active( $identifier ),
 			);
 		}
 		$theme = wp_get_theme( $identifier );
+		$theme->cache_delete();
 		return array(
 			'version' => $theme->exists() ? $theme->get( 'Version' ) : null,
 			'active'  => get_stylesheet() === $identifier || get_template() === $identifier,

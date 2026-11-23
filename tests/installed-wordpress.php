@@ -516,6 +516,10 @@ final class InstalledWordPressProof {
 			self::check( 'deployed' === $outcome && 1 === $journal->fences && 1 === $executor->calls && 1 === $target->adoptions, 'Exact identity must install and adopt once.' );
 			$facts = $target->installed( $d );
 			self::check( $identifier === $facts['identifier'] && '1.0.0' === $facts['version'] && ! $facts['active'], 'WordPress must report the exact inactive identity and version.' );
+			if ( 'plugin' === $type ) {
+				$standalone = new BranchDeploymentDeclaration( 'discover-' . $slug, $type, $slug, 'fixture/repository', 'fixture', 'main', null, 'install' );
+				self::check( ( new WordPressPackageExecutor() )->installed_facts( $standalone ) === $facts, 'Standalone install must discover the unique plugin entrypoint.' );
+			}
 			self::check( is_file( $path . '/proof.txt' ) && ! file_exists( $path . '/outside.txt' ), 'Only the selected repository subdirectory may be installed.' );
 		}
 		self::check( false === get_option( 'auto_updater.lock' ) && ! file_exists( ABSPATH . '.maintenance' ), 'Identity proof must release native lock and maintenance scope.' );
