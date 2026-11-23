@@ -89,7 +89,11 @@ class WordPressCorePackageExecutor {
 		if ( ( 'plugin' === $type && dirname( $inputs['identifier'] ) !== $inputs['slug'] ) || ( 'theme' === $type && $inputs['identifier'] !== $inputs['slug'] ) ) {
 			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::INVALID_REQUEST, 'identifier_mismatch' );
 		}
-		$offer            = $this->update_offer( $type, $artifact, $inputs['slug'], $inputs['identifier'] );
+		$parent_failure = 'theme' === $type ? $this->theme_parent_failure( $artifact, $inputs['slug'], $inputs['subdirectory'] ) : null;
+		if ( null !== $parent_failure ) {
+			return CorePackageExecutionResult::failed( CorePackageExecutionFailure::INVALID_REQUEST, $parent_failure );
+		}
+		$offer            = $this->update_offer( $type, $artifact, $inputs['slug'], $inputs['identifier'], $inputs['subdirectory'] );
 		$transient_hook   = 'pre_site_transient_update_' . ( 'plugin' === $type ? 'plugins' : 'themes' );
 		$transient_filter = $this->transient_filter( $type, $offer, $inputs['identifier'] );
 		$pre_download     = $this->pre_download_filter( $type, 'update', $artifact, $inputs['identifier'] );
@@ -144,15 +148,21 @@ class WordPressCorePackageExecutor {
 		);
 	}
 
-	private function update_offer( string $type, PreparedPackageArtifact $artifact, string $slug, string $identifier ): object {
-		$offer          = array(
-			'id'           => $this->offer_namespace . '/' . $slug,
-			'slug'         => $slug,
-			'new_version'  => $artifact->get_expected_version(),
-			'package'      => $artifact->get_path(),
-			'autoupdate'   => true,
-			'requires_php' => '8.2',
+	private function update_offer( string $type, PreparedPackageArtifact $artifact, string $slug, string $identifier, ?string $subdirectory ): object {
+		$headers = $this->archive_header( $artifact, $subdirectory, 'theme' === $type ? 'style.css' : basename( $identifier ) );
+		$offer   = array(
+			'id'          => $this->offer_namespace . '/' . $slug,
+			'slug'        => $slug,
+			'new_version' => $artifact->get_expected_version(),
+			'package'     => $artifact->get_path(),
+			'autoupdate'  => true,
 		);
+		if ( false !== $headers ) {
+			$requires_php = $this->header_value( $headers, 'Requires PHP' );
+			if ( '' !== $requires_php ) {
+				$offer['requires_php'] = $requires_php;
+			}
+		}
 		$offer[ $type ] = $identifier;
 		return (object) $offer;
 	}
@@ -195,21 +205,30 @@ class WordPressCorePackageExecutor {
 	}
 
 	private function vcs_filter( string $type, string $identifier ): Closure {
-		$allowed_context = WP_PLUGIN_DIR;
-		if ( 'theme' === $type ) {
-			$theme_root = realpath( get_theme_root( $identifier ) );
-			if ( false === $theme_root || ! is_dir( $theme_root ) ) {
-				// phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Preserve the two-argument WordPress VCS filter callback signature.
-				return static fn ( bool $checkout, string $context ): bool => $checkout;
-			}
-			$allowed_context = $theme_root;
+		$allowed_context = realpath( 'plugin' === $type ? WP_PLUGIN_DIR : get_theme_root( $identifier ) );
+		if ( false === $allowed_context || ! is_dir( $allowed_context ) ) {
+			// phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Preserve the two-argument WordPress VCS filter callback signature.
+			return static fn ( bool $checkout, string $context ): bool => $checkout;
 		}
-		return static function ( bool $checkout, string $context ) use ( $type, $allowed_context ): bool {
-			if ( 'plugin' === $type ) {
-				return WP_PLUGIN_DIR === $context ? false : $checkout;
-			}
+		return static function ( bool $checkout, string $context ) use ( $allowed_context ): bool {
 			$canonical_context = realpath( $context );
-			return false !== $canonical_context && hash_equals( $allowed_context, $canonical_context ) ? false : $checkout;
+			if ( false === $canonical_context ) {
+				return $checkout;
+			}
+			if ( $allowed_context === $canonical_context ) {
+				return false;
+			}
+			// realpath() can retain the caller's spelling on a case-insensitive filesystem.
+			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- The directory may disappear after realpath; preserve the VCS decision in that case.
+			$allowed_identity = @stat( $allowed_context );
+			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- The directory may disappear after realpath; preserve the VCS decision in that case.
+			$context_identity = @stat( $canonical_context );
+			if ( false !== $allowed_identity && false !== $context_identity
+				&& 0 !== $allowed_identity['dev'] && 0 !== $allowed_identity['ino']
+				&& $allowed_identity['dev'] === $context_identity['dev'] && $allowed_identity['ino'] === $context_identity['ino'] ) {
+				return false;
+			}
+			return $checkout;
 		};
 	}
 
@@ -237,15 +256,39 @@ class WordPressCorePackageExecutor {
 			if ( hash_equals( $selected_source, $destination ) ) {
 				return trailingslashit( $selected_source );
 			}
-			if ( file_exists( $destination ) || is_link( $destination ) ) {
+			if ( is_link( $destination ) ) {
 				return self::invalid_package_source( 'destination_exists' );
 			}
 			global $wp_filesystem;
+			if ( file_exists( $destination ) ) {
+				if ( ! self::destination_is_source_root( $source_root, $remote_root, $slug ) ) {
+					return self::invalid_package_source( 'destination_exists' );
+				}
+				// Move the extracted root aside inside Core's working directory before moving the selected package into its place.
+				$staging = $remote_root . DIRECTORY_SEPARATOR . 'ran-source-' . bin2hex( random_bytes( 16 ) );
+				if ( ! $wp_filesystem instanceof \WP_Filesystem_Base || is_link( $staging ) || ! $wp_filesystem->move( $source_root, $staging, false ) ) {
+					return self::invalid_package_source( 'move_failed' );
+				}
+				$selected_source = $staging . substr( $selected_source, strlen( $source_root ) );
+			}
 			if ( ! $wp_filesystem instanceof \WP_Filesystem_Base || ! $wp_filesystem->move( $selected_source, $destination, false ) ) {
 				return self::invalid_package_source( 'move_failed' );
 			}
 			return trailingslashit( $destination );
 		};
+	}
+
+	private static function destination_is_source_root( string $source_root, string $remote_root, string $slug ): bool {
+		$root_name = basename( $source_root );
+		if ( dirname( $source_root ) !== $remote_root || ! PackageDirectory::names_collide( $root_name, $slug ) ) {
+			return false;
+		}
+		if ( $root_name === $slug ) {
+			return true;
+		}
+		// On case-insensitive filesystems realpath() can preserve the requested spelling.
+		$entries = scandir( $remote_root, SCANDIR_SORT_NONE );
+		return false !== $entries && in_array( $root_name, $entries, true ) && ! in_array( $slug, $entries, true );
 	}
 
 	private static function invalid_package_source( string $cause = 'source_invalid' ): WP_Error {
@@ -282,6 +325,22 @@ class WordPressCorePackageExecutor {
 	}
 
 	private function theme_parent_from_archive( PreparedPackageArtifact $artifact, ?string $subdirectory ): string|null|false {
+		$header = $this->archive_header( $artifact, $subdirectory, 'style.css' );
+		if ( false === $header ) {
+			return false;
+		}
+		$parent = $this->header_value( $header, 'Template' );
+		if ( '' === $parent ) {
+			return null;
+		}
+		try {
+			return PackageDirectory::normalize_slug( $parent );
+		} catch ( InvalidArgumentException ) {
+			return false;
+		}
+	}
+
+	private function archive_header( PreparedPackageArtifact $artifact, ?string $subdirectory, string $filename ): string|false {
 		if ( ! class_exists( \ZipArchive::class ) ) {
 			return false;
 		}
@@ -294,12 +353,12 @@ class WordPressCorePackageExecutor {
 		try {
 			// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- ZipArchive owns the numFiles property name.
 			for ( $index = 0; $index < $zip->numFiles; ++$index ) {
-				$name = $zip->getNameIndex( $index );
+				$name = $zip->getNameIndex( $index, \ZipArchive::FL_UNCHANGED );
 				if ( ! is_string( $name ) || str_contains( $name, '\\' ) || str_starts_with( $name, '/' ) ) {
 					continue;
 				}
 				$segments = explode( '/', trim( $name, '/' ) );
-				if ( count( $segments ) !== count( $subdirectory_segments ) + 2 || 'style.css' !== end( $segments ) || array_slice( $segments, 1, -1 ) !== $subdirectory_segments ) {
+				if ( count( $segments ) !== count( $subdirectory_segments ) + 2 || end( $segments ) !== $filename || array_slice( $segments, 1, -1 ) !== $subdirectory_segments ) {
 					continue;
 				}
 				$candidates[] = $index;
@@ -307,23 +366,16 @@ class WordPressCorePackageExecutor {
 			if ( 1 !== count( $candidates ) ) {
 				return false;
 			}
-			$header = $zip->getFromIndex( $candidates[0], 8192 );
+			return $zip->getFromIndex( $candidates[0], 8192, \ZipArchive::FL_UNCHANGED );
 		} finally {
 			$zip->close();
 		}
-		if ( ! is_string( $header ) ) {
-			return false;
-		}
-		$header = str_replace( "\r", "\n", $header );
-		$parent = preg_match( '/^(?:[ \t]*<\?php)?[ \t\/*#@]*Template:(.*)$/mi', $header, $match ) === 1 && $match[1] ? trim( (string) preg_replace( '/\s*(?:\*\/|\?>).*/', '', $match[1] ) ) : '';
-		if ( '' === $parent ) {
-			return null;
-		}
-		try {
-			return PackageDirectory::normalize_slug( $parent );
-		} catch ( InvalidArgumentException ) {
-			return false;
-		}
+	}
+
+	private function header_value( string $header, string $name ): string {
+		$header  = str_replace( "\r", "\n", $header );
+		$pattern = '/^(?:[ \t]*<\?php)?[ \t\/*#@]*' . preg_quote( $name, '/' ) . ':(.*)$/mi';
+		return 1 === preg_match( $pattern, $header, $match ) && $match[1] ? trim( (string) preg_replace( '/\s*(?:\*\/|\?>).*/', '', $match[1] ) ) : '';
 	}
 
 	private static function is_canonical_child( string $path, string $parent_path ): bool {
@@ -364,7 +416,10 @@ class WordPressCorePackageExecutor {
 		return CorePackageExecutionResult::failed( CorePackageExecutionFailure::WORDPRESS_UNCERTAIN );
 	}
 	private function is_canonical_installation_result( mixed $result ): bool {
-		if ( ! is_array( $result ) || array_keys( $result ) !== array( 'source', 'source_files', 'destination', 'destination_name', 'local_destination', 'remote_destination', 'clear_destination' ) || ! is_string( $result['source'] ) || ! is_array( $result['source_files'] ) || ! array_is_list( $result['source_files'] ) || ! is_string( $result['destination'] ) || ! is_string( $result['destination_name'] ) || ! is_string( $result['local_destination'] ) || ! is_string( $result['remote_destination'] ) || ! is_bool( $result['clear_destination'] ) ) {
+		if ( ! is_array( $result )
+			|| ! is_string( $result['source'] ?? null ) || ! is_array( $result['source_files'] ?? null ) || ! array_is_list( $result['source_files'] )
+			|| ! is_string( $result['destination'] ?? null ) || ! is_string( $result['destination_name'] ?? null )
+			|| ! is_string( $result['local_destination'] ?? null ) || ! is_string( $result['remote_destination'] ?? null ) || ! is_bool( $result['clear_destination'] ?? null ) ) {
 			return false;
 		}
 		foreach ( $result['source_files'] as $source_file ) {

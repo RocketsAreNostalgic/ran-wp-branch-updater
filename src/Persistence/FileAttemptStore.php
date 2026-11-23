@@ -223,6 +223,9 @@ final class FileAttemptStore {
 				return false;
 			}
 		}
+		if ( ! in_array( $r['package_type'], array( 'plugin', 'theme' ), true ) || ! PackageDirectory::is_valid_name( $r['slug'] ) ) {
+			return false;
+		}
 		foreach ( array( 'expected_head', 'selected_commit', 'expected_identifier', 'resolved_ref', 'mutation_started_at', 'outcome', 'finished_at' ) as $field ) {
 			if ( null !== $r[ $field ] && ( ! is_string( $r[ $field ] ) || '' === $r[ $field ] ) ) {
 				return false;
