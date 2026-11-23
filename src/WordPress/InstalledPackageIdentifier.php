@@ -12,8 +12,11 @@ final class InstalledPackageIdentifier {
 		$identifier = trim( $identifier );
 		if ( '' === $identifier
 			|| str_starts_with( $identifier, '/' )
+			|| str_ends_with( $identifier, '/' )
+			|| str_contains( $identifier, '//' )
 			|| str_contains( $identifier, '\\' )
-			|| preg_match( '/[\x00-\x1F\x7F]/', $identifier ) === 1
+			|| substr_count( $identifier, '/' ) > 1
+			|| 0 !== preg_match( '/[\p{Cc}\p{Cf}]/u', $identifier )
 			|| preg_match( '#(^|/)\.\.?(/|$)#', $identifier ) === 1
 		) {
 			throw new InvalidArgumentException( 'The installed package identifier is invalid.' );

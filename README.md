@@ -148,10 +148,10 @@ parent; a nonempty parent must remain a safe slug, differ from the target and
 exist in WordPress.
 
 Package admission intentionally remains stricter than header extraction:
-required name/version values, the 64-byte field limit, control-character refusal,
-version/compatibility syntax and requirements, and exact package identity still
-apply. Formatting compatibility does not waive archive custody or installation
-eligibility checks.
+required name/version values, duplicate-header refusal, the 64-byte field limit,
+Unicode control/format-character refusal, version/compatibility syntax and
+requirements, and exact package identity still apply. Formatting compatibility
+does not waive archive custody or installation eligibility checks.
 
 ## Community
 

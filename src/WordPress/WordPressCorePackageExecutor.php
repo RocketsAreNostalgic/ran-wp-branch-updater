@@ -159,7 +159,7 @@ class WordPressCorePackageExecutor {
 		);
 		if ( false !== $headers ) {
 			$requires_php = $this->header_value( $headers, 'Requires PHP' );
-			if ( '' !== $requires_php ) {
+			if ( is_string( $requires_php ) && '' !== $requires_php ) {
 				$offer['requires_php'] = $requires_php;
 			}
 		}
@@ -330,6 +330,9 @@ class WordPressCorePackageExecutor {
 			return false;
 		}
 		$parent = $this->header_value( $header, 'Template' );
+		if ( false === $parent ) {
+			return false;
+		}
 		if ( '' === $parent ) {
 			return null;
 		}
@@ -372,10 +375,21 @@ class WordPressCorePackageExecutor {
 		}
 	}
 
-	private function header_value( string $header, string $name ): string {
+	private function header_value( string $header, string $name ): string|false {
 		$header  = str_replace( "\r", "\n", $header );
 		$pattern = '/^(?:[ \t]*<\?php)?[ \t\/*#@]*' . preg_quote( $name, '/' ) . ':(.*)$/mi';
-		return 1 === preg_match( $pattern, $header, $match ) && $match[1] ? trim( (string) preg_replace( '/\s*(?:\*\/|\?>).*/', '', $match[1] ) ) : '';
+		$count   = preg_match_all( $pattern, $header, $matches );
+		if ( false === $count || 1 < $count ) {
+			return false;
+		}
+		if ( 0 === $count ) {
+			return '';
+		}
+		$value = trim( (string) preg_replace( '/\s*(?:\*\/|\?>).*/', '', $matches[1][0] ) );
+		if ( 0 !== preg_match( '/[\p{Cc}\p{Cf}]/u', $value ) ) {
+			return false;
+		}
+		return $value;
 	}
 
 	private static function is_canonical_child( string $path, string $parent_path ): bool {

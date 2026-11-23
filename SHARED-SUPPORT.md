@@ -17,7 +17,7 @@ slug with the installed folder stay exact, because the slug is the installed fol
 and its case is authoritative. Archive entry paths belong to `ArchiveSafety`.
 
 The library requires `ran/updater-support` under `^1.0.0-beta.10`. Its development
-lock qualifies published beta.9; consuming roots lock and qualify their own
+lock qualifies published beta.10; consuming roots lock and qualify their own
 selected compatible helper version.
 
 `RAN\UpdaterSupport\V1\ArchiveSafety` remains the correct shared boundary. It centralizes the low-level archive rules that are genuinely identical across the updater family: ZIP path normalization, entry-type classification, and path collision/file-parent collision detection.

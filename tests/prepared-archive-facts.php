@@ -388,6 +388,278 @@ $assert( 'OK' === $entropy_output, 'archive staging entropy failure must fail be
 // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Remove entropy-failure fixture directory.
 rmdir( $entropy_dir );
 
+// Issue #135: chmod(0600) failure and null identity must clean up the created temporary file without leaking it.
+$chmod_dir = $root . '/chmod-failure';
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_mkdir -- Create private staging directory for chmod-failure cleanup proof.
+mkdir( $chmod_dir, 0700, true );
+$chmod_output = $run_child(
+	<<<'PHP'
+namespace RAN\WPBranchUpdater\V1\Archive {
+	function chmod( string $filename, int $permissions ): bool {
+		if ( 0600 === $permissions ) {
+			return false;
+		}
+		return \chmod( $filename, $permissions );
+	}
+}
+namespace {
+	require $argv[1];
+	$acquired = false;
+	$offer = new \RAN\WPBranchUpdater\V1\Archive\ArchiveOffer(
+		'fixture', 'repository-id', 'abc123',
+		static function ( string $destination, int $max ) use ( &$acquired ): void { $acquired = '' !== $destination || $max >= 0; },
+		static function (): void {}
+	);
+	$deployment = new \RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration(
+		'chmod-failure', 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', 'abc123', 'install', 'demo', null
+	);
+	$error = null;
+	try {
+		\RAN\WPBranchUpdater\V1\Archive\PreparedArchive::download_and_validate( $offer, $deployment, $argv[2] );
+	} catch ( \RuntimeException $e ) {
+		$error = $e;
+	}
+	$leftovers = glob( $argv[2] . '/ran-branch-*' );
+	if ( ! $error instanceof \RuntimeException || 'Cannot create private archive file.' !== $error->getMessage() || $acquired || array() !== ( is_array( $leftovers ) ? $leftovers : array() ) ) {
+		fwrite( STDERR, 'Unexpected chmod-failure cleanup result' );
+		exit( 1 );
+	}
+	echo 'OK';
+}
+PHP,
+	$autoload_path,
+	$chmod_dir
+);
+$assert( 'OK' === $chmod_output && array() === glob( $chmod_dir . '/*' ), 'chmod(0600) failure must remove the temporary file without invoking acquisition' );
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Remove chmod-failure fixture directory.
+rmdir( $chmod_dir );
+
+$identity_dir = $root . '/identity-null';
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_mkdir -- Create private staging directory for null-identity cleanup proof.
+mkdir( $identity_dir, 0700, true );
+$identity_output = $run_child(
+	<<<'PHP'
+namespace RAN\WPBranchUpdater\V1\Archive {
+	function chmod( string $filename, int $permissions ): bool {
+		if ( 0600 === $permissions ) {
+			\chmod( $filename, 0644 );
+			return true;
+		}
+		return \chmod( $filename, $permissions );
+	}
+}
+namespace {
+	require $argv[1];
+	$acquired = false;
+	$offer = new \RAN\WPBranchUpdater\V1\Archive\ArchiveOffer(
+		'fixture', 'repository-id', 'abc123',
+		static function ( string $destination, int $max ) use ( &$acquired ): void { $acquired = '' !== $destination || $max >= 0; },
+		static function (): void {}
+	);
+	$deployment = new \RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration(
+		'identity-null', 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', 'abc123', 'install', 'demo', null
+	);
+	$error = null;
+	try {
+		\RAN\WPBranchUpdater\V1\Archive\PreparedArchive::download_and_validate( $offer, $deployment, $argv[2] );
+	} catch ( \RuntimeException $e ) {
+		$error = $e;
+	}
+	$leftovers = glob( $argv[2] . '/ran-branch-*' );
+	if ( ! $error instanceof \RuntimeException || 'Private archive identity is invalid.' !== $error->getMessage() || $acquired || array() !== ( is_array( $leftovers ) ? $leftovers : array() ) ) {
+		fwrite( STDERR, 'Unexpected identity-null cleanup result' );
+		exit( 1 );
+	}
+	echo 'OK';
+}
+PHP,
+	$autoload_path,
+	$identity_dir
+);
+$assert( 'OK' === $identity_output && array() === glob( $identity_dir . '/*' ), 'null identity after chmod must remove the temporary file without invoking acquisition' );
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Remove identity-null fixture directory.
+rmdir( $identity_dir );
+
+// Issue #135: Post-validate identity/digest recheck, guarded hash_file(), and unfiltered WordPress runtime version resolution.
+$wp_ver_zip = $root . '/wp-requires.zip';
+$zip->open( $wp_ver_zip, ZipArchive::CREATE | ZipArchive::OVERWRITE );
+$zip->addFromString( 'repository/demo/demo.php', "<?php\n/*\nPlugin Name: Demo\nVersion: 1.2.3\nRequires at least: 6.8\n*/\n" );
+$zip->close();
+$wp_ver_dir = $root . '/wp-version';
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_mkdir -- Create private staging directory for runtime WordPress version resolution proof.
+mkdir( $wp_ver_dir, 0700, true );
+$wp_global_output = $run_child(
+	<<<'PHP'
+require $argv[1];
+function get_bloginfo( string $show = '' ): string {
+	return '1.0';
+}
+$GLOBALS['wp_version'] = '6.8-RC1';
+$source = $argv[3];
+$offer = new \RAN\WPBranchUpdater\V1\Archive\ArchiveOffer(
+	'fixture', 'repository-id', 'abc123',
+	static function ( string $destination, int $max ) use ( $source ): void {
+		if ( ! copy( $source, $destination ) ) {
+			throw new \RuntimeException( 'copy failed' );
+		}
+	},
+	static function (): void {}
+);
+$deployment = new \RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration(
+	'wp-global', 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', 'abc123', 'install', 'demo', null
+);
+$artifact = \RAN\WPBranchUpdater\V1\Archive\PreparedArchive::download_and_validate( $offer, $deployment, $argv[2] );
+$version  = $artifact->expected_version();
+$artifact->cleanup();
+echo '1.2.3' === $version ? 'OK' : 'FAIL';
+PHP,
+	$autoload_path,
+	$wp_ver_dir,
+	$wp_ver_zip
+);
+$assert( 'OK' === $wp_global_output, 'PreparedArchive must read $GLOBALS[wp_version] instead of filterable get_bloginfo(version)' );
+
+$wp_fn_output = $run_child(
+	<<<'PHP'
+require $argv[1];
+function get_bloginfo( string $show = '' ): string {
+	return '1.0';
+}
+function wp_get_wp_version(): string {
+	return '6.8-RC1';
+}
+$GLOBALS['wp_version'] = '5.0';
+$source = $argv[3];
+$offer = new \RAN\WPBranchUpdater\V1\Archive\ArchiveOffer(
+	'fixture', 'repository-id', 'abc123',
+	static function ( string $destination, int $max ) use ( $source ): void {
+		if ( ! copy( $source, $destination ) ) {
+			throw new \RuntimeException( 'copy failed' );
+		}
+	},
+	static function (): void {}
+);
+$deployment = new \RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration(
+	'wp-fn', 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', 'abc123', 'install', 'demo', null
+);
+$artifact = \RAN\WPBranchUpdater\V1\Archive\PreparedArchive::download_and_validate( $offer, $deployment, $argv[2] );
+$version  = $artifact->expected_version();
+$artifact->cleanup();
+echo '1.2.3' === $version ? 'OK' : 'FAIL';
+PHP,
+	$autoload_path,
+	$wp_ver_dir,
+	$wp_ver_zip
+);
+$assert( 'OK' === $wp_fn_output, 'PreparedArchive must prefer wp_get_wp_version() over both get_bloginfo() and $GLOBALS[wp_version]' );
+
+$post_validate_identity_output = $run_child(
+	<<<'PHP'
+require $argv[1];
+$staged_path = '';
+function wp_get_wp_version(): string {
+	global $staged_path;
+	if ( '' !== $staged_path ) {
+		chmod( $staged_path, 0644 );
+	}
+	return '6.8';
+}
+$source = $argv[3];
+$offer = new \RAN\WPBranchUpdater\V1\Archive\ArchiveOffer(
+	'fixture', 'repository-id', 'abc123',
+	static function ( string $destination, int $max ) use ( $source, &$staged_path ): void {
+		$staged_path = $destination;
+		if ( ! copy( $source, $destination ) ) {
+			throw new \RuntimeException( 'copy failed' );
+		}
+	},
+	static function (): void {}
+);
+$deployment = new \RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration(
+	'post-validate-identity', 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', 'abc123', 'install', 'demo', null
+);
+$error = null;
+try {
+	\RAN\WPBranchUpdater\V1\Archive\PreparedArchive::download_and_validate( $offer, $deployment, $argv[2] );
+} catch ( \RAN\WPBranchUpdater\V1\Runtime\ReasonedFailure $e ) {
+	$error = $e;
+}
+$leftovers = glob( $argv[2] . '/ran-branch-*' );
+if ( ! $error instanceof \RAN\WPBranchUpdater\V1\Runtime\ReasonedFailure
+	|| \RAN\WPBranchUpdater\V1\Runtime\FailureReason::ARCHIVE_CUSTODY_CHANGED->value !== $error->reason
+	|| 'identity' !== $error->detail
+	|| array() !== ( is_array( $leftovers ) ? $leftovers : array() ) ) {
+	fwrite( STDERR, 'Post-validate identity recheck failed' );
+	exit( 1 );
+}
+echo 'OK';
+PHP,
+	$autoload_path,
+	$wp_ver_dir,
+	$wp_ver_zip
+);
+$assert( 'OK' === $post_validate_identity_output, 'post-validate custody recheck must detect identity drift and clean up the rejected file' );
+
+$guarded_hash_output = $run_child(
+	<<<'PHP'
+namespace RAN\WPBranchUpdater\V1\Archive {
+	function hash_file( string $algo, string $filename, bool $binary = false ): string|false {
+		static $calls = 0;
+		++$calls;
+		if ( 2 === $calls ) {
+			return false;
+		}
+		return \hash_file( $algo, $filename, $binary );
+	}
+}
+namespace {
+	set_error_handler(
+		static function ( int $severity, string $message ): bool {
+			throw new \ErrorException( $message, 0, $severity );
+		}
+	);
+	require $argv[1];
+	$source = $argv[3];
+	$offer = new \RAN\WPBranchUpdater\V1\Archive\ArchiveOffer(
+		'fixture', 'repository-id', 'abc123',
+		static function ( string $destination, int $max ) use ( $source ): void {
+			if ( ! copy( $source, $destination ) ) {
+				throw new \RuntimeException( 'copy failed' );
+			}
+		},
+		static function (): void {}
+	);
+	$deployment = new \RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration(
+		'post-validate-hash', 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', 'abc123', 'install', 'demo', null
+	);
+	$GLOBALS['wp_version'] = '6.8';
+	$error = null;
+	try {
+		\RAN\WPBranchUpdater\V1\Archive\PreparedArchive::download_and_validate( $offer, $deployment, $argv[2] );
+	} catch ( \RAN\WPBranchUpdater\V1\Runtime\ReasonedFailure $e ) {
+		$error = $e;
+	}
+	$leftovers = glob( $argv[2] . '/ran-branch-*' );
+	if ( ! $error instanceof \RAN\WPBranchUpdater\V1\Runtime\ReasonedFailure
+		|| \RAN\WPBranchUpdater\V1\Runtime\FailureReason::ARCHIVE_CUSTODY_CHANGED->value !== $error->reason
+		|| 'digest' !== $error->detail
+		|| array() !== ( is_array( $leftovers ) ? $leftovers : array() ) ) {
+		fwrite( STDERR, 'Guarded post-validate hash_file failure check failed' );
+		exit( 1 );
+	}
+	echo 'OK';
+}
+PHP,
+	$autoload_path,
+	$wp_ver_dir,
+	$wp_ver_zip
+);
+$assert( 'OK' === $guarded_hash_output, 'guarded hash_file() failure must fail closed as digest custody change without warning and clean up' );
+// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Remove WordPress-version fixture archive.
+unlink( $wp_ver_zip );
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Remove WordPress-version fixture directory.
+rmdir( $wp_ver_dir );
+
 $after_tmp = glob( rtrim( sys_get_temp_dir(), '/\\' ) . '/ran-branch-*' );
 $after_tmp = is_array( $after_tmp ) ? $after_tmp : array();
 $assert( $before_tmp === $after_tmp, 'failed archive staging must never fall back to the system temporary directory' );

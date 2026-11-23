@@ -32,6 +32,9 @@ foreach ( array( '', '.hidden', 'x/demo', 'Demo ', "Demo\n", str_repeat( 'A', 19
 if ( 'demo/demo.php' !== InstalledPackageIdentifier::normalize( ' demo/demo.php ' ) ) {
 	throw new RuntimeException( 'Installed identifier normalization changed.' );
 }
+if ( 'demo' !== InstalledPackageIdentifier::normalize( 'demo' ) || 'MixedCase/Bootstrap.php' !== InstalledPackageIdentifier::normalize( 'MixedCase/Bootstrap.php' ) ) {
+	throw new RuntimeException( 'Valid single-level and two-level installed identifiers must remain accepted.' );
+}
 
 foreach ( array( '', 'demo/../demo.php', 'demo/main.php ', '/demo/main.php', 'demo/main.PHP', 'demo/' . str_repeat( 'a', 183 ) . '.php', 'other/main.php', 'demo/nested/main.php', 'demo\\main.php' ) as $identifier ) {
 	try {
@@ -55,9 +58,17 @@ try {
 foreach ( array(
 	'',
 	'/demo/demo.php',
+	'demo/',
+	'demo//demo.php',
 	'demo\\demo.php',
 	'demo/../demo.php',
+	'other/demo/demo.php',
+	'x/demo/demo.php',
+	'a/b/c',
 	"demo/\x00demo.php",
+	"demo/\u{200B}demo.php",
+	"demo/\u{202E}demo.php",
+	"demo/\xFFdemo.php",
 ) as $invalid ) {
 	try {
 		InstalledPackageIdentifier::normalize( $invalid );
