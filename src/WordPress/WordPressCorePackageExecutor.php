@@ -212,7 +212,23 @@ class WordPressCorePackageExecutor {
 		}
 		return static function ( bool $checkout, string $context ) use ( $allowed_context ): bool {
 			$canonical_context = realpath( $context );
-			return false !== $canonical_context && hash_equals( $allowed_context, $canonical_context ) ? false : $checkout;
+			if ( false === $canonical_context ) {
+				return $checkout;
+			}
+			if ( $allowed_context === $canonical_context ) {
+				return false;
+			}
+			// realpath() can retain the caller's spelling on a case-insensitive filesystem.
+			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- The directory may disappear after realpath; preserve the VCS decision in that case.
+			$allowed_identity = @stat( $allowed_context );
+			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- The directory may disappear after realpath; preserve the VCS decision in that case.
+			$context_identity = @stat( $canonical_context );
+			if ( false !== $allowed_identity && false !== $context_identity
+				&& 0 !== $allowed_identity['dev'] && 0 !== $allowed_identity['ino']
+				&& $allowed_identity['dev'] === $context_identity['dev'] && $allowed_identity['ino'] === $context_identity['ino'] ) {
+				return false;
+			}
+			return $checkout;
 		};
 	}
 

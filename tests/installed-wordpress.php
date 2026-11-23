@@ -47,6 +47,7 @@ final class InstalledWordPressProof {
 		$this->non_reclaiming_lock();
 		$this->lock_race();
 		$this->reclaim_interleavings();
+		$this->core_lock_interoperability();
 		$this->adapter_boundaries();
 		$this->header_compatibility();
 		$this->case_alias_installation();
@@ -198,6 +199,19 @@ final class InstalledWordPressProof {
 		self::check( false === $filter( true, WP_PLUGIN_DIR . '/.' ), 'An alternate spelling of the canonical plugin directory must match.' );
 		self::check( true === $filter( true, WP_CONTENT_DIR ), 'An unrelated context must preserve WordPress VCS detection.' );
 
+		$case_variant = dirname( WP_PLUGIN_DIR ) . '/Plugins';
+		if ( is_dir( $case_variant ) ) {
+			self::check( false === $filter( true, $case_variant ), 'A case alias of the actual plugin directory must match.' );
+		} else {
+			self::check( wp_mkdir_p( $case_variant ), 'Create a distinct case-variant directory on case-sensitive filesystems.' );
+			try {
+				self::check( true === $filter( true, $case_variant ), 'A different directory with a case-variant name must preserve VCS detection.' );
+			} finally {
+				// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Remove only the empty case-variant directory created by this proof.
+				rmdir( $case_variant );
+			}
+		}
+
 		global $wp_filesystem;
 		WP_Filesystem();
 		$filesystem = $wp_filesystem;
@@ -263,7 +277,6 @@ final class InstalledWordPressProof {
 		$token = $owner->acquire();
 		self::check( $other->current_token() === $token && get_option( $name ) === $token, 'Insertion must be visible through SQL and the options cache.' );
 		self::check( 'off' === $wpdb->get_var( $wpdb->prepare( 'SELECT autoload FROM %i WHERE option_name = %s', $wpdb->options, $name ) ), 'Native lock must use WordPress non-autoload encoding.' );
-		self::check( ! \WP_Upgrader::create_lock( 'auto_updater' ), 'WordPress Core must recognize the exact token as a live timestamp.' );
 		$contended = false;
 		try {
 			$other->acquire();
@@ -371,9 +384,11 @@ final class InstalledWordPressProof {
 
 		$stale       = (string) ( time() - 7200 );
 		$replacement = null;
+		$intercepted = false;
 		update_option( 'auto_updater.lock', $stale, false );
-		$barrier = static function ( string $query ) use ( $owner, $stale, &$replacement ): string {
-			if ( null === $replacement && str_starts_with( $query, 'UPDATE ' ) && str_contains( $query, 'CAST(option_value AS BINARY)' ) ) {
+		$barrier = static function ( string $query ) use ( $owner, $stale, &$replacement, &$intercepted ): string {
+			if ( ! $intercepted && str_starts_with( $query, 'DELETE FROM' ) && str_contains( $query, 'auto_updater.lock' ) ) {
+				$intercepted = true;
 				self::check( $owner->release( $stale ), 'Competing owner must remove the original expired row.' );
 				$replacement = $owner->try_acquire_without_reclaim();
 			}
@@ -384,12 +399,59 @@ final class InstalledWordPressProof {
 			$contender->acquire();
 			throw new RuntimeException( 'A stale reclaim must not take over a concurrent owner.' );
 		} catch ( ReasonedFailure $failure ) {
-			self::check( FailureReason::LOCK_HELD->value === $failure->reason && null !== $replacement && $replacement === $contender->current_token(), 'The conditional replacement must report the winning owner as held.' );
+			self::check( FailureReason::LOCK_HELD->value === $failure->reason && null !== $replacement && $replacement === $contender->current_token(), 'A late exact-token release must preserve the winning owner and report the lock as held.' );
 		} finally {
 			remove_filter( 'query', $barrier );
 			if ( null !== $replacement ) {
 				self::check( $owner->release( $replacement ), 'Winning owner must release its exact token.' );
 			}
+		}
+	}
+
+	private function core_lock_interoperability(): void {
+		$name = 'auto_updater.lock';
+		$lock = new WordPressUpdaterLock();
+		$held = $lock->acquire();
+		try {
+			self::check( ! \WP_Upgrader::create_lock( 'auto_updater' ) && $held === $lock->current_token(), 'Core must respect a live adapter token.' );
+		} finally {
+			self::check( $lock->release( $held ), 'The adapter must still own its token.' );
+		}
+
+		self::check( \WP_Upgrader::create_lock( 'auto_updater' ), 'Core must acquire an unoccupied lock.' );
+		try {
+			$core_token = $lock->current_token();
+			self::check( null !== $core_token && ctype_digit( $core_token ), 'The adapter must read the live Core timestamp.' );
+			try {
+				$lock->acquire();
+				throw new RuntimeException( 'The adapter must respect the live Core timestamp.' );
+			} catch ( ReasonedFailure $failure ) {
+				self::check( FailureReason::LOCK_HELD->value === $failure->reason && $core_token === $lock->current_token(), 'A live Core owner must retain its token.' );
+			}
+		} finally {
+			self::check( \WP_Upgrader::release_lock( 'auto_updater' ), 'Core must release its lock.' );
+		}
+
+		// Interleave the adapter after Core reads an expired timestamp and before Core deletes by name.
+		$stale       = (string) ( time() - HOUR_IN_SECONDS - 1 );
+		$reclaimed   = null;
+		$option_hook = 'option_' . $name;
+		update_option( $name, $stale, false );
+		$barrier = static function ( mixed $value ) use ( $lock, $stale, &$reclaimed ): mixed {
+			if ( $stale === $value && null === $reclaimed ) {
+				$reclaimed = $lock->acquire();
+				self::check( $reclaimed === $lock->current_token(), 'The adapter must acquire the expired lock before Core acts.' );
+			}
+			return $value;
+		};
+		add_filter( $option_hook, $barrier );
+		try {
+			self::check( \WP_Upgrader::create_lock( 'auto_updater' ), 'Core reclaims an expired row by option name.' );
+			$core_token = $lock->current_token();
+			self::check( null !== $reclaimed && null !== $core_token && ctype_digit( $core_token ) && ! $lock->release( $reclaimed ), 'Core name-only reclamation can replace the adapter owner, and its new timestamp survives the late adapter release.' );
+		} finally {
+			remove_filter( $option_hook, $barrier );
+			\WP_Upgrader::release_lock( 'auto_updater' );
 		}
 	}
 

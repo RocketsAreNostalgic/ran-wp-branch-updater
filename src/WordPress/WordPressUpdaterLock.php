@@ -12,7 +12,14 @@ use RAN\WPBranchUpdater\V1\Runtime\ReasonedFailure;
 use RuntimeException;
 use Throwable;
 
-/** Exact-token auto_updater.lock adapter, including stale-token and option-cache behaviour. */
+/**
+ * Exact-token auto_updater.lock adapter, including stale-token and option-cache behaviour.
+ *
+ * WordPress Core's WP_Upgrader::create_lock() reclaims expired rows through
+ * release_lock(), which calls delete_option() by name. If Core observed the
+ * expired token before an adapter reclaimed it, Core can delete the new owner.
+ * Exact-token releases protect adapter callers from each other's stale reads.
+ */
 class WordPressUpdaterLock implements MutationLock {
 	private const NAME             = 'auto_updater.lock';
 	private const TIMEOUT          = 3600;
@@ -78,10 +85,10 @@ class WordPressUpdaterLock implements MutationLock {
 			if ( $stored > time() - self::TIMEOUT ) {
 				break;
 			}
-			if ( $this->replace_stale( $stored, $token ) ) {
+			if ( $this->release( $stored ) && $this->insert( $token ) ) {
 				return $token;
 			}
-			// A concurrent release or takeover changed the row. Retry against current ownership.
+			// The expired row changed or another caller won the insert. Recheck current ownership.
 		}
 		throw $this->contention_failure();
 	}
@@ -99,16 +106,11 @@ class WordPressUpdaterLock implements MutationLock {
 		return new ReasonedFailure( 'WordPress updater is already running.', ( $this->contention_reason ?? FailureReason::LOCK_HELD )->value );
 	}
 
+	/** @phpstan-impure */
 	private function insert( string $token ): bool {
 		global $wpdb;
 		$this->database();
 		$result = $wpdb->query( $wpdb->prepare( 'INSERT IGNORE INTO %i (option_name, option_value, autoload) VALUES (%s, %s, %s)', $wpdb->options, self::NAME, $token, 'off' ) );
-		return $this->changed_row( $result );
-	}
-
-	private function replace_stale( string $stored, string $token ): bool {
-		global $wpdb;
-		$result = $wpdb->query( $wpdb->prepare( 'UPDATE %i SET option_value = %s, autoload = %s WHERE option_name = %s AND CAST(option_value AS BINARY) = %s', $wpdb->options, $token, 'off', self::NAME, $stored ) );
 		return $this->changed_row( $result );
 	}
 

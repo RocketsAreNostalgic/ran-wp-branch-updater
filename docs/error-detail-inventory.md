@@ -123,6 +123,13 @@ reason is recorded and tested; **documented** = deliberately unchanged, rational
 | E20 | `AdmittedBranchRunner.php:139` | cleanup | an outcome returned normally (for example `deployed`) | replaced by `interrupted` or `archive_cleanup_failed` | C | `cleanup_also_failed` and `primary_outcome` | none | `tests/failure-reasons.php` | reason recorded; outcome code unchanged |
 | E21 | `Runtime/AdmittedBranchRunner.php:91` | locked policy | target has a VCS marker | `policy_blocked` | B | `target_is_working_copy` | no path, marker contents or other detail leaves the check | `tests/failure-reasons.php` public admitted marker matrix and late-lock marker; `tests/contract.php` standalone journal/override | fixed |
 
+For E10, the adapter reclaims expired rows through its exact-token release and
+retries races with other adapter callers. WordPress Core's
+`WP_Upgrader::create_lock()` handles expiry through `release_lock()`, which
+deletes the option by name. A Core caller that already observed the expired
+row can therefore delete a newly acquired token. The installed WordPress proof
+covers live mutual exclusion and this upstream expiry boundary.
+
 ## What a host must change to consume this
 
 1. Where it reads the outcome, also read `$deployment->last_reason()` (or implement

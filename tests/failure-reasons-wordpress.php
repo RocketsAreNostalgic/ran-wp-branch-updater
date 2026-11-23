@@ -36,8 +36,6 @@ final class RAN_WP_Branch_Updater_WordPressDatabase {
 	public array $inserts = array();
 	/** @var list<int|false> */
 	public array $deletes = array();
-	/** @var list<int|false> */
-	public array $updates = array();
 	/** @var list<string|null> */
 	public array $stored = array();
 	/** @var list<string> */
@@ -47,11 +45,7 @@ final class RAN_WP_Branch_Updater_WordPressDatabase {
 	}
 	public function query( string $sql ): int|false {
 		$this->queries[] = $sql;
-		return match ( true ) {
-			str_starts_with( $sql, 'INSERT' ) => array_shift( $this->inserts ) ?? false,
-			str_starts_with( $sql, 'UPDATE' ) => array_shift( $this->updates ) ?? false,
-			default => array_shift( $this->deletes ) ?? false,
-		};
+		return ( str_starts_with( $sql, 'INSERT' ) ? array_shift( $this->inserts ) : array_shift( $this->deletes ) ) ?? false;
 	}
 	public function get_row( string $sql ): ?object {
 		$this->queries[] = $sql;
@@ -353,11 +347,12 @@ foreach ( array(
 	'malformed token'      => array( array( 'abc' ), array( 0 ), array(), FailureReason::LOCK_TOKEN_INVALID ),
 	'empty stored token'   => array( array( '' ), array( 0 ), array(), FailureReason::LOCK_TOKEN_INVALID ),
 	'competing takeover'   => array( array( $stale, (string) time() ), array( 0, 0 ), array( 0 ), FailureReason::LOCK_HELD ),
+	'lost reinsert'        => array( array( $stale, (string) time() ), array( 0, 0, 0 ), array( 1 ), FailureReason::LOCK_HELD ),
 	'bounded retry budget' => array( array( null, null, null ), array( 0, 0, 0 ), array(), FailureReason::LOCK_HELD ),
-) as $label => [$stored, $inserts, $updates, $expected_reason] ) {
+) as $label => [$stored, $inserts, $deletes, $expected_reason] ) {
 	$database->stored  = $stored;
 	$database->inserts = $inserts;
-	$database->updates = $updates;
+	$database->deletes = $deletes;
 	try {
 		( new WordPressUpdaterLock() )->acquire();
 		$assert( false, 'contention must refuse: ' . $label );
@@ -368,15 +363,28 @@ foreach ( array(
 foreach ( array(
 	array( array( null ), array() ),
 	array( array( $stale, null ), array( 0 ) ),
-) as [$stored, $updates] ) {
+) as [$stored, $deletes] ) {
 	$database->stored  = $stored;
-	$database->updates = $updates;
+	$database->deletes = $deletes;
 	$database->inserts = array_merge( array_fill( 0, count( $stored ), 0 ), array( 1 ) );
 	$assert( is_numeric( ( new WordPressUpdaterLock() )->acquire() ), 'a clean release during acquisition allows a bounded retry' );
 }
+$database->inserts = array( 0, 1 );
+$database->stored  = array( $stale );
+$database->deletes = array( 1 );
+$overridden_lock   = new class() extends WordPressUpdaterLock {
+	/** @var list<string> */
+	public array $released = array();
+	public function release( string $token ): bool {
+		$this->released[] = $token;
+		return parent::release( $token );
+	}
+};
+$assert( is_numeric( $overridden_lock->acquire() ) && array( $stale ) === $overridden_lock->released, 'stale reclamation invokes the override with the observed token' );
+
 $database->inserts = array( 0 );
 $database->stored  = array( $stale );
-$database->updates = array( false );
+$database->deletes = array( false );
 try {
 	( new WordPressUpdaterLock() )->acquire();
 	$assert( false, 'database failure must escape' );
