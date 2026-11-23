@@ -20,7 +20,9 @@ use RAN\WPBranchUpdater\V1\Persistence\BranchDeploymentJournalFailure;
 use RAN\WPBranchUpdater\V1\Runtime\AdmittedBranchDurabilityFailure;
 use RAN\WPBranchUpdater\V1\Runtime\AdmittedBranchRunner;
 use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
+use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionFailure;
 use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionResult;
+use RAN\WPBranchUpdater\V1\Runtime\FailureReason;
 
 final class RAN_WP_Branch_Updater_RunnerFixtureJournal implements AdmittedAttemptJournal {
 	public int $finish_calls = 0;
@@ -71,7 +73,8 @@ final class RAN_WP_Branch_Updater_RunnerFixtureTarget implements AdmittedTargetF
 		return __DIR__ . '/build/absent-target/' . $deployment->slug;
 	}
 
-	public int $adoptions = 0;
+	public int $adoptions            = 0;
+	public bool $baseline_unreadable = false;
 	public function __construct( private ?\Throwable $first_frozen_failure = null, private bool $installed_active = false, private string $identifier = 'demo', private ?bool $pre_lock_active = null ) {}
 	public function assert_mutation_allowed(): void {}
 	public function frozen_target( BranchDeploymentDeclaration $deployment, bool $defer_existing ): ?array {
@@ -96,8 +99,9 @@ final class RAN_WP_Branch_Updater_RunnerFixtureTarget implements AdmittedTargetF
 			'version'    => '1.2.3',
 			'active'     => $this->installed_active,
 		); }
-	public function baseline_now( BranchDeploymentDeclaration $deployment, array $baseline ): array {
-		return $baseline; }
+	public function baseline_now( BranchDeploymentDeclaration $deployment, array $baseline ): ?array {
+		return $this->baseline_unreadable ? null : ( $this->frozen_target( $deployment, false ) ?? $baseline );
+	}
 	public function adopt( BranchDeploymentDeclaration $deployment ): bool {
 		++$this->adoptions;
 		return true; }
@@ -105,9 +109,13 @@ final class RAN_WP_Branch_Updater_RunnerFixtureTarget implements AdmittedTargetF
 
 // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- These test-only fault-injection doubles share one standalone behavioral proof.
 final class RAN_WP_Branch_Updater_RunnerFixtureExecutor implements AdmittedPackageExecutor {
+	/** @var array{identifier:string,version:string,active:bool}|null */
+	public ?array $observed_baseline = null;
+	public function __construct( private ?CorePackageExecutionResult $result = null ) {}
 	public function preflight( BranchDeploymentDeclaration $deployment, AdmittedBranchArtifact $artifact ): void {}
 	public function execute( BranchDeploymentDeclaration $deployment, ?array $baseline, AdmittedBranchArtifact $artifact ): CorePackageExecutionResult {
-		return CorePackageExecutionResult::succeeded();
+		$this->observed_baseline = $baseline;
+		return $this->result ?? CorePackageExecutionResult::succeeded();
 	}
 }
 
@@ -135,6 +143,21 @@ $assert(
 	'deployed' === $runner( new RAN_WP_Branch_Updater_RunnerFixtureJournal(), new RAN_WP_Branch_Updater_RunnerFixtureArtifact(), $changed_before_lock, new RAN_WP_Branch_Updater_RunnerFixtureLock() )->run( $deployment ),
 	'activation changes before the lock must not be attributed to the updater'
 );
+foreach ( array( false, true ) as $unreadable ) {
+	$changed_before_lock->baseline_unreadable = $unreadable;
+	$failed_executor                          = new RAN_WP_Branch_Updater_RunnerFixtureExecutor( CorePackageExecutionResult::failed( CorePackageExecutionFailure::WORDPRESS_REFUSED ) );
+	$failed_runner                            = new AdmittedBranchRunner(
+		new RAN_WP_Branch_Updater_RunnerFixtureJournal(),
+		new RAN_WP_Branch_Updater_RunnerFixtureArchives( new RAN_WP_Branch_Updater_RunnerFixtureArtifact() ),
+		$changed_before_lock,
+		$failed_executor,
+		new RAN_WP_Branch_Updater_RunnerFixtureLock()
+	);
+	$failed_outcome                           = $failed_runner->run( $deployment );
+	$assert( true === ( $failed_executor->observed_baseline['active'] ?? false ), 'executor receives the post-lock activation state' );
+	$assert( ( $unreadable ? 'restoration_uncertain' : 'upgrader_failed' ) === $failed_outcome, 'failure restoration compares against the locked baseline' );
+	$assert( ! $unreadable || FailureReason::BASELINE_UNREADABLE === $failed_runner->last_reason()?->reason, 'unreadable facts retain the bounded baseline reason' );
+}
 $accepted_slug = 'package.' . str_repeat( 'a', 183 );
 $accepted      = new BranchDeploymentDeclaration( 'accepted-dotted-slug', 'plugin', $accepted_slug, 'acme/demo', 'fixture-1', 'main', 'abc123' );
 $assert( $accepted_slug === $accepted->slug, 'admitted Core dotted package slugs remain accepted through 191 characters' );
