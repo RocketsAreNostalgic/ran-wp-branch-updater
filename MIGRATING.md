@@ -49,7 +49,6 @@ If a host imported one of the previous flat public types, update the full FQCN r
 | --- | --- |
 | `RAN\BranchDeployment\ArchiveOffer` | `RAN\WPBranchUpdater\V1\Archive\ArchiveOffer` |
 | `RAN\BranchDeployment\ArchiveValidator` | `RAN\WPBranchUpdater\V1\Archive\ArchiveValidator` |
-| `RAN\BranchDeployment\PackageSubdirectory` | `RAN\WPBranchUpdater\V1\Archive\PackageSubdirectory` |
 | `RAN\BranchDeployment\PreparedArchive` | `RAN\WPBranchUpdater\V1\Archive\PreparedArchive` |
 | `RAN\BranchDeployment\AdmittedArchiveSource` | `RAN\WPBranchUpdater\V1\Contract\AdmittedArchiveSource` |
 | `RAN\BranchDeployment\AdmittedAttemptJournal` | `RAN\WPBranchUpdater\V1\Contract\AdmittedAttemptJournal` |
@@ -198,7 +197,8 @@ executor call. Existing cleanup, terminal journaling and lock release apply.
 
 ## Shared package directory rules
 
-Replace `RAN\WPBranchUpdater\V1\Archive\PackageSubdirectory` with
+Replace `RAN\WPBranchUpdater\V1\Archive\PackageSubdirectory` or its earlier
+flat name `RAN\BranchDeployment\PackageSubdirectory` with
 `RAN\UpdaterSupport\V1\PackageDirectory` from
 `ran/updater-support` under `^1.0.0-beta.9`. The local class is removed without an alias;
 its five methods and fixed-message `InvalidArgumentException` behavior remain

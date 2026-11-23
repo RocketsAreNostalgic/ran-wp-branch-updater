@@ -19,9 +19,6 @@ use RAN\WPBranchUpdater\V1\WordPress\WordPressUpdaterLock;
 
 // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- This test-only state holder and the WordPress stubs below share one standalone proof.
 final class RAN_WP_Branch_Updater_WordPressState {
-	public static bool $multisite     = false;
-	public static bool $file_mods     = true;
-	public static string $filesystem  = 'direct';
 	public static int $hook_calls     = 0;
 	public static int|false $priority = false;
 }
@@ -52,18 +49,6 @@ final class RAN_WP_Branch_Updater_WordPressDatabase {
 	}
 }
 
-// phpcs:ignore Universal.Files.SeparateFunctionsFromOO.Mixed, WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound -- WordPress function stubs must retain their native global names and signatures in this standalone proof.
-function is_multisite(): bool {
-	return RAN_WP_Branch_Updater_WordPressState::$multisite;
-}
-// phpcs:ignore Universal.Files.SeparateFunctionsFromOO.Mixed, WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound, Generic.CodeAnalysis.UnusedFunctionParameter.Found -- WordPress function stubs must retain their native global names and signatures in this standalone proof.
-function wp_is_file_mod_allowed( string $context ): bool {
-	return RAN_WP_Branch_Updater_WordPressState::$file_mods && '' !== $context;
-}
-// phpcs:ignore Universal.Files.SeparateFunctionsFromOO.Mixed, WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound -- WordPress function stubs must retain their native global names and signatures in this standalone proof.
-function get_filesystem_method(): string {
-	return RAN_WP_Branch_Updater_WordPressState::$filesystem;
-}
 // phpcs:ignore Universal.Files.SeparateFunctionsFromOO.Mixed, WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound, Generic.CodeAnalysis.UnusedFunctionParameter.Found, Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- WordPress function stubs must retain their native global names and signatures in this standalone proof.
 function add_filter( string $hook_name, callable $callback, int $priority = 10, int $accepted_args = 1 ): bool {
 	++RAN_WP_Branch_Updater_WordPressState::$hook_calls;

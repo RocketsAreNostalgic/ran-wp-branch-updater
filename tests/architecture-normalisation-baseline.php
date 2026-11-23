@@ -390,6 +390,23 @@ $assert(
 	'installed_version_mismatch' === $scenario( $rollback + array( 'installedFacts' => $newer_baseline ), true ),
 	'rollback must install the selected archive version'
 );
+
+foreach (
+	array(
+		array( null, 'abc123' ),
+		array( null, str_repeat( 'A', 40 ) ),
+		array( null, str_repeat( 'a', 41 ) ),
+		array( null, ' ' . str_repeat( 'a', 40 ) ),
+		array( str_repeat( 'b', 40 ), str_repeat( 'a', 40 ) ),
+	) as [$expected_head, $selected_commit]
+) {
+	try {
+		new BranchDeploymentDeclaration( 'invalid-history', 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', $expected_head, selected_commit: $selected_commit );
+		throw new LogicException( 'Invalid or conflicting historical selection was admitted.' );
+	} catch ( RuntimeException $expected ) {
+		$assert( 'Invalid historical commit selection.' === $expected->getMessage(), 'admission requires a canonical historical identity and no expected head' );
+	}
+}
 $assert( 'provider_failed' === $scenario( array( 'headFailure' => new \RuntimeException( 'head advanced' ) ) ), 'locked source-head advancement remains provider_failed' );
 $assert( 'archive_integrity_failed' === $scenario( array( 'integrityFailure' => new \RuntimeException( 'changed' ) ) ), 'locked artifact replacement remains archive_integrity_failed' );
 $assert( 'deployment_maintenance_active' === $scenario( array( 'maintenanceStates' => array( true ) ) ), 'pre-mutation maintenance remains a closed failure' );

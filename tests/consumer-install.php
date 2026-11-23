@@ -3,6 +3,7 @@
 
 declare(strict_types=1);
 
+use RAN\WPBranchUpdater\V1\Archive\ArchiveValidator;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedArchiveSource;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedAttemptJournal;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedBranchArtifact;
@@ -47,6 +48,29 @@ $archive_contract = new ReflectionClass( RAN\WPBranchUpdater\V1\Archive\Prepared
 if ( ! $archive_contract->implementsInterface( AdmittedBranchArtifact::class ) || ! $archive_contract->implementsInterface( RAN\WPBranchUpdater\V1\Contract\PreparedPackageArtifact::class ) ) {
 	throw new RuntimeException( 'Installed prepared archive must implement both archive contracts.' );
 }
+
+// Parse the installed package's headers without WordPress or its development stubs.
+foreach ( array( 'plugin', 'theme' ) as $package_type ) {
+	$header_path = $consumer . '/headers-' . $package_type . '.zip';
+	$zip         = new ZipArchive();
+	if ( true !== $zip->open( $header_path, ZipArchive::CREATE | ZipArchive::OVERWRITE ) ) {
+		throw new RuntimeException( 'Installed header fixture ZIP could not open.' );
+	}
+	$label = 'plugin' === $package_type ? 'Plugin Name' : 'Theme Name';
+	$zip->addFromString( 'repository/demo/' . ( 'plugin' === $package_type ? 'demo.php' : 'style.css' ), '<?php /* ' . $label . ": Demo */\r/* Version: 1.2.3 ?> ignored" );
+	$zip->close();
+	try {
+		$declaration = new BranchDeploymentDeclaration( 'consumer-header-' . $package_type, $package_type, 'demo', 'synthetic/demo', 'fixture', 'main', null, 'install', 'demo' );
+		$inspection  = ( new ArchiveValidator() )->validate( $header_path, $declaration, null, 1048576, 4194304, '6.5' );
+		if ( '1.2.3' !== $inspection['expected_version'] ) {
+			throw new RuntimeException( 'Installed package did not apply WordPress header formatting.' );
+		}
+	} finally {
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Delete only the synthetic ZIP created in this separate consumer fixture.
+		unlink( $header_path );
+	}
+}
+
 $journal     = new class() implements AdmittedAttemptJournal {
 	public string $outcome = '';
 	public function record_resolved_ref( string $ref ): void {}
@@ -106,4 +130,4 @@ $deployment  = $updater->plugin( 'acme/demo', 'repository-id', 'main', 'demo/dem
 if ( 'consumer-attempt' !== $deployment->attempt_id() || 'policy_blocked' !== $deployment->deploy() || 'policy_blocked' !== $journal->outcome || 1 !== $target->policy_checks ) {
 	throw new RuntimeException( 'Installed admitted API did not journal its terminal policy outcome.' );
 }
-echo "PASS installed Composer consumer admitted API\n";
+echo "PASS installed Composer consumer admitted API and header parsing\n";

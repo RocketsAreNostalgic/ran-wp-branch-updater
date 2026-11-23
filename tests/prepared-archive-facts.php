@@ -5,6 +5,7 @@ declare(strict_types=1);
 require dirname( __DIR__ ) . '/vendor/autoload.php';
 
 use RAN\WPBranchUpdater\V1\Archive\ArchiveOffer;
+use RAN\WPBranchUpdater\V1\Archive\ArchiveValidator;
 use RAN\WPBranchUpdater\V1\Archive\PreparedArchive;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedBranchArtifact;
 use RAN\WPBranchUpdater\V1\Contract\PreparedPackageArtifact;
@@ -73,6 +74,70 @@ foreach ( array(
 $zip->open( $source, ZipArchive::CREATE | ZipArchive::OVERWRITE );
 $zip->addFromString( 'repository/demo/demo.php', $contents );
 $zip->close();
+
+$transport = $root . '/transport.zip';
+$assert( true === $zip->open( $transport, ZipArchive::CREATE | ZipArchive::OVERWRITE ), 'transport-limit fixture ZIP opens' );
+$zip->addFromString( 'repository/demo/demo.php', "<?php\n/* Plugin Name: Demo\nVersion: 1.2.3 */\n" );
+$zip->close();
+$transport_bytes = filesize( $transport );
+$compressed      = filesize( $source );
+if ( false === $transport_bytes || $transport_bytes < 2 || false === $compressed || $compressed < 1 || strlen( $contents ) <= 4 * $compressed ) {
+	throw new RuntimeException( 'Archive fixture sizes do not exercise their admission limits.' );
+}
+$limits        = array();
+$bounded_offer = static function ( string $fixture ) use ( &$limits ): ArchiveOffer {
+	return new ArchiveOffer(
+		'fixture',
+		'repository-id',
+		'abc123',
+		static function ( string $destination, int $maximum_artifact_bytes ) use ( $fixture, &$limits ): void {
+			$limits[] = $maximum_artifact_bytes;
+			$size     = filesize( $fixture );
+			if ( false === $size || $size > $maximum_artifact_bytes ) {
+				throw new RuntimeException( 'Synthetic transport reached its byte ceiling.' );
+			}
+			if ( ! copy( $fixture, $destination ) ) {
+				throw new RuntimeException( 'Cannot copy bounded fixture ZIP.' );
+			}
+		},
+		static function (): void {}
+	);
+};
+$bounded       = PreparedArchive::download_and_validate( $bounded_offer( $transport ), $deployment, $root . '/archives', $transport_bytes );
+$bounded->cleanup();
+
+try {
+	PreparedArchive::download_and_validate( $bounded_offer( $transport ), $deployment, $root . '/archives', $transport_bytes - 1 );
+	throw new LogicException( 'Over-limit transport was admitted.' );
+} catch ( RuntimeException $expected ) {
+	$assert( 'Synthetic transport reached its byte ceiling.' === $expected->getMessage(), 'a one-byte-short ceiling fails at acquisition' );
+}
+
+foreach (
+	array(
+		array( 0, 'Maximum artifact bytes is invalid.' ),
+		array( '536870912', 'Maximum artifact bytes is invalid.' ),
+		array( intdiv( PHP_INT_MAX, 4 ) + 1, 'Maximum artifact bytes is invalid for expanded archive validation.' ),
+	) as [$invalid_limit, $message]
+) {
+	try {
+		PreparedArchive::download_and_validate( $bounded_offer( $transport ), $deployment, $root . '/archives', $invalid_limit );
+		throw new LogicException( 'Invalid configured ceiling was admitted.' );
+	} catch ( RuntimeException $expected ) {
+		$assert( $expected->getMessage() === $message, 'invalid byte ceilings fail validation' );
+	}
+}
+$assert( array( $transport_bytes, $transport_bytes - 1 ) === $limits, 'the exact ceiling reaches acquisition once and invalid ceilings never reach it' );
+
+try {
+	PreparedArchive::download_and_validate( $bounded_offer( $source ), $deployment, $root . '/archives', $compressed );
+	throw new LogicException( 'Archive exceeding its expanded ceiling was admitted.' );
+} catch ( RuntimeException $expected ) {
+	$assert( ArchiveValidator::CODE_EXPANDED_TOO_LARGE === $expected->getCode(), 'the configured compressed ceiling also binds expanded size' );
+}
+$assert( array( $transport_bytes, $transport_bytes - 1, $compressed ) === $limits && array() === glob( $root . '/archives/*' ), 'expanded refusal follows acquisition and failed admissions leave no staged files' );
+// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Remove only the transport-limit fixture archive.
+unlink( $transport );
 
 $archive_type = new ReflectionClass( PreparedArchive::class );
 $constructor  = $archive_type->getConstructor();
