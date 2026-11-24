@@ -182,9 +182,13 @@ final class AdmittedBranchRunner {
 			if ( CorePackageExecutionFailure::WORDPRESS_REFUSED !== $failure && CorePackageExecutionFailure::WORDPRESS_FAILED !== $failure ) {
 				return 'restoration_uncertain';
 			}
-			$target_directory = $this->target->target_directory( $deployment );
+			$raw_target_directory = $this->target->target_directory( $deployment );
+			$target_directory     = rtrim( $raw_target_directory, '/\\' );
+			if ( '' === trim( $raw_target_directory ) || '' === $target_directory ) {
+				return 'restoration_uncertain';
+			}
 			clearstatcache( true, $target_directory );
-			if ( '' === trim( $target_directory ) || file_exists( $target_directory ) || is_link( $target_directory ) ) {
+			if ( file_exists( $target_directory ) || is_link( $target_directory ) ) {
 				return 'restoration_uncertain';
 			}
 			return 'upgrader_failed';

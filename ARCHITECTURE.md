@@ -69,7 +69,7 @@ target admission
 → terminal journal result
 ```
 
-Post-operation archive cleanup preserves the verified or primary outcome rather than overwriting it with `archive_cleanup_failed` or downgrading a verified `deployed` outcome to `interrupted`; cleanup failure is recorded on `last_reason()` (`cleanup_failed: true`, using `FailureReason::CLEANUP_ALSO_FAILED` when no primary reason exists).
+Post-operation archive cleanup preserves the verified or primary outcome rather than overwriting it with `archive_cleanup_failed` or downgrading a verified `deployed` outcome to `interrupted`; cleanup failure is recorded on `last_reason()` (`cleanup_failed: true`, preserving the cleanup exception's `ReasonedFailure` before falling back to `FailureReason::CLEANUP_ALSO_FAILED` when no primary reason exists).
 
 When `run()` cannot safely reduce an attempt to a closed terminal outcome, its escaping failure set is restricted to the four durability failures—`AdmittedBranchDurabilityFailure`, `BranchDeploymentJournalFailure`, `BranchDeploymentLockReleaseFailure`, and `BranchDeploymentLockStorageFailure` (each carrying a closed `reason(): FailureReason` and `as_reason()`)—plus `RuntimeException` on consumed-runner reuse and any unexpected `Throwable` raised during terminal journal finalization.
 

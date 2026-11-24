@@ -421,8 +421,11 @@ mkdir( $partial_install_root . '/demo', 0700, true );
 try {
 	symlink( $partial_install_root . '/missing-target', $partial_install_root . '/dangling' );
 	foreach ( array(
-		'existing directory' => $partial_install_root . '/demo',
-		'dangling symlink'   => $partial_install_root . '/dangling',
+		'existing directory'                     => $partial_install_root . '/demo',
+		'existing directory with trailing slash' => $partial_install_root . '/demo/',
+		'dangling symlink'                       => $partial_install_root . '/dangling',
+		'dangling symlink with trailing slash'   => $partial_install_root . '/dangling/',
+		'root slash path'                        => '/',
 	) as $partial_label => $partial_target ) {
 		foreach ( array( CorePackageExecutionFailure::WORDPRESS_FAILED, CorePackageExecutionFailure::WORDPRESS_REFUSED ) as $partial_failure ) {
 			$check(
