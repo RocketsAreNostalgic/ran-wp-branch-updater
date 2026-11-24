@@ -20,7 +20,7 @@ final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchAr
 	private bool $cleaned = false;
 
 	/**
-	 * @param array{dev:int,ino:int,size:int,mode:int,nlink:int} $identity
+	 * @param array{dev:int,ino:int,size:int,mode:int,nlink:int,uid?:int,gid?:int,mtime?:int,ctime?:int} $identity
 	 */
 	private function __construct(
 		private string $path,
@@ -75,6 +75,10 @@ final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchAr
 			|| ( $directory_stat['mode'] & 0777 ) !== 0700
 			|| (int) $directory_stat['dev'] !== (int) $pre_dir_stat['dev']
 			|| (int) $directory_stat['ino'] !== (int) $pre_dir_stat['ino']
+			|| ( 0 === (int) $pre_dir_stat['ino']
+				&& ( (int) $directory_stat['uid'] !== (int) $pre_dir_stat['uid']
+					|| (int) $directory_stat['gid'] !== (int) $pre_dir_stat['gid']
+					|| (int) $directory_stat['mtime'] !== (int) $pre_dir_stat['mtime'] ) )
 			|| ( function_exists( 'posix_geteuid' ) && posix_geteuid() !== (int) $directory_stat['uid'] )
 		) {
 			throw new RuntimeException( 'Archive directory ownership is invalid.' );
@@ -92,8 +96,8 @@ final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchAr
 			throw new RuntimeException( 'Cannot create private archive file.' );
 		}
 		$created     = null;
-		$created_dev = null;
-		$created_ino = null;
+		$owned       = null;
+		$read_handle = null;
 		try {
 			$fstat = fstat( $handle );
 			if ( ! is_array( $fstat )
@@ -103,13 +107,11 @@ final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchAr
 			) {
 				throw new RuntimeException( 'Private archive identity is invalid.' );
 			}
-			$created_dev = (int) $fstat['dev'];
-			$created_ino = (int) $fstat['ino'];
-			$pre_chmod   = RegularFileStat::read( $path );
+			$owned     = self::stat_snapshot( $fstat );
+			$pre_chmod = RegularFileStat::read( $path );
 			if ( null === $pre_chmod
 				|| 1 !== $pre_chmod['nlink']
-				|| $pre_chmod['dev'] !== $created_dev
-				|| $pre_chmod['ino'] !== $created_ino
+				|| ! self::same_regular_stat( $owned, $pre_chmod )
 			) {
 				throw new RuntimeException( 'Private archive identity is invalid.' );
 			}
@@ -118,51 +120,122 @@ final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchAr
 				throw new RuntimeException( 'Cannot create private archive file.' );
 			}
 			$after_chmod = fstat( $handle );
-			$created     = self::identity( $path );
-			if ( ! is_array( $after_chmod )
+			$post_chmod  = RegularFileStat::read( $path );
+			$created     = null === $post_chmod ? null : self::identity_from_stat( $post_chmod );
+			if ( ! is_array( $after_chmod ) ) {
+				$created = null;
+				throw new RuntimeException( 'Private archive identity is invalid.' );
+			}
+			$handle_after = self::stat_snapshot( $after_chmod );
+			if ( ( $handle_after['mode'] & 0170000 ) === 0100000
+				&& 1 === $handle_after['nlink']
+				&& 0 === $handle_after['size']
+				&& $handle_after['dev'] === $owned['dev']
+				&& $handle_after['ino'] === $owned['ino']
+				&& ( 0 !== $owned['ino']
+					|| ( $handle_after['uid'] === $owned['uid']
+						&& $handle_after['gid'] === $owned['gid']
+						&& $handle_after['mtime'] === $owned['mtime'] ) )
+			) {
+				$owned = $handle_after;
+			}
+			if ( null === $post_chmod
 				|| null === $created
-				|| ( $after_chmod['mode'] & 0170000 ) !== 0100000
-				|| ( $after_chmod['mode'] & 0777 ) !== 0600
-				|| 1 !== (int) $after_chmod['nlink']
-				|| 0 !== (int) $after_chmod['size']
-				|| (int) $after_chmod['dev'] !== $created_dev
-				|| (int) $after_chmod['ino'] !== $created_ino
-				|| $created['dev'] !== $created_dev
-				|| $created['ino'] !== $created_ino
+				|| ( $handle_after['mode'] & 0170000 ) !== 0100000
+				|| ( $handle_after['mode'] & 0777 ) !== 0600
+				|| 1 !== $handle_after['nlink']
+				|| 0 !== $handle_after['size']
+				|| $handle_after !== $owned
+				|| ! self::same_regular_stat( $owned, $post_chmod )
 				|| 0 !== $created['size']
 			) {
 				$created = null;
 				throw new RuntimeException( 'Private archive identity is invalid.' );
 			}
+			if ( 0 === $created['ino'] ) {
+				// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged,WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- Open a least-privilege read-only descriptor before closing the creation handle so zero-inode ownership survives acquisition writes.
+				$opened_read = @fopen( $path, 'rb' );
+				if ( false === $opened_read ) {
+					throw new RuntimeException( 'Cannot create private archive file.' );
+				}
+				$read_handle = $opened_read;
+				$read_fstat  = fstat( $read_handle );
+				if ( ! is_array( $read_fstat ) || self::stat_snapshot( $read_fstat ) !== $owned ) {
+					throw new RuntimeException( 'Private archive identity is invalid.' );
+				}
+			}
 		} catch ( \Throwable $e ) {
+			if ( null !== $read_handle ) {
+				// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Close the zero-inode read handle before identity-checked cleanup.
+				fclose( $read_handle );
+				$read_handle = null;
+			}
 			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Close the exclusively created descriptor before identity-checked cleanup.
 			fclose( $handle );
-			if ( null !== $created_dev && null !== $created_ino ) {
-				self::cleanup_matching_file( $path, $created_dev, $created_ino, $e );
+			if ( null !== $owned ) {
+				self::cleanup_matching_file( $path, $owned, null, $e );
 			}
 			throw $e;
 		}
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Close the verified archive file descriptor only after descriptor-to-path identity is established.
 		if ( ! fclose( $handle ) ) {
+			if ( null !== $read_handle ) {
+				// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Close the zero-inode read handle before identity-checked cleanup.
+				fclose( $read_handle );
+			}
 			$close_error = new RuntimeException( 'Cannot create private archive file.' );
-			self::cleanup_matching_file( $path, $created_dev, $created_ino, $close_error );
+			self::cleanup_matching_file( $path, $owned, null, $close_error );
 			throw $close_error;
 		}
+		$owned_digest = null;
 		try {
 			$offer->acquire( $path, $maximum_artifact_bytes );
-			$identity = self::identity( $path );
-			if ( null === $identity
-				|| $identity['dev'] !== $created['dev']
-				|| $identity['ino'] !== $created['ino']
+			$written  = RegularFileStat::read( $path );
+			$identity = null === $written ? null : self::identity_from_stat( $written );
+			if ( null === $written
+				|| null === $identity
+				|| $written['dev'] !== $created['dev']
+				|| $written['ino'] !== $created['ino']
+				|| ( 0 === $created['ino'] && ( $written['uid'] !== $owned['uid'] || $written['gid'] !== $owned['gid'] ) )
 				|| $identity['size'] < 1
 				|| $identity['size'] > $maximum_artifact_bytes
 			) {
 				throw new RuntimeException( 'Archive file identity or size is invalid.' );
 			}
-			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Concurrent removal or read failure during initial fingerprinting fails closed cleanly.
-			$digest = @hash_file( 'sha256', $path );
-			if ( ! is_string( $digest ) ) {
-				throw new RuntimeException( 'Cannot fingerprint archive.' );
+			if ( null !== $read_handle ) {
+				$read_fstat = fstat( $read_handle );
+				if ( ! is_array( $read_fstat ) || self::stat_snapshot( $read_fstat ) !== $written ) {
+					throw new RuntimeException( 'Archive file identity or size is invalid.' );
+				}
+				$handle_digest = self::stream_digest( $read_handle, $written['size'] );
+				// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Concurrent removal or read failure during initial fingerprinting fails closed cleanly.
+				$digest = @hash_file( 'sha256', $path );
+				if ( null === $handle_digest || ! is_string( $digest ) || ! hash_equals( $handle_digest, $digest ) ) {
+					throw new RuntimeException( 'Cannot fingerprint archive.' );
+				}
+				$post_hash_fstat = fstat( $read_handle );
+				if ( RegularFileStat::read( $path ) !== $written
+					|| ! is_array( $post_hash_fstat )
+					|| self::stat_snapshot( $post_hash_fstat ) !== $written
+				) {
+					throw new RuntimeException( 'Archive file identity or size is invalid.' );
+				}
+				$owned        = $written;
+				$owned_digest = $digest;
+				$closed_read  = $read_handle;
+				$read_handle  = null;
+				// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Release the zero-inode read handle after post-acquire custody verification and before archive validation.
+				if ( ! fclose( $closed_read ) ) {
+					throw new RuntimeException( 'Cannot fingerprint archive.' );
+				}
+			} else {
+				// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Concurrent removal or read failure during initial fingerprinting fails closed cleanly.
+				$digest = @hash_file( 'sha256', $path );
+				if ( ! is_string( $digest ) ) {
+					throw new RuntimeException( 'Cannot fingerprint archive.' );
+				}
+				$owned        = $written;
+				$owned_digest = $digest;
 			}
 			$inspection = ( new ArchiveValidator() )->validate(
 				$path,
@@ -176,7 +249,24 @@ final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchAr
 			$archive->assert_unchanged();
 			return $archive;
 		} catch ( \Throwable $e ) {
-			self::cleanup_matching_file( $path, $created['dev'], $created['ino'], $e );
+			if ( null !== $read_handle ) {
+				$refreshed = self::refresh_zero_inode_ownership( $read_handle, $path, $created, $owned );
+				// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Close the zero-inode read handle before unlink so platforms like Windows permit deletion.
+				fclose( $read_handle );
+				$read_handle = null;
+				if ( null === $refreshed ) {
+					clearstatcache( true, $path );
+					if ( file_exists( $path ) || is_link( $path ) ) {
+						// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Preserve the previous Throwable for internal custody diagnostics; this is not rendered output.
+						throw new RuntimeException( 'Rejected archive replacement could not be cleaned safely.', 0, $e );
+					}
+					self::cleanup_matching_file( $path, $owned, $owned_digest, $e );
+					throw $e;
+				}
+				$owned        = $refreshed['owned'];
+				$owned_digest = $refreshed['digest'];
+			}
+			self::cleanup_matching_file( $path, $owned, $owned_digest, $e );
 			throw $e;
 		}
 	}
@@ -218,6 +308,8 @@ final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchAr
 			$current_digest = @hash_file( 'sha256', $this->path );
 			if ( ! is_string( $current_digest ) || ! hash_equals( $this->digest, $current_digest ) ) {
 				$changed = 'digest';
+			} elseif ( 0 === $this->identity['ino'] && self::identity( $this->path ) !== $this->identity ) {
+				$changed = 'identity';
 			}
 		}
 		if ( null !== $changed ) {
@@ -262,14 +354,72 @@ final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchAr
 		}
 	}
 
-	private static function cleanup_matching_file( string $path, int $dev, int $ino, \Throwable $cause ): void {
-		$current = RegularFileStat::read( $path );
-		if ( null !== $current
-			&& 1 === $current['nlink']
-			&& $current['dev'] === $dev
-			&& $current['ino'] === $ino
+	/**
+	 * Re-verify ownership of a zero-inode staged file through the retained read descriptor.
+	 *
+	 * @param resource                                                                                    $stream
+	 * @param array{dev:int,ino:int,size:int,mode:int,nlink:int,uid?:int,gid?:int,mtime?:int,ctime?:int} $created
+	 * @param array{dev:int,ino:int,mode:int,nlink:int,uid:int,gid:int,size:int,mtime:int,ctime:int}     $owned
+	 * @return array{owned:array{dev:int,ino:int,mode:int,nlink:int,uid:int,gid:int,size:int,mtime:int,ctime:int},digest:string}|null
+	 */
+	private static function refresh_zero_inode_ownership( $stream, string $path, array $created, array $owned ): ?array {
+		$current     = RegularFileStat::read( $path );
+		$handle_stat = fstat( $stream );
+		if ( null === $current || ! is_array( $handle_stat ) ) {
+			return null;
+		}
+		$handle_snap = self::stat_snapshot( $handle_stat );
+		if ( ( $handle_snap['mode'] & 0170000 ) !== 0100000
+			|| ( $handle_snap['mode'] & 0777 ) !== 0600
+			|| 1 !== $handle_snap['nlink']
+			|| $handle_snap['dev'] !== $created['dev']
+			|| 0 !== $handle_snap['ino']
+			|| $handle_snap['uid'] !== $owned['uid']
+			|| $handle_snap['gid'] !== $owned['gid']
+			|| $handle_snap !== $current
 		) {
-			// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Delete only the rejected archive whose device and inode still match the created file.
+			return null;
+		}
+		$digest = self::stream_digest( $stream, $handle_snap['size'] );
+		if ( null === $digest ) {
+			return null;
+		}
+		$recheck_stat = fstat( $stream );
+		if ( ! is_array( $recheck_stat )
+			|| self::stat_snapshot( $recheck_stat ) !== $handle_snap
+			|| RegularFileStat::read( $path ) !== $handle_snap
+		) {
+			return null;
+		}
+		return array(
+			'owned'  => $handle_snap,
+			'digest' => $digest,
+		);
+	}
+
+	/**
+	 * Hash an open descriptor from byte zero and verify the exact byte count read.
+	 *
+	 * @param resource $stream
+	 */
+	private static function stream_digest( $stream, int $expected_size ): ?string {
+		if ( $expected_size < 0 || ! rewind( $stream ) ) {
+			return null;
+		}
+		$context = hash_init( 'sha256' );
+		if ( hash_update_stream( $context, $stream ) !== $expected_size ) {
+			return null;
+		}
+		return hash_final( $context );
+	}
+
+	/**
+	 * @param array{dev:int,ino:int,mode:int,nlink:int,uid:int,gid:int,size:int,mtime:int,ctime:int} $owned
+	 */
+	private static function cleanup_matching_file( string $path, array $owned, ?string $digest, \Throwable $cause ): void {
+		$current = RegularFileStat::read( $path );
+		if ( null !== $current && self::owns_file( $path, $current, $owned, $digest ) ) {
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Delete only the rejected archive whose verified file identity still matches the owned file.
 			if ( ! unlink( $path ) ) {
 				// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Preserve the previous Throwable for internal custody diagnostics; this is not rendered output.
 				throw new RuntimeException( 'Rejected archive could not be cleaned safely.', 0, $cause );
@@ -284,19 +434,87 @@ final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchAr
 	}
 
 	/**
-	 * @return array{dev:int,ino:int,size:int,mode:int,nlink:int}|null
+	 * Without an inode number, a matching device does not identify the file.
+	 * Require the last verified metadata and content instead.
+	 *
+	 * @param array{dev:int,ino:int,mode:int,nlink:int,uid:int,gid:int,size:int,mtime:int,ctime:int} $current
+	 * @param array{dev:int,ino:int,mode:int,nlink:int,uid:int,gid:int,size:int,mtime:int,ctime:int} $owned
+	 */
+	private static function owns_file( string $path, array $current, array $owned, ?string $digest ): bool {
+		if ( 1 !== $current['nlink'] || ! self::same_regular_stat( $owned, $current ) ) {
+			return false;
+		}
+		if ( 0 !== $owned['ino'] || null === $digest ) {
+			return true;
+		}
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Concurrent removal or read failure during zero-inode cleanup ownership verification fails closed.
+		$current_digest = @hash_file( 'sha256', $path );
+		return is_string( $current_digest )
+			&& hash_equals( $digest, $current_digest )
+			&& RegularFileStat::read( $path ) === $current;
+	}
+
+	/**
+	 * @param array{dev:int,ino:int,mode:int,nlink:int,uid:int,gid:int,size:int,mtime:int,ctime:int} $expected
+	 * @param array{dev:int,ino:int,mode:int,nlink:int,uid:int,gid:int,size:int,mtime:int,ctime:int} $observed
+	 */
+	private static function same_regular_stat( array $expected, array $observed ): bool {
+		if ( $expected['dev'] !== $observed['dev'] || $expected['ino'] !== $observed['ino'] ) {
+			return false;
+		}
+		if ( 0 !== $expected['ino'] ) {
+			return true;
+		}
+		return $expected === $observed;
+	}
+
+	/**
+	 * @param array<int|string,int> $stat
+	 * @return array{dev:int,ino:int,mode:int,nlink:int,uid:int,gid:int,size:int,mtime:int,ctime:int}
+	 */
+	private static function stat_snapshot( array $stat ): array {
+		return array(
+			'dev'   => (int) $stat['dev'],
+			'ino'   => (int) $stat['ino'],
+			'mode'  => (int) $stat['mode'],
+			'nlink' => (int) $stat['nlink'],
+			'uid'   => (int) $stat['uid'],
+			'gid'   => (int) $stat['gid'],
+			'size'  => (int) $stat['size'],
+			'mtime' => (int) $stat['mtime'],
+			'ctime' => (int) $stat['ctime'],
+		);
+	}
+
+	/**
+	 * @return array{dev:int,ino:int,size:int,mode:int,nlink:int,uid?:int,gid?:int,mtime?:int,ctime?:int}|null
 	 */
 	private static function identity( string $path ): ?array {
 		$s = RegularFileStat::read( $path );
-		if ( null === $s || ( $s['mode'] & 0777 ) !== 0600 || 1 !== $s['nlink'] ) {
+		return null === $s ? null : self::identity_from_stat( $s );
+	}
+
+	/**
+	 * @param array{dev:int,ino:int,mode:int,nlink:int,uid:int,gid:int,size:int,mtime:int,ctime:int} $s
+	 * @return array{dev:int,ino:int,size:int,mode:int,nlink:int,uid?:int,gid?:int,mtime?:int,ctime?:int}|null
+	 */
+	private static function identity_from_stat( array $s ): ?array {
+		if ( ( $s['mode'] & 0777 ) !== 0600 || 1 !== $s['nlink'] ) {
 			return null;
 		}
-		return array(
+		$identity = array(
 			'dev'   => $s['dev'],
 			'ino'   => $s['ino'],
 			'size'  => $s['size'],
 			'mode'  => $s['mode'] & 0777,
 			'nlink' => $s['nlink'],
 		);
+		if ( 0 === $s['ino'] ) {
+			$identity['uid']   = $s['uid'];
+			$identity['gid']   = $s['gid'];
+			$identity['mtime'] = $s['mtime'];
+			$identity['ctime'] = $s['ctime'];
+		}
+		return $identity;
 	}
 }

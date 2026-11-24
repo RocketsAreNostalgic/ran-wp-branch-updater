@@ -79,6 +79,8 @@ final class AdmittedBranchRunner {
 		$this->assert_not_downgrade( $deployment, $baseline, $artifact );
 		$this->executor->preflight( $deployment, $artifact );
 		$this->journal->record_resolved_ref( $artifact->resolved_ref() );
+		$this->stage = 'provider_failed';
+		$this->archives->verify_current_head();
 		return $artifact;
 	}
 
@@ -101,8 +103,6 @@ final class AdmittedBranchRunner {
 		$this->stage = 'policy_blocked';
 		$baseline    = $this->target->frozen_target( $deployment, false );
 		$this->assert_not_downgrade( $deployment, $baseline, $artifact );
-		$this->stage = 'provider_failed';
-		$this->archives->verify_current_head();
 		$this->stage = 'archive_integrity_failed';
 		$artifact->assert_unchanged();
 		$this->stage = 'policy_blocked';

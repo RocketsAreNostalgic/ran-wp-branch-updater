@@ -13,6 +13,7 @@ use RAN\WPBranchUpdater\V1\Contract\MutationLock;
 use RAN\WPBranchUpdater\V1\Persistence\BranchDeploymentJournalFailure;
 use RAN\WPBranchUpdater\V1\Runtime\AdmittedBranchDurabilityFailure;
 use RAN\WPBranchUpdater\V1\Runtime\AdmittedBranchRunner;
+use RAN\WPBranchUpdater\V1\Runtime\AdmittedBranchStageFailure;
 use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionFailure;
 use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionResult;
@@ -55,10 +56,27 @@ final class RAN_WP_Branch_Updater_RunnerFixtureArtifact implements AdmittedBranc
 
 // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- These test-only fault-injection doubles share one standalone behavioral proof.
 final class RAN_WP_Branch_Updater_RunnerFixtureArchives implements AdmittedArchiveSource {
-	public function __construct( private RAN_WP_Branch_Updater_RunnerFixtureArtifact $artifact ) {}
+	public int $verify_calls = 0;
+	/** @param \ArrayObject<int,string>|null $trace */
+	public function __construct(
+		private RAN_WP_Branch_Updater_RunnerFixtureArtifact $artifact,
+		private ?\Throwable $verify_failure = null,
+		private ?\ArrayObject $trace = null
+	) {}
 	public function prepare( BranchDeploymentDeclaration $deployment, ?array $baseline ): AdmittedBranchArtifact {
+		if ( null !== $this->trace ) {
+			$this->trace[] = 'prepare';
+		}
 		return $this->artifact; }
-	public function verify_current_head(): void {}
+	public function verify_current_head(): void {
+		++$this->verify_calls;
+		if ( null !== $this->trace ) {
+			$this->trace[] = 'verify_current_head';
+		}
+		if ( null !== $this->verify_failure ) {
+			throw $this->verify_failure;
+		}
+	}
 }
 
 // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- These test-only fault-injection doubles share one standalone behavioral proof.
@@ -115,12 +133,24 @@ final class RAN_WP_Branch_Updater_RunnerFixtureExecutor implements AdmittedPacka
 
 // phpcs:ignore Generic.Files.OneObjectStructurePerFile.MultipleFound -- These test-only fault-injection doubles share one standalone behavioral proof.
 final class RAN_WP_Branch_Updater_RunnerFixtureLock implements MutationLock {
-	public function __construct( private ?\Throwable $failure = null ) {}
+	public int $calls = 0;
+	/** @param \ArrayObject<int,string>|null $trace */
+	public function __construct( private ?\Throwable $failure = null, private ?\ArrayObject $trace = null ) {}
 	public function run( callable $operation ): mixed {
+		++$this->calls;
+		if ( null !== $this->trace ) {
+			$this->trace[] = 'lock.enter';
+		}
 		if ( null !== $this->failure ) {
 			throw $this->failure;
 		}
-		return $operation();
+		try {
+			return $operation();
+		} finally {
+			if ( null !== $this->trace ) {
+				$this->trace[] = 'lock.exit';
+			}
+		}
 	}
 }
 
@@ -257,6 +287,64 @@ $artifact = new RAN_WP_Branch_Updater_RunnerFixtureArtifact();
 $install  = new BranchDeploymentDeclaration( 'focused-install', 'plugin', 'demo', 'acme/demo', 'fixture-1', 'main', 'abc123', 'install', 'demo', 'demo/demo.php' );
 $outcome  = $runner( $journal, $artifact, new RAN_WP_Branch_Updater_RunnerFixtureTarget( null, true ), new RAN_WP_Branch_Updater_RunnerFixtureLock() )->run( $install );
 $assert( 'activation_state_changed' === $outcome, 'an install unexpectedly activated by WordPress cannot succeed' );
+
+// Issue #149: Remote head verification runs before acquiring auto_updater.lock and cleans up without locking on failure.
+/** @var \ArrayObject<int,string> $order_trace */
+$order_trace = new \ArrayObject();
+$order_art   = new RAN_WP_Branch_Updater_RunnerFixtureArtifact();
+$order_arch  = new RAN_WP_Branch_Updater_RunnerFixtureArchives( $order_art, null, $order_trace );
+$order_lock  = new RAN_WP_Branch_Updater_RunnerFixtureLock( null, $order_trace );
+$order_out   = ( new AdmittedBranchRunner(
+	new RAN_WP_Branch_Updater_RunnerFixtureJournal(),
+	$order_arch,
+	new RAN_WP_Branch_Updater_RunnerFixtureTarget(),
+	new RAN_WP_Branch_Updater_RunnerFixtureExecutor(),
+	$order_lock
+) )->run( $deployment );
+$assert(
+	'deployed' === $order_out
+		&& array( 'prepare', 'verify_current_head', 'lock.enter', 'lock.exit' ) === $order_trace->getArrayCopy()
+		&& 1 === $order_arch->verify_calls
+		&& 1 === $order_lock->calls
+		&& 1 === $order_art->cleanup_calls,
+	'verify_current_head must execute before acquiring the mutation lock'
+);
+
+foreach ( array(
+	'generic head failure' => array( new \RuntimeException( 'provider timeout' ), null, 'provider_failed', null ),
+	'stale head stage'     => array( new AdmittedBranchStageFailure( 'stale_event' ), null, 'stale_event', null ),
+	'head + cleanup fail'  => array( new AdmittedBranchStageFailure( 'stale_event' ), new \RuntimeException( 'cleanup failed' ), 'archive_cleanup_failed', 'stale_event' ),
+) as $head_label => [$head_failure, $cleanup_failure, $expected_outcome, $expected_primary] ) {
+	$head_journal = new RAN_WP_Branch_Updater_RunnerFixtureJournal();
+	$head_art     = new RAN_WP_Branch_Updater_RunnerFixtureArtifact( $cleanup_failure );
+	$head_arch    = new RAN_WP_Branch_Updater_RunnerFixtureArchives( $head_art, $head_failure );
+	$head_lock    = new RAN_WP_Branch_Updater_RunnerFixtureLock();
+	$head_runner  = new AdmittedBranchRunner(
+		$head_journal,
+		$head_arch,
+		new RAN_WP_Branch_Updater_RunnerFixtureTarget(),
+		new RAN_WP_Branch_Updater_RunnerFixtureExecutor(),
+		$head_lock
+	);
+	$head_outcome = $head_runner->run( $deployment );
+	$assert(
+		$expected_outcome === $head_outcome
+			&& 1 === $head_arch->verify_calls
+			&& 0 === $head_lock->calls
+			&& 1 === $head_art->cleanup_calls
+			&& 1 === $head_journal->finish_calls,
+		$head_label . ': pre-lock head failure must clean up and finish without acquiring the lock'
+	);
+	if ( null !== $expected_primary ) {
+		$head_reason = $head_runner->last_reason();
+		$assert(
+			null !== $head_reason
+				&& $head_reason->cleanup_failed
+				&& $expected_primary === $head_reason->primary_outcome,
+			$head_label . ': pre-lock head failure with failing cleanup retains primary outcome'
+		);
+	}
+}
 
 
 echo "PASS admitted branch runner fault-injection contracts\n";
