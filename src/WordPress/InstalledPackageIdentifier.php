@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace RAN\WPBranchUpdater\V1\WordPress;
 
 use InvalidArgumentException;
+use RAN\UpdaterSupport\V1\RepositoryRelativePath;
 
 /** @internal Canonical safety normalization for installed package identifiers. */
 final class InstalledPackageIdentifier {
@@ -12,17 +13,14 @@ final class InstalledPackageIdentifier {
 		if ( 0 !== preg_match( '/[\p{Cc}\p{Cf}]/u', $identifier ) ) {
 			throw new InvalidArgumentException( 'The installed package identifier is invalid.' );
 		}
-		$identifier = trim( $identifier );
-		if ( '' === $identifier
-			|| str_starts_with( $identifier, '/' )
-			|| str_ends_with( $identifier, '/' )
-			|| str_contains( $identifier, '//' )
-			|| str_contains( $identifier, '\\' )
-			|| substr_count( $identifier, '/' ) > 1
-			|| preg_match( '#(^|/)\.\.?(/|$)#', $identifier ) === 1
-		) {
+		try {
+			$normalized = RepositoryRelativePath::normalize( $identifier );
+		} catch ( InvalidArgumentException ) {
 			throw new InvalidArgumentException( 'The installed package identifier is invalid.' );
 		}
-		return $identifier;
+		if ( str_ends_with( trim( $identifier ), '/' ) || substr_count( $normalized, '/' ) > 1 ) {
+			throw new InvalidArgumentException( 'The installed package identifier is invalid.' );
+		}
+		return $normalized;
 	}
 }

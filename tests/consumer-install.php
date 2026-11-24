@@ -33,6 +33,7 @@ foreach ( array(
 	RAN\UpdaterSupport\V1\RuntimeVersion::class,
 	RAN\UpdaterSupport\V1\PluginFileIdentifier::class,
 	RAN\UpdaterSupport\V1\RegularFileStat::class,
+	RAN\UpdaterSupport\V1\RepositoryRelativePath::class,
 ) as $class ) {
 	$file = ( new ReflectionClass( $class ) )->getFileName();
 	if ( ! is_string( $file ) || ! str_starts_with( $file, $consumer . '/vendor/' ) || is_link( $file ) ) {
