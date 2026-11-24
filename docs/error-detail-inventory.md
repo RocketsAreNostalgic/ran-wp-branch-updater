@@ -15,6 +15,7 @@ consumer that ignores them sees exactly the behaviour it saw before.
 | `AdmittedBranchRunner::last_reason()` | The same record from the runner. |
 | `Contract\AdmittedAttemptReasonJournal` | Optional journal capability. The runner calls `finish_with_reason( $code, $reason )` when the journal implements it and a reason exists. Otherwise it calls `finish( $code )`. |
 | `ReasonedFailure::find( Throwable )` | The nearest reason-carrying failure in an exception chain. Archive adapters can use it when handling exceptions from `PreparedArchive::download_and_validate()`. |
+| Escaping durability failure `reason()` / `as_reason()` | Each documented durability failure that may escape `run()` (`AdmittedBranchDurabilityFailure`, `BranchDeploymentJournalFailure`, `BranchDeploymentLockReleaseFailure`, `BranchDeploymentLockStorageFailure`) exposes a closed `reason(): FailureReason` and `as_reason(): AdmittedFailureReason` without reading exception messages or chained causes. |
 
 `finish_with_reason()` evolves by adding fields to the final readonly `AdmittedFailureReason`; changing its signature needs a new interface, not an edit of this one.
 
@@ -59,13 +60,15 @@ contract now requires admitted API `4`; see [MIGRATING.md](../MIGRATING.md).
   the five header names, `http_100` to `http_599`, the allow-listed upgrader codes, the
   source failures, the closed theme and archive causes, `php_error`, `exception` and the
   custody causes.
-* A failing cleanup beside another cause is **recorded, not acted on**: the outcome code is
-  unchanged (`archive_cleanup_failed`, or `interrupted` once fenced) and the reason is recorded.
-  `reason` is the primary reason (or `cleanup_also_failed` when the primary had none),
-  `primary_outcome` is the outcome the cleanup replaced (`interrupted` when fenced, because
-  that is what the runner would have returned), and `cleanup_failed` is `true`. The runner
-  still returns `restoration_uncertain` or `interrupted` where it did before; this change
-  does not fix those outcomes, it only records why.
+* A failing cleanup beside another cause or after a verified `deployed` outcome never
+  replaces that outcome: the primary outcome (including `deployed`) is returned and
+  journaled, and the cleanup failure is recorded on `last_reason()`. `reason` is the
+  primary reason, or when the primary had none, the cleanup exception's `ReasonedFailure`
+  (for example `archive_custody_changed` with its closed detail) before falling back to
+  `cleanup_also_failed`; `primary_outcome` is `null` (because nothing was superseded),
+  and `cleanup_failed` is `true`. `archive_cleanup_failed` remains in the closed outcome
+  vocabulary for compatibility, though the runner no longer emits it in place of a
+  primary failure or verified `deployed` outcome.
 
 ## Reason vocabulary
 
@@ -106,8 +109,8 @@ reason is recorded and tested; **documented** = deliberately unchanged, rational
 | E04 | `WordPress/WordPressCorePackageExecutor.php:361` | replace | WP_Error code and message | `WORDPRESS_FAILED` | B and A | `core_wordpress_failed` | message can hold paths: always dropped; code only if allow-listed | `error_detail()`; `tests/failure-reasons-wordpress.php` | fixed |
 | E05 | `WordPressCorePackageExecutor.php:74,114` | replace | Throwable class, code, message | `WORDPRESS_UNCERTAIN` | B and A | `core_wordpress_uncertain` | only `exception` or `php_error`; class and message may be foreign or hold paths | `tests/failure-reasons-wordpress.php` | fixed (coarse by design) |
 | E06 | `WordPressCorePackageExecutor.php:221-244` | replace | which of 5 source-selection failures | one WP_Error code | B | `core_wordpress_failed` | 4 closed causes in the WP_Error data | `invalid_package_source( $cause )`; `tests/failure-reasons-wordpress.php`, `tests/core-package-error-code.php` | fixed |
-| E07 | `Runtime/AdmittedBranchRunner.php:139,159` | cleanup | primary cause and cleanup failure | `archive_cleanup_failed` replaced the cause | C | primary reason or `cleanup_also_failed`, plus `primary_outcome`, `cleanup_failed` | cleanup message never read | `tests/failure-reasons.php` class C cases | reason recorded; outcome code unchanged |
-| E08 | `AdmittedBranchRunner.php:112-128` | postcondition | Core failure; baseline readable or changed | `restoration_uncertain` and others | B | `core_*`, `baseline_unreadable`, `baseline_changed` | closed ids | `tests/failure-reasons.php` | fixed |
+| E07 | `Runtime/AdmittedBranchRunner.php` | cleanup | primary cause and cleanup failure | primary outcome preserved; cleanup recorded on `last_reason()` | C | primary reason, cleanup `ReasonedFailure`, or `cleanup_also_failed`, plus `cleanup_failed` | custody cause only; generic cleanup message never read | `tests/failure-reasons.php` class C cases, `tests/admitted-runner.php` | fixed |
+| E08 | `AdmittedBranchRunner.php` | postcondition | Core failure; fresh-install target absence or baseline restored | `upgrader_failed` for definite failure/restoration, `restoration_uncertain` when uncertain | B | `core_*`, `baseline_unreadable`, `baseline_changed` | closed ids | `tests/failure-reasons.php`, `tests/architecture-normalisation-baseline.php` | fixed |
 | E09 | Host `AdmittedPackageExecutor::preflight()` | preflight | host policy refusal | `preflight_failed` or stage | B | host-supplied typed reason | generic exceptions supply no reason | `tests/failure-reasons.php` | consumer |
 | E10 | `WordPress/WordPressUpdaterLock.php` | lock | held or malformed | `lock_unavailable` | B | `lock_held`, `lock_token_invalid` | closed ids | `tests/failure-reasons-wordpress.php`, `tests/installed-wordpress.php` | acquisition retries races, then reports current contention. Historical `lock_stale_release_failed` and `lock_stale_reinsert_failed` ids remain valid |
 | E12 | `AdmittedBranchRunner.php:98,111` | postcondition | identifier mismatch vs refused adoption | `persistence_uncertain` | B | `identifier_mismatch`, `adopt_failed` | closed ids | `tests/failure-reasons.php` | fixed |
@@ -115,8 +118,8 @@ reason is recorded and tested; **documented** = deliberately unchanged, rational
 | E15 | `Archive/PreparedArchive.php:132` | custody | cleaned, identity or digest changed | one message | B | `archive_custody_changed` | closed details only; digest never shown | `tests/failure-reasons-wordpress.php`, `tests/failure-reasons.php` | fixed |
 | E17 | `WordPressCorePackageExecutor.php:265` | replace | theme archive, parent invalid or missing | `INVALID_REQUEST` | B | `core_invalid_request` | closed causes only; the parent name is not passed | `tests/failure-reasons-wordpress.php`; `theme_parent_missing` needs real WordPress and is covered only by the installed lane | fixed |
 | E18 | `Runtime/BranchUpdater.php:92-93`, `RAN\UpdaterSupport\V1\PackageDirectory::normalize()` | input | exact invalid field | fixed text | A | none | caller-input validation text is already specific enough | none | documented |
-| E19 | `Runtime/Admitted*Failure.php`, `Branch*Failure.php` | durability | previous chain | thrown out of `run()` | C | `durability_uncertain`, `journal_uncertain`, `lock_storage`, `lock_release` | closed ids | `last_reason()` is set before the escape; `tests/failure-reasons.php` | fixed here; the host must read it and log (consumer) |
-| E20 | `AdmittedBranchRunner.php:139` | cleanup | an outcome returned normally (for example `deployed`) | replaced by `interrupted` or `archive_cleanup_failed` | C | `cleanup_also_failed` and `primary_outcome` | none | `tests/failure-reasons.php` | reason recorded; outcome code unchanged |
+| E19 | `Runtime/Admitted*Failure.php`, `Branch*Failure.php`, `Persistence/BranchDeploymentJournalFailure.php` | durability | previous chain | thrown out of `run()` with closed `reason()` / `as_reason()` | C | `durability_uncertain`, `journal_uncertain`, `lock_storage`, `lock_release` | closed ids; message and `previous` never read | `reason()`, `as_reason()`, and `last_reason()`; `tests/failure-reasons.php` | fixed here; the host must log class and `reason()` (consumer) |
+| E20 | `AdmittedBranchRunner.php` | cleanup | verified `deployed` outcome plus cleanup failure | `deployed` preserved; cleanup recorded on `last_reason()` | C | cleanup `ReasonedFailure` or `cleanup_also_failed`, plus `cleanup_failed` | custody cause only; generic cleanup message never read | `tests/failure-reasons.php`, `tests/admitted-runner.php` | fixed |
 | E21 | `Runtime/AdmittedBranchRunner.php:91` | locked policy | target has a VCS marker | `policy_blocked` | B | `target_is_working_copy` | no path, marker contents or other detail leaves the check | `tests/failure-reasons.php` admitted marker matrix and late-lock marker, `tests/installed-wordpress.php` refusal and override | fixed |
 
 For E10, the adapter reclaims expired rows through its exact-token release and
@@ -133,4 +136,5 @@ covers live mutual exclusion and this upstream expiry boundary.
 2. Where it catches an exception from `PreparedArchive::download_and_validate()`, call
    `ReasonedFailure::find( $exception )` and use its `reason` and `detail`.
 3. Treat `detail` as untrusted text and escape it.
-4. Catch and log the ambiguous failures that escape `deploy()`; their reason is on `last_reason()`.
+4. Catch and log the documented durability failures that escape `deploy()`; each exposes
+   its closed `reason()` / `as_reason()`, and `last_reason()` is also set before escape.

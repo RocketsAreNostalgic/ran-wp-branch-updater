@@ -26,7 +26,6 @@ final class AdmittedBranchRunner {
 	private bool $cleanup_failed                = false;
 	private string $stage                       = 'policy_blocked';
 	private ?AdmittedFailureReason $reason      = null;
-	private ?string $primary_outcome            = null;
 
 	public function __construct(
 		private AdmittedAttemptJournal $journal,
@@ -46,7 +45,23 @@ final class AdmittedBranchRunner {
 		return $this->consumed;
 	}
 
-	/** Returns the closed outcome only after the attempt journal has finished. */
+	/**
+	 * Returns the closed outcome only after the attempt journal has finished.
+	 *
+	 * Escaping failure contract:
+	 * - `AdmittedBranchDurabilityFailure` (`FailureReason::DURABILITY_UNCERTAIN`)
+	 * - `BranchDeploymentJournalFailure` (`FailureReason::JOURNAL_UNCERTAIN`)
+	 * - `BranchDeploymentLockReleaseFailure` (`FailureReason::LOCK_RELEASE`)
+	 * - `BranchDeploymentLockStorageFailure` (`FailureReason::LOCK_STORAGE`)
+	 * - `RuntimeException` when called on an already-consumed runner
+	 * - Any unexpected `Throwable` raised by the host journal during terminal `finish()` / `finish_with_reason()`
+	 *
+	 * @throws AdmittedBranchDurabilityFailure    When durability cannot be proved.
+	 * @throws BranchDeploymentJournalFailure     When durable journal state is unknown.
+	 * @throws BranchDeploymentLockReleaseFailure When mutation lock release cannot be proved.
+	 * @throws BranchDeploymentLockStorageFailure When mutation lock storage cannot be reconciled.
+	 * @throws RuntimeException                   When this one-shot runner has already been consumed.
+	 */
 	public function run( BranchDeploymentDeclaration $deployment ): string {
 		if ( $this->consumed ) {
 			throw new RuntimeException( 'An admitted deployment runner is already consumed.' );
@@ -61,7 +76,7 @@ final class AdmittedBranchRunner {
 		} finally {
 			$this->artifact = null;
 		}
-		$this->last_reason = $this->with_cleanup( $this->reason, $this->primary_outcome, $this->cleanup_failed );
+		$this->last_reason = $this->with_cleanup( $this->reason, $this->cleanup_failed );
 		$this->finish_journal( $outcome );
 		return $outcome;
 	}
@@ -85,17 +100,13 @@ final class AdmittedBranchRunner {
 	}
 
 	private function run_locked( BranchDeploymentDeclaration $deployment, AdmittedBranchArtifact $artifact ): string {
-		$primary  = null;
-		$returned = null;
 		try {
-			$returned = $this->execute_locked( $deployment, $artifact );
-			return $returned;
+			return $this->execute_locked( $deployment, $artifact );
 		} catch ( Throwable $failure ) {
-			$primary      = $failure;
 			$this->reason = $this->reason_of( $failure );
 			throw $failure;
 		} finally {
-			$this->cleanup_locked_artifact( $artifact, $primary, $returned );
+			$this->cleanup_locked_artifact( $artifact );
 		}
 	}
 
@@ -164,35 +175,45 @@ final class AdmittedBranchRunner {
 
 	/** @param array{identifier:string,version:string,active:bool}|null $baseline */
 	private function classify_execution_failure( BranchDeploymentDeclaration $deployment, ?array $baseline, CorePackageExecutionFailure $failure ): string {
-		$current = null === $baseline ? null : $this->target->baseline_now( $deployment, $baseline );
-		if ( null === $baseline || null === $current || $current['version'] !== $baseline['version'] || $current['active'] !== $baseline['active'] ) {
-			if ( null !== $baseline ) {
-				$this->reason = new AdmittedFailureReason( null === $current ? FailureReason::BASELINE_UNREADABLE : FailureReason::BASELINE_CHANGED );
+		if ( null === $baseline ) {
+			if ( 'install' !== $deployment->operation ) {
+				return 'restoration_uncertain';
 			}
+			if ( CorePackageExecutionFailure::WORDPRESS_REFUSED !== $failure && CorePackageExecutionFailure::WORDPRESS_FAILED !== $failure ) {
+				return 'restoration_uncertain';
+			}
+			$raw_target_directory = $this->target->target_directory( $deployment );
+			$target_directory     = rtrim( $raw_target_directory, '/\\' );
+			if ( '' === trim( $raw_target_directory ) || '' === $target_directory ) {
+				return 'restoration_uncertain';
+			}
+			clearstatcache( true, $target_directory );
+			if ( file_exists( $target_directory ) || is_link( $target_directory ) ) {
+				return 'restoration_uncertain';
+			}
+			return 'upgrader_failed';
+		}
+		$current = $this->target->baseline_now( $deployment, $baseline );
+		if ( null === $current || $current['version'] !== $baseline['version'] || $current['active'] !== $baseline['active'] ) {
+			$this->reason = new AdmittedFailureReason( null === $current ? FailureReason::BASELINE_UNREADABLE : FailureReason::BASELINE_CHANGED );
 			return 'restoration_uncertain';
 		}
 		return match ( $failure ) {
-			CorePackageExecutionFailure::WORDPRESS_RESTORED => 'activation_failed',
+			CorePackageExecutionFailure::WORDPRESS_RESTORED,
 			CorePackageExecutionFailure::WORDPRESS_REFUSED,
 			CorePackageExecutionFailure::WORDPRESS_FAILED => 'upgrader_failed',
 			default => 'restoration_uncertain',
 		};
 	}
 
-	private function cleanup_locked_artifact( AdmittedBranchArtifact $artifact, ?Throwable $primary, ?string $returned ): void {
+	private function cleanup_locked_artifact( AdmittedBranchArtifact $artifact ): void {
 		try {
 			$this->cleanup_attempted = true;
 			$artifact->cleanup();
 		} catch ( Throwable $cleanup_failure ) {
 			$this->cleanup_failed = true;
-			$this->reason       ??= new AdmittedFailureReason( FailureReason::CLEANUP_ALSO_FAILED );
-			if ( $this->is_ambiguous( $primary ) ) {
-				throw $primary;
-			}
-			// The failing cleanup supersedes the outcome below; keep the outcome it replaced.
-			$this->primary_outcome = null === $primary ? $returned : $this->outcome_for_failure( $primary );
-			$this->stage           = 'archive_cleanup_failed';
-			throw $cleanup_failure;
+			$this->reason       ??= ReasonedFailure::find( $cleanup_failure )?->as_reason()
+				?? new AdmittedFailureReason( FailureReason::CLEANUP_ALSO_FAILED );
 		}
 	}
 
@@ -204,15 +225,11 @@ final class AdmittedBranchRunner {
 				$this->artifact->cleanup();
 			} catch ( Throwable $cleanup_failure ) {
 				$this->cleanup_failed = true;
-				if ( ! $this->is_ambiguous( $failure ) ) {
-					$this->primary_outcome = $this->outcome_for_failure( $failure );
-					$this->stage           = 'archive_cleanup_failed';
-					$failure               = $cleanup_failure;
-				}
+				$this->reason       ??= ReasonedFailure::find( $cleanup_failure )?->as_reason();
 			}
 		}
 		if ( $this->is_ambiguous( $failure ) ) {
-			$this->last_reason = $this->with_cleanup( $this->reason_of( $failure ), null, $this->cleanup_failed );
+			$this->last_reason = $this->with_cleanup( $this->reason_of( $failure ), $this->cleanup_failed );
 			throw $failure;
 		}
 		return $this->outcome_for_failure( $failure );
@@ -227,7 +244,7 @@ final class AdmittedBranchRunner {
 			}
 		} catch ( Throwable $terminal_failure ) {
 			if ( $this->is_ambiguous( $terminal_failure ) ) {
-				$this->last_reason = $this->with_cleanup( $this->reason_of( $terminal_failure ), null, $this->cleanup_failed );
+				$this->last_reason = $this->with_cleanup( $this->reason_of( $terminal_failure ), $this->cleanup_failed );
 			}
 			throw $terminal_failure;
 		}
@@ -238,18 +255,15 @@ final class AdmittedBranchRunner {
 	}
 
 	/** A cleanup that failed beside another cause is recorded with it; it never replaces that cause. */
-	private function with_cleanup( ?AdmittedFailureReason $reason, ?string $primary_outcome, bool $cleanup_failed ): ?AdmittedFailureReason {
-		return $cleanup_failed ? ( $reason ?? new AdmittedFailureReason( FailureReason::CLEANUP_ALSO_FAILED ) )->with_cleanup( $primary_outcome ) : $reason;
+	private function with_cleanup( ?AdmittedFailureReason $reason, bool $cleanup_failed ): ?AdmittedFailureReason {
+		return $cleanup_failed ? ( $reason ?? new AdmittedFailureReason( FailureReason::CLEANUP_ALSO_FAILED ) )->with_cleanup( null ) : $reason;
 	}
 
 	/** Maps only the failure's own closed type or reason; a message is never read. */
 	private function reason_of( ?Throwable $failure ): ?AdmittedFailureReason {
 		return match ( true ) {
 			$failure instanceof ReasonedFailure => $failure->as_reason(),
-			$failure instanceof BranchDeploymentLockStorageFailure => new AdmittedFailureReason( FailureReason::LOCK_STORAGE ),
-			$failure instanceof BranchDeploymentLockReleaseFailure => new AdmittedFailureReason( FailureReason::LOCK_RELEASE ),
-			$failure instanceof BranchDeploymentJournalFailure => new AdmittedFailureReason( FailureReason::JOURNAL_UNCERTAIN ),
-			$failure instanceof AdmittedBranchDurabilityFailure => new AdmittedFailureReason( FailureReason::DURABILITY_UNCERTAIN ),
+			$this->is_ambiguous( $failure ) => $failure->as_reason(),
 			default => null,
 		};
 	}

@@ -218,3 +218,22 @@ identifier retains its exact folder binding, one-level PHP filename syntax and
 `BranchUpdater::ADMITTED_API_VERSION` remains `4`: no admitted interface, field,
 wire shape or outcome changes. Core must adopt a published branch-updater release
 and the shared support dependency in its coordinated consumer update.
+
+## Runner outcome preservation and execution classification
+
+Post-operation archive cleanup failures no longer replace primary failure
+outcomes or downgrade verified `deployed` outcomes. Consumers implementing
+`AdmittedAttemptReasonJournal::finish_with_reason()` or reading `last_reason()`
+can therefore observe `deployed` alongside `cleanup_failed: true` and a
+non-null reason (a specific custody `ReasonedFailure` when cleanup fails
+custody verification, or `FailureReason::CLEANUP_ALSO_FAILED` for generic
+cleanup errors). `archive_cleanup_failed` remains in the closed outcome
+vocabulary for compatibility.
+
+Fresh-install failures without a baseline now return `upgrader_failed` for
+definite `WORDPRESS_REFUSED` and `WORDPRESS_FAILED` results when the target
+directory remains absent, while partial/existing targets and unknown Core
+states remain `restoration_uncertain`. Confirmed `WORDPRESS_RESTORED` updates
+now return `upgrader_failed` with `FailureReason::CORE_WORDPRESS_RESTORED`
+rather than `activation_failed`. `BranchUpdater::ADMITTED_API_VERSION` remains
+`4`.
