@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0-beta.20](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.19...v1.0.0-beta.20) (2026-11-24)
+
+
+### Bug Fixes
+
+* **runner:** preserve outcomes and classify escaping failures ([#151](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/151)) ([8dc217a](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/commit/8dc217ad5d6f1870994bc1c2e5852e014ce67b4e))
+
 ## [1.0.0-beta.19](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.18...v1.0.0-beta.19) (2026-11-24)
 
 
