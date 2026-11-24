@@ -95,8 +95,9 @@ final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchAr
 		if ( false === $handle ) {
 			throw new RuntimeException( 'Cannot create private archive file.' );
 		}
-		$created = null;
-		$owned   = null;
+		$created     = null;
+		$owned       = null;
+		$read_handle = null;
 		try {
 			$fstat = fstat( $handle );
 			if ( ! is_array( $fstat )
@@ -151,7 +152,24 @@ final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchAr
 				$created = null;
 				throw new RuntimeException( 'Private archive identity is invalid.' );
 			}
+			if ( 0 === $created['ino'] ) {
+				// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged,WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- Open a least-privilege read-only descriptor before closing the creation handle so zero-inode ownership survives acquisition writes.
+				$opened_read = @fopen( $path, 'rb' );
+				if ( false === $opened_read ) {
+					throw new RuntimeException( 'Cannot create private archive file.' );
+				}
+				$read_handle = $opened_read;
+				$read_fstat  = fstat( $read_handle );
+				if ( ! is_array( $read_fstat ) || self::stat_snapshot( $read_fstat ) !== $owned ) {
+					throw new RuntimeException( 'Private archive identity is invalid.' );
+				}
+			}
 		} catch ( \Throwable $e ) {
+			if ( null !== $read_handle ) {
+				// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Close the zero-inode read handle before identity-checked cleanup.
+				fclose( $read_handle );
+				$read_handle = null;
+			}
 			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Close the exclusively created descriptor before identity-checked cleanup.
 			fclose( $handle );
 			if ( null !== $owned ) {
@@ -161,6 +179,10 @@ final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchAr
 		}
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Close the verified archive file descriptor only after descriptor-to-path identity is established.
 		if ( ! fclose( $handle ) ) {
+			if ( null !== $read_handle ) {
+				// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Close the zero-inode read handle before identity-checked cleanup.
+				fclose( $read_handle );
+			}
 			$close_error = new RuntimeException( 'Cannot create private archive file.' );
 			self::cleanup_matching_file( $path, $owned, null, $close_error );
 			throw $close_error;
@@ -180,17 +202,42 @@ final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchAr
 			) {
 				throw new RuntimeException( 'Archive file identity or size is invalid.' );
 			}
-			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Concurrent removal or read failure during initial fingerprinting fails closed cleanly.
-			$digest = @hash_file( 'sha256', $path );
-			if ( ! is_string( $digest ) ) {
-				throw new RuntimeException( 'Cannot fingerprint archive.' );
+			if ( null !== $read_handle ) {
+				$read_fstat = fstat( $read_handle );
+				if ( ! is_array( $read_fstat ) || self::stat_snapshot( $read_fstat ) !== $written ) {
+					throw new RuntimeException( 'Archive file identity or size is invalid.' );
+				}
+				$handle_digest = self::stream_digest( $read_handle, $written['size'] );
+				// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Concurrent removal or read failure during initial fingerprinting fails closed cleanly.
+				$digest = @hash_file( 'sha256', $path );
+				if ( null === $handle_digest || ! is_string( $digest ) || ! hash_equals( $handle_digest, $digest ) ) {
+					throw new RuntimeException( 'Cannot fingerprint archive.' );
+				}
+				$post_hash_fstat = fstat( $read_handle );
+				if ( RegularFileStat::read( $path ) !== $written
+					|| ! is_array( $post_hash_fstat )
+					|| self::stat_snapshot( $post_hash_fstat ) !== $written
+				) {
+					throw new RuntimeException( 'Archive file identity or size is invalid.' );
+				}
+				$owned        = $written;
+				$owned_digest = $digest;
+				$closed_read  = $read_handle;
+				$read_handle  = null;
+				// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Release the zero-inode read handle after post-acquire custody verification and before archive validation.
+				if ( ! fclose( $closed_read ) ) {
+					throw new RuntimeException( 'Cannot fingerprint archive.' );
+				}
+			} else {
+				// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Concurrent removal or read failure during initial fingerprinting fails closed cleanly.
+				$digest = @hash_file( 'sha256', $path );
+				if ( ! is_string( $digest ) ) {
+					throw new RuntimeException( 'Cannot fingerprint archive.' );
+				}
+				$owned        = $written;
+				$owned_digest = $digest;
 			}
-			if ( 0 === $written['ino'] && RegularFileStat::read( $path ) !== $written ) {
-				throw new RuntimeException( 'Archive file identity or size is invalid.' );
-			}
-			$owned        = $written;
-			$owned_digest = $digest;
-			$inspection   = ( new ArchiveValidator() )->validate(
+			$inspection = ( new ArchiveValidator() )->validate(
 				$path,
 				$d,
 				'update' === $d->operation ? $d->installed_identifier : null,
@@ -198,10 +245,27 @@ final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchAr
 				$maximum_expanded_bytes,
 				self::runtime_wordpress_version()
 			);
-			$archive      = new self( $path, $offer->resolved_ref, $identity, $digest, $inspection['expected_version'], $inspection['expanded'] );
+			$archive    = new self( $path, $offer->resolved_ref, $identity, $digest, $inspection['expected_version'], $inspection['expanded'] );
 			$archive->assert_unchanged();
 			return $archive;
 		} catch ( \Throwable $e ) {
+			if ( null !== $read_handle ) {
+				$refreshed = self::refresh_zero_inode_ownership( $read_handle, $path, $created, $owned );
+				// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- Close the zero-inode read handle before unlink so platforms like Windows permit deletion.
+				fclose( $read_handle );
+				$read_handle = null;
+				if ( null === $refreshed ) {
+					clearstatcache( true, $path );
+					if ( file_exists( $path ) || is_link( $path ) ) {
+						// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Preserve the previous Throwable for internal custody diagnostics; this is not rendered output.
+						throw new RuntimeException( 'Rejected archive replacement could not be cleaned safely.', 0, $e );
+					}
+					self::cleanup_matching_file( $path, $owned, $owned_digest, $e );
+					throw $e;
+				}
+				$owned        = $refreshed['owned'];
+				$owned_digest = $refreshed['digest'];
+			}
 			self::cleanup_matching_file( $path, $owned, $owned_digest, $e );
 			throw $e;
 		}
@@ -288,6 +352,65 @@ final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchAr
 		} catch ( InvalidArgumentException ) {
 			throw new RuntimeException( 'Maximum artifact bytes is invalid for expanded archive validation.' );
 		}
+	}
+
+	/**
+	 * Re-verify ownership of a zero-inode staged file through the retained read descriptor.
+	 *
+	 * @param resource                                                                                    $stream
+	 * @param array{dev:int,ino:int,size:int,mode:int,nlink:int,uid?:int,gid?:int,mtime?:int,ctime?:int} $created
+	 * @param array{dev:int,ino:int,mode:int,nlink:int,uid:int,gid:int,size:int,mtime:int,ctime:int}     $owned
+	 * @return array{owned:array{dev:int,ino:int,mode:int,nlink:int,uid:int,gid:int,size:int,mtime:int,ctime:int},digest:string}|null
+	 */
+	private static function refresh_zero_inode_ownership( $stream, string $path, array $created, array $owned ): ?array {
+		$current     = RegularFileStat::read( $path );
+		$handle_stat = fstat( $stream );
+		if ( null === $current || ! is_array( $handle_stat ) ) {
+			return null;
+		}
+		$handle_snap = self::stat_snapshot( $handle_stat );
+		if ( ( $handle_snap['mode'] & 0170000 ) !== 0100000
+			|| ( $handle_snap['mode'] & 0777 ) !== 0600
+			|| 1 !== $handle_snap['nlink']
+			|| $handle_snap['dev'] !== $created['dev']
+			|| 0 !== $handle_snap['ino']
+			|| $handle_snap['uid'] !== $owned['uid']
+			|| $handle_snap['gid'] !== $owned['gid']
+			|| $handle_snap !== $current
+		) {
+			return null;
+		}
+		$digest = self::stream_digest( $stream, $handle_snap['size'] );
+		if ( null === $digest ) {
+			return null;
+		}
+		$recheck_stat = fstat( $stream );
+		if ( ! is_array( $recheck_stat )
+			|| self::stat_snapshot( $recheck_stat ) !== $handle_snap
+			|| RegularFileStat::read( $path ) !== $handle_snap
+		) {
+			return null;
+		}
+		return array(
+			'owned'  => $handle_snap,
+			'digest' => $digest,
+		);
+	}
+
+	/**
+	 * Hash an open descriptor from byte zero and verify the exact byte count read.
+	 *
+	 * @param resource $stream
+	 */
+	private static function stream_digest( $stream, int $expected_size ): ?string {
+		if ( $expected_size < 0 || ! rewind( $stream ) ) {
+			return null;
+		}
+		$context = hash_init( 'sha256' );
+		if ( hash_update_stream( $context, $stream ) !== $expected_size ) {
+			return null;
+		}
+		return hash_final( $context );
 	}
 
 	/**
