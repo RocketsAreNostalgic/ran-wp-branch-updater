@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.0.0-beta.19](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.18...v1.0.0-beta.19) (2026-11-24)
+
+
+### Features
+
+* **runner:** allow commit rollbacks and retire standalone ([#144](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/144)) ([c8201c9](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/commit/c8201c9d5816fe2a06a41573d7c0aecc794d6305))
+
+
+### Bug Fixes
+
+* align archive bounds and move head check outside lock ([f338fc2](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/commit/f338fc2257f7bb8d127bdda607fefa9599c496c9)), closes [#148](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/148) [#149](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/149)
+* align archive bounds and move head check outside lock ([#150](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/150)) ([a3a03a2](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/commit/a3a03a28a842a80425dd3ec7df2113bd4be38ce5))
+* **archive:** fix version, header, path and custody checks ([#145](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/145)) ([79eda8c](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/commit/79eda8c9d374c5f511f5262e2426e4e2a5321ab2))
+* harden archive staging, validation bounds, and journal ([#137](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/137)) ([ccaeca4](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/commit/ccaeca4676da4558ad09064d597d97e01f0d0220))
+* retain zero-inode ownership across partial archive writes ([8d90b21](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/commit/8d90b21db8e8dcdf3f9de2636871abf01e3e441e)), closes [#148](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/148)
+* **runner:** use the locked branch deployment baseline ([#138](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/138)) ([d3a9262](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/commit/d3a9262d871045531936a1dbe01d9c24629eb462))
+* **wordpress:** fix source selection, result checks and locks ([#141](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/141)) ([b4afdc3](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/commit/b4afdc3aa7717630e9c01d125ed3f8e4c2886b21))
+
+
+### Dependencies
+
+* **support:** adopt updater-support beta.11 shared helpers ([#147](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/issues/147)) ([5817e71](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/commit/5817e71c5ccee62093281d1559652673eb3c36c7))
+
 ## [1.0.0-beta.18](https://github.com/RocketsAreNostalgic/ran-wp-branch-updater/compare/v1.0.0-beta.17...v1.0.0-beta.18) (2026-11-20)
 
 
