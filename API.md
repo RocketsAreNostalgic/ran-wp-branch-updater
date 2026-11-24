@@ -62,9 +62,17 @@ separate operator action.
 - `interrupted`
 - `restoration_uncertain`
 
-Invalid declarations throw. Durability failures from the attempt journal or mutation lock also throw because execution state cannot then be safely reduced to an ordinary terminal outcome.
+Invalid declarations throw. Durability failures from the attempt journal or mutation lock also throw because execution state cannot then be safely reduced to an ordinary terminal outcome. The documented escaping failure set from `AdmittedBranchRunner::run()` / `BranchDeployment::deploy()` is:
 
-Archive-integrity and cleanup failures are closed outcomes when their state is known. A fenced interruption remains conservative. Do not retry an uncertain outcome automatically; use the host's durable attempt record and recovery policy.
+- `Runtime\AdmittedBranchDurabilityFailure` (`reason(): FailureReason::DURABILITY_UNCERTAIN`)
+- `Persistence\BranchDeploymentJournalFailure` (`reason(): FailureReason::JOURNAL_UNCERTAIN`)
+- `Runtime\BranchDeploymentLockReleaseFailure` (`reason(): FailureReason::LOCK_RELEASE`)
+- `Runtime\BranchDeploymentLockStorageFailure` (`reason(): FailureReason::LOCK_STORAGE`)
+- `RuntimeException` when reusing an already-consumed runner, plus any unexpected `Throwable` raised by the host journal during terminal `finish()` / `finish_with_reason()`
+
+Each of the four durability failure classes exposes `reason(): FailureReason` and `as_reason(): AdmittedFailureReason` without reading exception messages or chained causes, and `last_reason()` is populated before they escape.
+
+Archive-integrity and cleanup failures are closed outcomes when their state is known. A failing archive cleanup never overwrites a primary failure outcome or downgrades a verified `deployed` outcome; the cleanup failure is recorded on `last_reason()` (`cleanup_failed: true`). For fresh installs without a baseline, a definite WordPress refusal or failure returns `upgrader_failed` only when the target directory remains absent, and stays `restoration_uncertain` otherwise. When WordPress confirms baseline restoration (`WORDPRESS_RESTORED`), the runner returns `upgrader_failed` with `FailureReason::CORE_WORDPRESS_RESTORED`. A fenced interruption remains conservative. Do not retry an uncertain outcome automatically; use the host's durable attempt record and recovery policy.
 
 ## Failure reasons
 

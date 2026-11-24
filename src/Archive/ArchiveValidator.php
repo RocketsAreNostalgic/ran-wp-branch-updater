@@ -192,13 +192,19 @@ final class ArchiveValidator {
 				'directory' => $entry['directory'],
 			);
 		}
-		$failure = ArchiveSafety::collision_failure( $paths );
+		$this->reject_collision_failure( ArchiveSafety::collision_failure( $paths ) );
+	}
+	private function reject_collision_failure( ?string $failure ): void {
+		if ( null === $failure ) {
+			return;
+		}
 		if ( 'path_duplicate' === $failure ) {
 			$this->fail( self::CODE_PATH_COLLISION, 'The archive contains duplicate paths.' );
 		}
 		if ( 'file_parent_collision' === $failure ) {
 			$this->fail( self::CODE_FILE_PARENT_COLLISION, 'The archive contains a file-parent collision.' );
 		}
+		$this->fail( self::CODE_PATH_COLLISION, 'The archive contains conflicting paths.' );
 	}
 	/** @param array<string,mixed> $stat */
 	private function assert_safe_entry_type( ZipArchive $zip, int $index, array $stat, bool $named_directory ): void {
@@ -211,13 +217,19 @@ final class ArchiveValidator {
 		$operations = 0;
 		$attributes = 0;
 		$available  = $zip->getExternalAttributesIndex( $index, $operations, $attributes, ZipArchive::FL_UNCHANGED );
-		$failure    = ArchiveSafety::entry_type_failure( $available ? $operations : null, $available ? $attributes : null, $named_directory );
+		$this->reject_entry_type_failure( ArchiveSafety::entry_type_failure( $available ? $operations : null, $available ? $attributes : null, $named_directory ) );
+	}
+	private function reject_entry_type_failure( ?string $failure ): void {
+		if ( null === $failure ) {
+			return;
+		}
 		if ( 'entry_type_unsupported' === $failure ) {
 			$this->fail( self::CODE_ENTRY_UNSUPPORTED, 'The archive contains a link or device entry.' );
 		}
 		if ( 'entry_metadata_invalid' === $failure ) {
 			$this->fail( self::CODE_ENTRY_INVALID, 'The archive contains invalid entry metadata.' );
 		}
+		$this->fail( self::CODE_ENTRY_UNSUPPORTED, 'The archive contains an unsupported entry.' );
 	}
 	private function assert_compression_ratio( int $size, int $compressed_size, bool $is_directory = false ): void {
 		$failure = ArchiveSafety::entry_size_failure( $size, $compressed_size, $is_directory );

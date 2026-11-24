@@ -275,12 +275,35 @@ $outcome  = $runner( $journal, $artifact, new RAN_WP_Branch_Updater_RunnerFixtur
 $assert( 'policy_blocked' === $outcome, 'generic pre-lock policy failure is policy_blocked' );
 $assert( 1 === $journal->finish_calls, 'policy failure records its terminal outcome' );
 
-$journal  = new RAN_WP_Branch_Updater_RunnerFixtureJournal();
-$artifact = new RAN_WP_Branch_Updater_RunnerFixtureArtifact( new \RuntimeException( 'cleanup unavailable' ) );
-$outcome  = $runner( $journal, $artifact, new RAN_WP_Branch_Updater_RunnerFixtureTarget(), new RAN_WP_Branch_Updater_RunnerFixtureLock( new \RuntimeException( 'lock held' ) ) )->run( $deployment );
-$assert( 'archive_cleanup_failed' === $outcome, 'generic pre-fence cleanup failure is archive_cleanup_failed' );
+$journal             = new RAN_WP_Branch_Updater_RunnerFixtureJournal();
+$artifact            = new RAN_WP_Branch_Updater_RunnerFixtureArtifact( new \RuntimeException( 'cleanup unavailable' ) );
+$cleanup_lock_runner = $runner( $journal, $artifact, new RAN_WP_Branch_Updater_RunnerFixtureTarget(), new RAN_WP_Branch_Updater_RunnerFixtureLock( new \RuntimeException( 'lock held' ) ) );
+$outcome             = $cleanup_lock_runner->run( $deployment );
+$cleanup_lock_reason = $cleanup_lock_runner->last_reason();
+$assert( 'lock_unavailable' === $outcome, 'primary lock failure wins when archive cleanup also fails' );
+$assert( null !== $cleanup_lock_reason && FailureReason::CLEANUP_ALSO_FAILED === $cleanup_lock_reason->reason && $cleanup_lock_reason->cleanup_failed && null === $cleanup_lock_reason->primary_outcome, 'cleanup failure beside plain lock failure records cleanup_also_failed' );
 $assert( 1 === $artifact->cleanup_calls, 'cleanup failure is attempted once' );
 $assert( 1 === $journal->finish_calls, 'cleanup failure records its terminal outcome' );
+
+$deployed_cleanup_journal  = new RAN_WP_Branch_Updater_RunnerFixtureJournal();
+$deployed_cleanup_artifact = new RAN_WP_Branch_Updater_RunnerFixtureArtifact( new \RuntimeException( 'cleanup unavailable' ) );
+$deployed_cleanup_runner   = $runner( $deployed_cleanup_journal, $deployed_cleanup_artifact, new RAN_WP_Branch_Updater_RunnerFixtureTarget(), new RAN_WP_Branch_Updater_RunnerFixtureLock() );
+$deployed_cleanup_outcome  = $deployed_cleanup_runner->run( $deployment );
+$deployed_cleanup_reason   = $deployed_cleanup_runner->last_reason();
+$assert( 'deployed' === $deployed_cleanup_outcome && 1 === $deployed_cleanup_artifact->cleanup_calls && 1 === $deployed_cleanup_journal->finish_calls, 'verified deployment stays deployed when only archive cleanup fails' );
+$assert( null !== $deployed_cleanup_reason && FailureReason::CLEANUP_ALSO_FAILED === $deployed_cleanup_reason->reason && $deployed_cleanup_reason->cleanup_failed && null === $deployed_cleanup_reason->primary_outcome, 'post-deploy cleanup failure records cleanup_also_failed on last_reason' );
+
+// Cleanup failing alone without a primary failure or verified outcome preserves archive_cleanup_failed.
+$solo_cleanup_runner = $runner( new RAN_WP_Branch_Updater_RunnerFixtureJournal(), new RAN_WP_Branch_Updater_RunnerFixtureArtifact(), new RAN_WP_Branch_Updater_RunnerFixtureTarget(), new RAN_WP_Branch_Updater_RunnerFixtureLock() );
+$solo_cleanup_method = new \ReflectionMethod( AdmittedBranchRunner::class, 'cleanup_locked_artifact' );
+$solo_stage_property = new \ReflectionProperty( AdmittedBranchRunner::class, 'stage' );
+$solo_error          = new \RuntimeException( 'solo cleanup failed' );
+try {
+	$solo_cleanup_method->invoke( $solo_cleanup_runner, new RAN_WP_Branch_Updater_RunnerFixtureArtifact( $solo_error ), null, null );
+	$assert( false, 'cleanup failing alone must throw' );
+} catch ( \RuntimeException $caught_solo ) {
+	$assert( $caught_solo === $solo_error && 'archive_cleanup_failed' === $solo_stage_property->getValue( $solo_cleanup_runner ), 'cleanup failing alone preserves archive_cleanup_failed' );
+}
 
 $journal  = new RAN_WP_Branch_Updater_RunnerFixtureJournal();
 $artifact = new RAN_WP_Branch_Updater_RunnerFixtureArtifact();
@@ -311,10 +334,10 @@ $assert(
 );
 
 foreach ( array(
-	'generic head failure' => array( new \RuntimeException( 'provider timeout' ), null, 'provider_failed', null ),
-	'stale head stage'     => array( new AdmittedBranchStageFailure( 'stale_event' ), null, 'stale_event', null ),
-	'head + cleanup fail'  => array( new AdmittedBranchStageFailure( 'stale_event' ), new \RuntimeException( 'cleanup failed' ), 'archive_cleanup_failed', 'stale_event' ),
-) as $head_label => [$head_failure, $cleanup_failure, $expected_outcome, $expected_primary] ) {
+	'generic head failure' => array( new \RuntimeException( 'provider timeout' ), null, 'provider_failed', false ),
+	'stale head stage'     => array( new AdmittedBranchStageFailure( 'stale_event' ), null, 'stale_event', false ),
+	'head + cleanup fail'  => array( new AdmittedBranchStageFailure( 'stale_event' ), new \RuntimeException( 'cleanup failed' ), 'stale_event', true ),
+) as $head_label => [$head_failure, $cleanup_failure, $expected_outcome, $expected_cleanup_failed] ) {
 	$head_journal = new RAN_WP_Branch_Updater_RunnerFixtureJournal();
 	$head_art     = new RAN_WP_Branch_Updater_RunnerFixtureArtifact( $cleanup_failure );
 	$head_arch    = new RAN_WP_Branch_Updater_RunnerFixtureArchives( $head_art, $head_failure );
@@ -335,13 +358,14 @@ foreach ( array(
 			&& 1 === $head_journal->finish_calls,
 		$head_label . ': pre-lock head failure must clean up and finish without acquiring the lock'
 	);
-	if ( null !== $expected_primary ) {
+	if ( $expected_cleanup_failed ) {
 		$head_reason = $head_runner->last_reason();
 		$assert(
 			null !== $head_reason
 				&& $head_reason->cleanup_failed
-				&& $expected_primary === $head_reason->primary_outcome,
-			$head_label . ': pre-lock head failure with failing cleanup retains primary outcome'
+				&& FailureReason::CLEANUP_ALSO_FAILED === $head_reason->reason
+				&& null === $head_reason->primary_outcome,
+			$head_label . ': pre-lock head failure with failing cleanup keeps primary outcome and flags cleanup_failed'
 		);
 	}
 }

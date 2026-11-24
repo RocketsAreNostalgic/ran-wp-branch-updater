@@ -407,6 +407,41 @@ $assert( '1.2.3' === $validate( $valid, $deployment( 'padded-subdir', 'install',
 $root_plugin = $zip( array( 'repository/demo.php' => $plugin() ) );
 $assert( '1.2.3' === $validate( $root_plugin, $deployment( 'blank-subdir', 'install', '   ' ) )['expected_version'], 'whitespace-only subdirectory normalizes to root package' );
 
+// Issue #119: Unknown non-null collision and entry-type codes from ArchiveSafety must fail closed.
+$reject_collision  = new ReflectionMethod( ArchiveValidator::class, 'reject_collision_failure' );
+$reject_entry_type = new ReflectionMethod( ArchiveValidator::class, 'reject_entry_type_failure' );
+$hostile_code      = 'future_code https://user:secret@example.test /var/www/html <script> ' . hash( 'sha256', 'x' );
+$reject_collision->invoke( $validator, null );
+$reject_entry_type->invoke( $validator, null );
+foreach ( array(
+	'duplicate collision'    => array( $reject_collision, 'path_duplicate', ArchiveValidator::CODE_PATH_COLLISION, 'path_collision' ),
+	'file-parent collision'  => array( $reject_collision, 'file_parent_collision', ArchiveValidator::CODE_FILE_PARENT_COLLISION, 'path_collision' ),
+	'unknown collision'      => array( $reject_collision, 'future_collision_rule', ArchiveValidator::CODE_PATH_COLLISION, 'path_collision' ),
+	'empty collision code'   => array( $reject_collision, '', ArchiveValidator::CODE_PATH_COLLISION, 'path_collision' ),
+	'hostile collision code' => array( $reject_collision, $hostile_code, ArchiveValidator::CODE_PATH_COLLISION, 'path_collision' ),
+	'unsupported entry type' => array( $reject_entry_type, 'entry_type_unsupported', ArchiveValidator::CODE_ENTRY_UNSUPPORTED, 'entry_unsupported' ),
+	'invalid entry metadata' => array( $reject_entry_type, 'entry_metadata_invalid', ArchiveValidator::CODE_ENTRY_INVALID, 'entry_invalid' ),
+	'unknown entry type'     => array( $reject_entry_type, 'entry_origin_future', ArchiveValidator::CODE_ENTRY_UNSUPPORTED, 'entry_unsupported' ),
+	'empty entry-type code'  => array( $reject_entry_type, '', ArchiveValidator::CODE_ENTRY_UNSUPPORTED, 'entry_unsupported' ),
+	'hostile entry code'     => array( $reject_entry_type, $hostile_code, ArchiveValidator::CODE_ENTRY_UNSUPPORTED, 'entry_unsupported' ),
+) as $unknown_label => [$reject_method, $helper_code, $expected_code, $expected_reason] ) {
+	try {
+		$reject_method->invoke( $validator, $helper_code );
+		$assert( false, 'non-null helper failure unexpectedly passed: ' . $unknown_label );
+	} catch ( \RAN\WPBranchUpdater\V1\Runtime\ReasonedFailure $expected ) {
+		$assert(
+			$expected_code === $expected->getCode()
+				&& $expected_reason === $expected->reason
+				&& null === $expected->detail
+				&& ! str_contains( $expected->getMessage(), 'future_' )
+				&& ! str_contains( $expected->getMessage(), 'example.test' )
+				&& ! str_contains( $expected->getMessage(), '/var/www' )
+				&& ! str_contains( $expected->getMessage(), '<script>' ),
+			'non-null helper failure must fail closed without leaking input: ' . $unknown_label
+		);
+	}
+}
+
 // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- glob returns an array or false; both no matches and failure retain the existing empty-corpus fallback.
 // phpcs:ignore Universal.Operators.DisallowShortTernary.Found,WordPress.WP.GlobalVariablesOverride.Prohibited -- Standalone CLI fixture variable does not share WordPress runtime globals.
 foreach ( glob( $root . '/*.zip' ) ?: array() as $path ) {

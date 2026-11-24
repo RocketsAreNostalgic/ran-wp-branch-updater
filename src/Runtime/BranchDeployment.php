@@ -24,7 +24,15 @@ final class BranchDeployment {
 		return $this->last_reason;
 	}
 
-	/** Returns the runner's closed terminal outcome; ambiguous durability failures propagate. */
+	/**
+	 * Returns the runner's closed terminal outcome.
+	 *
+	 * Ambiguous durability failures (`AdmittedBranchDurabilityFailure`,
+	 * `BranchDeploymentJournalFailure`, `BranchDeploymentLockReleaseFailure`,
+	 * `BranchDeploymentLockStorageFailure`) propagate with a closed `reason()`
+	 * and `last_reason()` set; invalid terminal overrides or consumed-runner
+	 * reuse also throw before execution.
+	 */
 	public function deploy( ?string $expected_commit = null, ?string $operation = null, ?string $selected_commit = null, ?string $expected_identifier = null, ?bool $allow_working_copy = null ): string {
 		$this->last_reason = null;
 		$deployment        = new BranchDeploymentDeclaration(

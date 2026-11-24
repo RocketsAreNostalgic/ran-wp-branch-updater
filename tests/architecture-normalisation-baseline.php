@@ -470,9 +470,20 @@ $assert(
 	),
 	'install adoption failure remains persistence_uncertain'
 );
-$assert( 'activation_failed' === $scenario( array( 'result' => CorePackageExecutionResult::failed( CorePackageExecutionFailure::WORDPRESS_RESTORED ) ) ), 'WordPress-restored failure remains activation_failed' );
+$assert( 'upgrader_failed' === $scenario( array( 'result' => CorePackageExecutionResult::failed( CorePackageExecutionFailure::WORDPRESS_RESTORED ) ) ), 'WordPress-restored failure reports upgrader_failed, not activation_failed' );
 $assert( 'upgrader_failed' === $scenario( array( 'result' => CorePackageExecutionResult::failed( CorePackageExecutionFailure::WORDPRESS_REFUSED ) ) ), 'WordPress refusal remains upgrader_failed' );
 $assert( 'upgrader_failed' === $scenario( array( 'result' => CorePackageExecutionResult::failed( CorePackageExecutionFailure::WORDPRESS_FAILED ) ) ), 'WordPress failure remains upgrader_failed' );
+$assert(
+	'upgrader_failed' === $scenario(
+		array(
+			'operation'       => 'install',
+			'initialBaseline' => null,
+			'lockedBaseline'  => null,
+			'result'          => CorePackageExecutionResult::failed( CorePackageExecutionFailure::WORDPRESS_FAILED ),
+		)
+	),
+	'fresh install failure with absent target reports upgrader_failed'
+);
 $assert(
 	'restoration_uncertain' === $scenario(
 		array(
