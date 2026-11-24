@@ -59,12 +59,28 @@ foreach ( array(
 	'',
 	'/demo/demo.php',
 	'demo/',
+	'demo/ ',
+	'demo/demo.php/',
 	'demo//demo.php',
 	'demo\\demo.php',
 	'demo/../demo.php',
 	'other/demo/demo.php',
 	'x/demo/demo.php',
 	'a/b/c',
+	'C:demo.php',
+	'C:/demo.php',
+	'c:demo/demo.php',
+	'C%3Ademo.php',
+	'c%3a/demo.php',
+	'%2e%2e/demo.php',
+	'demo/%2e%2e',
+	'%2E%2E/demo.php',
+	'demo/%2e',
+	'demo%2fdemo.php',
+	'demo%2F..%2Fdemo.php',
+	'demo%5cdemo.php',
+	'%252e%252e/demo.php',
+	'demo/%00demo.php',
 	"demo/\x00demo.php",
 	"demo/demo.php\x00",
 	"\x00demo/demo.php",
@@ -78,8 +94,10 @@ foreach ( array(
 	try {
 		InstalledPackageIdentifier::normalize( $invalid );
 		throw new RuntimeException( 'Unsafe installed identifier was accepted.' );
-	// phpcs:ignore Generic.CodeAnalysis.EmptyStatement.DetectedCatch -- Reaching this catch proves the expected rejection; no mutation is needed.
-	} catch ( InvalidArgumentException ) { // Expected rejection is the assertion; execution continues only for this exception.
+	} catch ( InvalidArgumentException $expected ) {
+		if ( InvalidArgumentException::class !== $expected::class || 'The installed package identifier is invalid.' !== $expected->getMessage() ) {
+			throw $expected;
+		}
 	}
 }
 
