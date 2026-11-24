@@ -5,6 +5,9 @@ namespace RAN\WPBranchUpdater\V1\Archive;
 
 use RAN\UpdaterSupport\V1\ArchiveSafety;
 use RAN\UpdaterSupport\V1\PackageDirectory;
+use RAN\UpdaterSupport\V1\PluginFileIdentifier;
+use RAN\UpdaterSupport\V1\RuntimeVersion;
+use RAN\UpdaterSupport\V1\WordPressHeaders;
 use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
 use RAN\WPBranchUpdater\V1\Runtime\FailureReason;
 use RAN\WPBranchUpdater\V1\Runtime\ReasonedFailure;
@@ -41,9 +44,6 @@ final class ArchiveValidator {
 	public const CODE_PACKAGE_DIRECTORY_MISSING = 1025;
 	public const CODE_THEME_IDENTITY_MISMATCH   = 1026;
 	public const CODE_FILE_PARENT_COLLISION     = 1027;
-	private const MAX_ENTRIES                   = 10000;
-	private const MAX_COMPRESSION_RATIO         = 100;
-	private const COMPRESSION_RATIO_MIN_BYTES   = 131072;
 	/** Stable grouping of the numeric causes into the closed FailureReason set. */
 	private const REASONS = array(
 		self::CODE_ZIP_UNAVAILABLE           => FailureReason::ZIP_UNAVAILABLE,
@@ -118,10 +118,7 @@ final class ArchiveValidator {
 					$this->fail( self::CODE_MULTIPLE_ROOTS, 'The archive must contain one package root.' );
 				}
 				$this->assert_safe_entry_type( $zip, $index, $stat, $is_directory );
-				if ( $is_directory && 0 !== $stat['size'] ) {
-					$this->fail( self::CODE_ARCHIVE_INTEGRITY, 'The archive contains unreadable entry data.' );
-				}
-				$this->assert_compression_ratio( $stat['size'], $stat['comp_size'] );
+				$this->assert_compression_ratio( $stat['size'], $stat['comp_size'], $is_directory );
 				$expanded = $this->add_expanded_bytes( $expanded, $stat['size'], $expanded_limit );
 				$this->verify_entry_contents( $zip, $index, $stat['size'], $stat['crc'], $expanded_limit );
 			}
@@ -166,7 +163,7 @@ final class ArchiveValidator {
 		} catch ( \InvalidArgumentException ) {
 			$this->fail( self::CODE_PACKAGE_IDENTITY, 'The installed package identity is unsafe.' );
 		}
-		if ( 'plugin' === $d->package_type && 1 !== substr_count( $installed, '/' ) ) {
+		if ( 'plugin' === $d->package_type && ( 1 !== substr_count( $installed, '/' ) || ! PluginFileIdentifier::is_valid( $installed ) ) ) {
 			$this->fail( self::CODE_PACKAGE_IDENTITY, 'A plugin update requires a directory-backed installed identity.' );
 		}
 	}
@@ -174,7 +171,7 @@ final class ArchiveValidator {
 		if ( 0 === $entries ) {
 			$this->fail( self::CODE_LAYOUT_INVALID, 'The archive does not contain a package.' );
 		}
-		if ( $entries > self::MAX_ENTRIES ) {
+		if ( null !== ArchiveSafety::entry_count_failure( $entries ) ) {
 			$this->fail( self::CODE_ENTRY_LIMIT, 'The archive exceeds the entry limit.' );
 		}
 	}
@@ -204,7 +201,10 @@ final class ArchiveValidator {
 	}
 	/** @param array<string,mixed> $stat */
 	private function assert_safe_entry_type( ZipArchive $zip, int $index, array $stat, bool $named_directory ): void {
-		if ( ZipArchive::EM_NONE !== (int) ( $stat['encryption_method'] ?? ZipArchive::EM_NONE ) ) {
+		if ( ! is_int( $stat['encryption_method'] ?? null ) || $stat['encryption_method'] < 0 ) {
+			$this->fail( self::CODE_ENTRY_INVALID, 'The archive contains invalid entry metadata.' );
+		}
+		if ( ZipArchive::EM_NONE !== $stat['encryption_method'] ) {
 			$this->fail( self::CODE_ENTRY_ENCRYPTED, 'Encrypted archive entries are unsupported.' );
 		}
 		$operations = 0;
@@ -218,13 +218,18 @@ final class ArchiveValidator {
 			$this->fail( self::CODE_ENTRY_INVALID, 'The archive contains invalid entry metadata.' );
 		}
 	}
-	private function assert_compression_ratio( int $size, int $compressed_size ): void {
-		if ( $size < self::COMPRESSION_RATIO_MIN_BYTES ) {
+	private function assert_compression_ratio( int $size, int $compressed_size, bool $is_directory = false ): void {
+		$failure = ArchiveSafety::entry_size_failure( $size, $compressed_size, $is_directory );
+		if ( null === $failure ) {
 			return;
 		}
-		if ( 0 === $compressed_size || ( $compressed_size <= intdiv( PHP_INT_MAX, self::MAX_COMPRESSION_RATIO ) && $size > self::MAX_COMPRESSION_RATIO * $compressed_size ) ) {
-			$this->fail( self::CODE_EXPANDED_TOO_LARGE, 'The archive exceeds the expanded-size limit.' );
+		if ( 'entry_size_invalid' === $failure ) {
+			$this->fail( self::CODE_ENTRY_INVALID, 'The archive contains invalid entry metadata.' );
 		}
+		if ( 'entry_directory_payload' === $failure ) {
+			$this->fail( self::CODE_ARCHIVE_INTEGRITY, 'The archive contains unreadable entry data.' );
+		}
+		$this->fail( self::CODE_EXPANDED_TOO_LARGE, 'The archive exceeds the expanded-size limit.' );
 	}
 	private function verify_entry_contents( ZipArchive $zip, int $index, int $expected_size, int $expected_crc, int $expanded_limit ): void {
 		$stream = $zip->getStreamIndex( $index, ZipArchive::FL_UNCHANGED );
@@ -309,20 +314,34 @@ final class ArchiveValidator {
 	}
 	/** @return ($required_file is true ? array<string,string> : array<string,string>|null) */
 	private function read_headers( ZipArchive $zip, int $index, string $required, bool $required_file = true ): ?array {
-		$contents = $zip->getFromIndex( $index, 8192, ZipArchive::FL_UNCHANGED );
+		$contents = $zip->getFromIndex( $index, WordPressHeaders::MAX_BYTES, ZipArchive::FL_UNCHANGED );
 		if ( false === $contents ) {
 			$this->fail( self::CODE_HEADER_UNREADABLE, 'The package header cannot be read.', $required );
 		}
-		$contents = str_replace( "\r", "\n", $contents );
-		$headers  = array();
-		foreach ( array( $required, 'Version', 'Requires at least', 'Requires PHP' ) as $header ) {
-			$pattern = '/^(?:[ \t]*<\?php)?[ \t\/*#@]*' . preg_quote( $header, '/' ) . ':(.*)$/mi';
-			$count   = preg_match_all( $pattern, $contents, $matches );
-			$code    = 'Version' === $header ? self::CODE_VERSION_INVALID : ( $required === $header ? self::CODE_HEADER_UNREADABLE : self::CODE_COMPATIBILITY_INVALID );
-			if ( false === $count || 1 < $count ) {
+		$labels  = array(
+			$required           => $required,
+			'Version'           => 'Version',
+			'Requires at least' => 'Requires at least',
+			'Requires PHP'      => 'Requires PHP',
+		);
+		$parsed  = WordPressHeaders::parse(
+			strtr(
+				$contents,
+				array(
+					"\v" => "\x01",
+					"\f" => "\x01",
+				)
+			),
+			$labels
+		);
+		$headers = array();
+		foreach ( $labels as $header ) {
+			$values = $parsed[ $header ] ?? array();
+			$code   = 'Version' === $header ? self::CODE_VERSION_INVALID : ( $required === $header ? self::CODE_HEADER_UNREADABLE : self::CODE_COMPATIBILITY_INVALID );
+			if ( 1 < count( $values ) ) {
 				$this->fail( $code, 'The package header is invalid.', $header );
 			}
-			$value = 1 === $count ? trim( (string) preg_replace( '/\s*(?:\*\/|\?>).*/', '', $matches[1][0] ), " \t" ) : '';
+			$value = $values[0] ?? '';
 			if ( strlen( $value ) > 64 || 0 !== preg_match( '/[\p{Cc}\p{Cf}]/u', $value ) ) {
 				$this->fail( $code, 'The package header is invalid.', $header );
 			}
@@ -356,46 +375,25 @@ final class ArchiveValidator {
 			}
 		}
 		if ( '' !== $headers['Requires PHP'] ) {
-			$runtime_php  = self::normalize_php_version( $php_version );
-			$required_php = self::normalize_required_version( $headers['Requires PHP'] );
-			if ( '' === $runtime_php || version_compare( $runtime_php, $required_php, '<' ) ) {
+			$runtime_php  = RuntimeVersion::php( trim( $php_version ) );
+			$required_php = self::normalize_comparable_version( $headers['Requires PHP'] );
+			if ( null === $runtime_php || version_compare( self::normalize_comparable_version( $runtime_php ), $required_php, '<' ) ) {
 				$this->fail( self::CODE_REQUIRES_NEWER_PHP, 'The package requires a newer PHP version.', 'Requires PHP' );
 			}
 		}
 		if ( '' !== $headers['Requires at least'] ) {
-			$runtime_wp  = self::normalize_wordpress_version( $wordpress_version );
-			$required_wp = self::normalize_required_version( $headers['Requires at least'] );
-			if ( '' === $runtime_wp || version_compare( $runtime_wp, $required_wp, '<' ) ) {
+			$runtime_wp  = RuntimeVersion::wordpress( trim( $wordpress_version ) );
+			$required_wp = self::normalize_comparable_version( $headers['Requires at least'] );
+			if ( null === $runtime_wp || version_compare( self::normalize_comparable_version( explode( '-', $runtime_wp, 2 )[0] ), $required_wp, '<' ) ) {
 				$this->fail( self::CODE_REQUIRES_NEWER_WP, 'The package requires a newer WordPress version.', 'Requires at least' );
 			}
 		}
 	}
-	private static function pad_version_core( string $core ): string {
-		return implode( '.', array_pad( explode( '.', $core ), 4, '0' ) );
-	}
-	private static function normalize_required_version( string $version ): string {
+	private static function normalize_comparable_version( string $version ): string {
 		if ( 1 !== preg_match( '/^([0-9]+(?:\.[0-9]+){0,3})(.*)$/D', $version, $match ) ) {
 			return $version;
 		}
-		return self::pad_version_core( $match[1] ) . strtolower( $match[2] );
-	}
-	private static function normalize_php_version( string $version ): string {
-		$version = trim( $version );
-		if ( 1 !== preg_match( '/^((?>[0-9]+(?:\.[0-9]+){0,3}))(?:[-~._]?(dev|alpha|beta|rc)(?:[.-]?([0-9]+))?(?=$|[-+~._])|(?=$|[-+~_]))/iD', $version, $match ) ) {
-			return '';
-		}
-		$normalized = self::pad_version_core( $match[1] );
-		if ( isset( $match[2] ) && '' !== $match[2] ) {
-			$normalized .= '-' . strtolower( $match[2] ) . ( $match[3] ?? '' );
-		}
-		return $normalized;
-	}
-	private static function normalize_wordpress_version( string $version ): string {
-		$version = trim( $version );
-		if ( 1 !== preg_match( '/^([0-9]+(?:\.[0-9]+){0,3})(?=$|[-+])/D', $version, $match ) ) {
-			return '';
-		}
-		return self::pad_version_core( $match[1] );
+		return implode( '.', array_pad( explode( '.', $match[1] ), 4, '0' ) ) . strtolower( $match[2] );
 	}
 	/** @return never */
 	private function fail( int $code, string $message, ?string $header = null ): never {

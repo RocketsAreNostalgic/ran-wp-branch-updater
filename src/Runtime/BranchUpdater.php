@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace RAN\WPBranchUpdater\V1\Runtime;
 
 use RAN\UpdaterSupport\V1\PackageDirectory;
+use RAN\UpdaterSupport\V1\PluginFileIdentifier;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedArchiveSource;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedAttemptJournal;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedPackageExecutor;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedTargetFacts;
 use RAN\WPBranchUpdater\V1\Contract\MutationLock;
-use RAN\WPBranchUpdater\V1\WordPress\InstalledPackageIdentifier;
 
 /** Public declaration-to-terminal-operation entry point. */
 final class BranchUpdater {
@@ -77,15 +77,7 @@ final class BranchUpdater {
 	}
 
 	private function plugin_slug( string $plugin_file ): string {
-		try {
-			if ( trim( $plugin_file ) !== $plugin_file ) {
-				throw new \InvalidArgumentException( 'The plugin file is invalid.' );
-			}
-			$plugin_file = InstalledPackageIdentifier::normalize( $plugin_file );
-		} catch ( \InvalidArgumentException ) {
-			throw new \InvalidArgumentException( 'The plugin file is invalid.' );
-		}
-		if ( 1 !== substr_count( $plugin_file, '/' ) || preg_match( '/^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*\.php$/Di', $plugin_file ) !== 1 ) {
+		if ( 1 !== substr_count( $plugin_file, '/' ) || ! PluginFileIdentifier::is_valid( $plugin_file ) ) {
 			throw new \InvalidArgumentException( 'The plugin file is invalid.' );
 		}
 		return PackageDirectory::installed_slug( 'plugin', $plugin_file );
