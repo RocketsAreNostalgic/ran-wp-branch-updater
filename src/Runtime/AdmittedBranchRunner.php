@@ -100,17 +100,13 @@ final class AdmittedBranchRunner {
 	}
 
 	private function run_locked( BranchDeploymentDeclaration $deployment, AdmittedBranchArtifact $artifact ): string {
-		$primary  = null;
-		$returned = null;
 		try {
-			$returned = $this->execute_locked( $deployment, $artifact );
-			return $returned;
+			return $this->execute_locked( $deployment, $artifact );
 		} catch ( Throwable $failure ) {
-			$primary      = $failure;
 			$this->reason = $this->reason_of( $failure );
 			throw $failure;
 		} finally {
-			$this->cleanup_locked_artifact( $artifact, $primary, $returned );
+			$this->cleanup_locked_artifact( $artifact );
 		}
 	}
 
@@ -206,17 +202,14 @@ final class AdmittedBranchRunner {
 		};
 	}
 
-	private function cleanup_locked_artifact( AdmittedBranchArtifact $artifact, ?Throwable $primary, ?string $returned ): void {
+	private function cleanup_locked_artifact( AdmittedBranchArtifact $artifact ): void {
 		try {
 			$this->cleanup_attempted = true;
 			$artifact->cleanup();
 		} catch ( Throwable $cleanup_failure ) {
 			$this->cleanup_failed = true;
-			$this->reason       ??= new AdmittedFailureReason( FailureReason::CLEANUP_ALSO_FAILED );
-			if ( null === $primary && null === $returned ) {
-				$this->stage = 'archive_cleanup_failed';
-				throw $cleanup_failure;
-			}
+			$this->reason       ??= ReasonedFailure::find( $cleanup_failure )?->as_reason()
+				?? new AdmittedFailureReason( FailureReason::CLEANUP_ALSO_FAILED );
 		}
 	}
 
@@ -226,8 +219,9 @@ final class AdmittedBranchRunner {
 			try {
 				$this->cleanup_attempted = true;
 				$this->artifact->cleanup();
-			} catch ( Throwable ) {
+			} catch ( Throwable $cleanup_failure ) {
 				$this->cleanup_failed = true;
+				$this->reason       ??= ReasonedFailure::find( $cleanup_failure )?->as_reason();
 			}
 		}
 		if ( $this->is_ambiguous( $failure ) ) {
@@ -257,8 +251,8 @@ final class AdmittedBranchRunner {
 	}
 
 	/** A cleanup that failed beside another cause is recorded with it; it never replaces that cause. */
-	private function with_cleanup( ?AdmittedFailureReason $reason, bool $cleanup_failed, ?string $primary_outcome = null ): ?AdmittedFailureReason {
-		return $cleanup_failed ? ( $reason ?? new AdmittedFailureReason( FailureReason::CLEANUP_ALSO_FAILED ) )->with_cleanup( $primary_outcome ) : $reason;
+	private function with_cleanup( ?AdmittedFailureReason $reason, bool $cleanup_failed ): ?AdmittedFailureReason {
+		return $cleanup_failed ? ( $reason ?? new AdmittedFailureReason( FailureReason::CLEANUP_ALSO_FAILED ) )->with_cleanup( null ) : $reason;
 	}
 
 	/** Maps only the failure's own closed type or reason; a message is never read. */

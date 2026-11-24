@@ -63,10 +63,12 @@ contract now requires admitted API `4`; see [MIGRATING.md](../MIGRATING.md).
 * A failing cleanup beside another cause or after a verified `deployed` outcome never
   replaces that outcome: the primary outcome (including `deployed`) is returned and
   journaled, and the cleanup failure is recorded on `last_reason()`. `reason` is the
-  primary reason (or `cleanup_also_failed` when the primary had none), `primary_outcome`
-  is `null` (because nothing was superseded), and `cleanup_failed` is `true`. Cleanup
-  failing alone without a primary failure or verified outcome retains
-  `archive_cleanup_failed`.
+  primary reason, or when the primary had none, the cleanup exception's `ReasonedFailure`
+  (for example `archive_custody_changed` with its closed detail) before falling back to
+  `cleanup_also_failed`; `primary_outcome` is `null` (because nothing was superseded),
+  and `cleanup_failed` is `true`. `archive_cleanup_failed` remains in the closed outcome
+  vocabulary for compatibility, though the runner no longer emits it in place of a
+  primary failure or verified `deployed` outcome.
 
 ## Reason vocabulary
 
@@ -117,7 +119,7 @@ reason is recorded and tested; **documented** = deliberately unchanged, rational
 | E17 | `WordPressCorePackageExecutor.php:265` | replace | theme archive, parent invalid or missing | `INVALID_REQUEST` | B | `core_invalid_request` | closed causes only; the parent name is not passed | `tests/failure-reasons-wordpress.php`; `theme_parent_missing` needs real WordPress and is covered only by the installed lane | fixed |
 | E18 | `Runtime/BranchUpdater.php:92-93`, `RAN\UpdaterSupport\V1\PackageDirectory::normalize()` | input | exact invalid field | fixed text | A | none | caller-input validation text is already specific enough | none | documented |
 | E19 | `Runtime/Admitted*Failure.php`, `Branch*Failure.php`, `Persistence/BranchDeploymentJournalFailure.php` | durability | previous chain | thrown out of `run()` with closed `reason()` / `as_reason()` | C | `durability_uncertain`, `journal_uncertain`, `lock_storage`, `lock_release` | closed ids; message and `previous` never read | `reason()`, `as_reason()`, and `last_reason()`; `tests/failure-reasons.php` | fixed here; the host must log class and `reason()` (consumer) |
-| E20 | `AdmittedBranchRunner.php` | cleanup | verified `deployed` outcome plus cleanup failure | `deployed` preserved; cleanup recorded on `last_reason()` | C | `cleanup_also_failed` and `cleanup_failed` | none | `tests/failure-reasons.php`, `tests/admitted-runner.php` | fixed |
+| E20 | `AdmittedBranchRunner.php` | cleanup | verified `deployed` outcome plus cleanup failure | `deployed` preserved; cleanup recorded on `last_reason()` | C | cleanup `ReasonedFailure` or `cleanup_also_failed`, plus `cleanup_failed` | custody cause only; generic cleanup message never read | `tests/failure-reasons.php`, `tests/admitted-runner.php` | fixed |
 | E21 | `Runtime/AdmittedBranchRunner.php:91` | locked policy | target has a VCS marker | `policy_blocked` | B | `target_is_working_copy` | no path, marker contents or other detail leaves the check | `tests/failure-reasons.php` admitted marker matrix and late-lock marker, `tests/installed-wordpress.php` refusal and override | fixed |
 
 For E10, the adapter reclaims expired rows through its exact-token release and

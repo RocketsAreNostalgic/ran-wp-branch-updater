@@ -14,7 +14,7 @@ $cases         = array(
 	array( 'src/Runtime/AdmittedBranchRunner.php', 'final class AdmittedBranchRunner {', 'final class AdmittedBranchRunner { public function native_operation_probe(): void { json_encode( array() ); }', 'WordPress.WP.AlternativeFunctions.json_encode_json_encode' ),
 	array( 'src/Contract/AdmittedAttemptJournal.php', 'function record_resolved_ref(', 'function recordResolvedRef(', $method_code ),
 	array( 'src/Runtime/AdmittedBranchRunner.php', 'function is_consumed(', 'function isConsumed(', $method_code ),
-	array( 'src/Runtime/AdmittedBranchRunner.php', '$primary_outcome', '$primaryOutcome', $variable_code ),
+	array( 'src/Runtime/AdmittedBranchRunner.php', '$cleanup_failure', '$cleanupFailure', $variable_code ),
 	array( 'src/Runtime/AdmittedBranchRunner.php', 'null !== $deployment->selected_commit', '$deployment->selected_commit !== null', 'WordPress.PHP.YodaConditions.NotYoda' ),
 	array( 'src/Contract/AdmittedTargetFacts.php', 'function frozen_target(', 'function frozenTarget(', $method_code ),
 	array( 'src/Archive/PreparedArchive.php', 'function download_and_validate(', 'function downloadAndValidate(', $method_code ),

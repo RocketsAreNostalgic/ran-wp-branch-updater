@@ -293,18 +293,6 @@ $deployed_cleanup_reason   = $deployed_cleanup_runner->last_reason();
 $assert( 'deployed' === $deployed_cleanup_outcome && 1 === $deployed_cleanup_artifact->cleanup_calls && 1 === $deployed_cleanup_journal->finish_calls, 'verified deployment stays deployed when only archive cleanup fails' );
 $assert( null !== $deployed_cleanup_reason && FailureReason::CLEANUP_ALSO_FAILED === $deployed_cleanup_reason->reason && $deployed_cleanup_reason->cleanup_failed && null === $deployed_cleanup_reason->primary_outcome, 'post-deploy cleanup failure records cleanup_also_failed on last_reason' );
 
-// Cleanup failing alone without a primary failure or verified outcome preserves archive_cleanup_failed.
-$solo_cleanup_runner = $runner( new RAN_WP_Branch_Updater_RunnerFixtureJournal(), new RAN_WP_Branch_Updater_RunnerFixtureArtifact(), new RAN_WP_Branch_Updater_RunnerFixtureTarget(), new RAN_WP_Branch_Updater_RunnerFixtureLock() );
-$solo_cleanup_method = new \ReflectionMethod( AdmittedBranchRunner::class, 'cleanup_locked_artifact' );
-$solo_stage_property = new \ReflectionProperty( AdmittedBranchRunner::class, 'stage' );
-$solo_error          = new \RuntimeException( 'solo cleanup failed' );
-try {
-	$solo_cleanup_method->invoke( $solo_cleanup_runner, new RAN_WP_Branch_Updater_RunnerFixtureArtifact( $solo_error ), null, null );
-	$assert( false, 'cleanup failing alone must throw' );
-} catch ( \RuntimeException $caught_solo ) {
-	$assert( $caught_solo === $solo_error && 'archive_cleanup_failed' === $solo_stage_property->getValue( $solo_cleanup_runner ), 'cleanup failing alone preserves archive_cleanup_failed' );
-}
-
 $journal  = new RAN_WP_Branch_Updater_RunnerFixtureJournal();
 $artifact = new RAN_WP_Branch_Updater_RunnerFixtureArtifact();
 $install  = new BranchDeploymentDeclaration( 'focused-install', 'plugin', 'demo', 'acme/demo', 'fixture-1', 'main', 'abc123', 'install', 'demo', 'demo/demo.php' );

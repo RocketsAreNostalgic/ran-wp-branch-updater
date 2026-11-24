@@ -418,8 +418,8 @@ foreach ( array(
 $partial_install_root = __DIR__ . '/build/partial-install-' . bin2hex( random_bytes( 4 ) );
 // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_mkdir -- Create only this standalone fixture's isolated partial-install target.
 mkdir( $partial_install_root . '/demo', 0700, true );
-symlink( $partial_install_root . '/missing-target', $partial_install_root . '/dangling' );
 try {
+	symlink( $partial_install_root . '/missing-target', $partial_install_root . '/dangling' );
 	foreach ( array(
 		'existing directory' => $partial_install_root . '/demo',
 		'dangling symlink'   => $partial_install_root . '/dangling',
@@ -438,12 +438,18 @@ try {
 		}
 	}
 } finally {
-	// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Remove only this fixture's dangling link.
-	unlink( $partial_install_root . '/dangling' );
-	// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Remove only this fixture's partial-install directory.
-	rmdir( $partial_install_root . '/demo' );
-	// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Remove only this fixture's root directory.
-	rmdir( $partial_install_root );
+	if ( is_link( $partial_install_root . '/dangling' ) ) {
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Remove only this fixture's dangling link.
+		unlink( $partial_install_root . '/dangling' );
+	}
+	if ( is_dir( $partial_install_root . '/demo' ) ) {
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Remove only this fixture's partial-install directory.
+		rmdir( $partial_install_root . '/demo' );
+	}
+	if ( is_dir( $partial_install_root ) ) {
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Remove only this fixture's root directory.
+		rmdir( $partial_install_root );
+	}
 }
 $check(
 	'update missing baseline stays restoration_uncertain',
@@ -744,6 +750,35 @@ $tampered                    = $make_zip( array( 'repository/demo/demo.php' => $
 $assert( 'archive_integrity_failed' === $actual && array( 'archive_integrity_failed' ) === $journal->finished, 'broken custody keeps the primary archive_integrity_failed outcome when cleanup also fails' );
 $assert( null !== $record && FailureReason::ARCHIVE_CUSTODY_CHANGED === $record->reason && 'identity' === $record->detail && null === $record->primary_outcome && $record->cleanup_failed, 'broken custody records the custody cause, its closed detail and cleanup_failed' );
 
+// A post-deploy PreparedArchive::cleanup() custody failure keeps deployed and preserves the specific custody ReasonedFailure.
+$post_deploy_tamper = new class() implements AdmittedPackageExecutor {
+	public function preflight( BranchDeploymentDeclaration $deployment, AdmittedBranchArtifact $artifact ): void {}
+	public function execute( BranchDeploymentDeclaration $deployment, ?array $baseline, AdmittedBranchArtifact $artifact ): CorePackageExecutionResult {
+		if ( $artifact instanceof PreparedArchive ) {
+			$archive_path = ( new ReflectionProperty( $artifact, 'path' ) )->getValue( $artifact );
+			if ( is_string( $archive_path ) ) {
+				// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Rewrite bytes in place during execution to prove post-deploy cleanup custody failure.
+				file_put_contents( $archive_path, str_repeat( 'x', (int) filesize( $archive_path ) ) );
+			}
+		}
+		return CorePackageExecutionResult::succeeded();
+	}
+};
+$post_deploy_zip    = $make_zip( array( 'repository/demo/demo.php' => $plugin_source() ) );
+$post_deploy_aware  = new RAN_WP_Branch_Updater_ReasonAwareJournal();
+[$actual, $record]  = RAN_WP_Branch_Updater_ReasonFixtures::run(
+	array(
+		'operation'    => 'install',
+		'subdirectory' => 'demo',
+		'journal'      => $post_deploy_aware,
+		'archives'     => new RAN_WP_Branch_Updater_ReasonZipSource( new GitHubFixtureProvider( $post_deploy_zip, 'abc123' ), $root . '/custody' ),
+		'executor'     => $post_deploy_tamper,
+	)
+);
+$assert( 'deployed' === $actual && 1 === count( $post_deploy_aware->reasoned ) && 'deployed' === $post_deploy_aware->reasoned[0][0], 'post-deploy custody cleanup failure keeps deployed' );
+$assert( null !== $record && FailureReason::ARCHIVE_CUSTODY_CHANGED === $record->reason && 'digest' === $record->detail && null === $record->primary_outcome && $record->cleanup_failed, 'post-deploy custody cleanup failure preserves the specific custody ReasonedFailure and flags cleanup_failed' );
+$assert( $record === $post_deploy_aware->reasoned[0][1], 'reason-aware journal receives the preserved custody cleanup reason on deployed' );
+
 // Ambiguous durability failures still escape, expose closed reason()/as_reason() without leaking text, and populate last_reason().
 $hostile_previous = new RuntimeException( 'previous https://user:ghp_secret1234567890@example.test /var/www/private <script> ' . hash( 'sha256', 'prev' ) );
 $hostile_message  = 'message https://user:ghp_token1234567890@example.test /etc/passwd <b> ' . hash( 'sha256', 'msg' );
@@ -856,5 +891,13 @@ foreach ( new RecursiveIteratorIterator( new RecursiveDirectoryIterator( $root, 
 }
 // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Remove only this fixture's empty root.
 rmdir( $root );
+$build_dir = __DIR__ . '/build';
+if ( is_dir( $build_dir ) ) {
+	$build_entries = scandir( $build_dir );
+	if ( is_array( $build_entries ) && array() === array_diff( $build_entries, array( '.', '..' ) ) ) {
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Remove the empty shared fixture build directory once no temporary fixtures remain.
+		rmdir( $build_dir );
+	}
+}
 
 echo "PASS admitted failure reasons\n";
