@@ -255,12 +255,14 @@ foreach ( array( '8.invalid', '8.2.x', '8.2.0abc', '8.2.15abc', '8.2.0beta1foo',
 
 foreach ( array( '6.8', '6.8.0' ) as $required_wp ) {
 	$compat_wp = $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires at least: " . $required_wp ) ) );
-	foreach ( array( '6.8-RC1', '6.8-beta1-59800', '6.8-alpha-59820', '6.8-src', '6.8+build1' ) as $runtime_wp ) {
+	foreach ( array( '6.8-RC1', '6.8-beta1-59800', '6.8-beta2-59800-src', '6.8-alpha-59820', '6.8-src' ) as $runtime_wp ) {
 		$assert( '1.2.3' === $validate( $compat_wp, $deployment( 'wp-prerelease' ), null, $runtime_wp )['expected_version'], 'WordPress prerelease ' . $runtime_wp . ' satisfies ' . $required_wp );
 	}
 }
 $reject( ArchiveValidator::CODE_REQUIRES_NEWER_WP, $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires at least: 6.8.1" ) ) ), $deployment( 'wp-prerelease-older' ), null, '6.8-RC1' );
-$reject( ArchiveValidator::CODE_REQUIRES_NEWER_WP, $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires at least: 6.5" ) ) ), $deployment( 'wp-invalid-runtime' ), null, 'invalid-wp' );
+foreach ( array( 'invalid-wp', '6.8+build1', '6.8.0-ubuntu1' ) as $invalid_runtime_wp ) {
+	$reject( ArchiveValidator::CODE_REQUIRES_NEWER_WP, $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires at least: 6.5" ) ) ), $deployment( 'wp-invalid-runtime' ), null, $invalid_runtime_wp );
+}
 $reject( ArchiveValidator::CODE_VERSION_INVALID, $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3+build1" ) ) ), $deployment( 'version-build-meta' ) );
 $reject( ArchiveValidator::CODE_COMPATIBILITY_INVALID, $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires PHP: 8.2+build1" ) ) ), $deployment( 'php-build-meta' ) );
 $reject( ArchiveValidator::CODE_COMPATIBILITY_INVALID, $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires at least: 6.8+build1" ) ) ), $deployment( 'wp-build-meta' ) );
@@ -325,6 +327,58 @@ $assert( '1.2.3' === $validate( $mixed_php_ext, $deployment( 'mixed-php-ext' ) )
 // Issue #135: Nested installed identifier rejection and separate subdirectory configuration validation.
 $nested_id_zip = $zip( array( 'repository/demo/demo.php' => $plugin() ) );
 $reject( ArchiveValidator::CODE_PACKAGE_IDENTITY, $nested_id_zip, $deployment( 'nested-id', 'update', 'demo', 'other/demo/demo.php' ), 'other/demo/demo.php' );
+$reject( ArchiveValidator::CODE_PACKAGE_IDENTITY, $nested_id_zip, $deployment( 'non-php-id', 'update', 'demo', 'demo/demo.txt' ), 'demo/demo.txt' );
+
+// Issue #140: Adopted beta.11 ArchiveSafety origin_os (OS X 19 / NTFS 10) and path/reserved-name rules.
+$origin_zip = static function ( int $origin_os, int $dir_attr, int $file_attr, ?int $extra_attr = null ) use ( $root, &$sequence, $plugin ): string {
+	$path = sprintf( '%s/fixture-%02d.zip', $root, ++$sequence );
+	$arch = new ZipArchive();
+	if ( true !== $arch->open( $path, ZipArchive::CREATE | ZipArchive::OVERWRITE ) ) {
+		throw new RuntimeException( 'Cannot create origin fixture ZIP.' );
+	}
+	$arch->addEmptyDir( 'repository/demo' );
+	$arch->setExternalAttributesIndex( 0, $origin_os, $dir_attr );
+	$arch->addFromString( 'repository/demo/demo.php', $plugin() );
+	$arch->setExternalAttributesIndex( 1, $origin_os, $file_attr );
+	if ( null !== $extra_attr ) {
+		$arch->addFromString( 'repository/demo/special', 'target' );
+		$arch->setExternalAttributesIndex( 2, $origin_os, $extra_attr );
+	}
+	$arch->close();
+	return $path;
+};
+$assert(
+	'1.2.3' === $validate( $origin_zip( ZipArchive::OPSYS_OS_X, ( 0040755 << 16 ) | 0x10, 0100644 << 16 ), $deployment( 'macos-origin' ) )['expected_version'],
+	'macOS / OS X (origin_os 19) regular files and directories are accepted'
+);
+$reject(
+	ArchiveValidator::CODE_ENTRY_UNSUPPORTED,
+	$origin_zip( ZipArchive::OPSYS_OS_X, ( 0040755 << 16 ) | 0x10, 0100644 << 16, 0120777 << 16 ),
+	$deployment( 'macos-symlink' )
+);
+$assert(
+	'1.2.3' === $validate( $origin_zip( ZipArchive::OPSYS_WINDOWS_NTFS, 0x2010, 0x2020 ), $deployment( 'ntfs-origin' ) )['expected_version'],
+	'Windows NTFS (origin_os 10) regular files and directories are accepted'
+);
+foreach ( array( 0x0420, 0x0040 ) as $ntfs_special_attr ) {
+	$reject(
+		ArchiveValidator::CODE_ENTRY_UNSUPPORTED,
+		$origin_zip( ZipArchive::OPSYS_WINDOWS_NTFS, 0x2010, 0x2020, $ntfs_special_attr ),
+		$deployment( 'ntfs-special' )
+	);
+}
+foreach ( array( 'repository/demo/com¹.php', 'repository/demo/lpt³.txt', "repository/demo/bid\u{202E}.php" ) as $unsafe_unicode_path ) {
+	$reject(
+		ArchiveValidator::CODE_PATH_UNSAFE,
+		$zip(
+			array(
+				'repository/demo/demo.php' => $plugin(),
+				$unsafe_unicode_path       => 'x',
+			)
+		),
+		$deployment( 'unsafe-unicode-path' )
+	);
+}
 
 foreach ( array( '../escape', '/demo', 'demo\\sub', 'packages//demo', "demo\n", 'packages/%2e%2e/demo' ) as $bad_subdir ) {
 	try {

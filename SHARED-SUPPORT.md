@@ -16,11 +16,11 @@ target and a theme that names itself as its parent. Comparisons of the declared
 slug with the installed folder stay exact, because the slug is the installed folder
 and its case is authoritative. Archive entry paths belong to `ArchiveSafety`.
 
-The library requires `ran/updater-support` under `^1.0.0-beta.10`. Its development
-lock qualifies published beta.10; consuming roots lock and qualify their own
+The library requires `ran/updater-support` under `^1.0.0-beta.11`. Its development
+lock qualifies published beta.11; consuming roots lock and qualify their own
 selected compatible helper version.
 
-`RAN\UpdaterSupport\V1\ArchiveSafety` remains the correct shared boundary. It centralizes the low-level archive rules that are genuinely identical across the updater family: ZIP path normalization, entry-type classification, and path collision/file-parent collision detection.
+`RAN\UpdaterSupport\V1\ArchiveSafety` centralizes the low-level archive rules that are genuinely identical across the updater family: ZIP path normalization, entry-count/size/ratio bounds, entry-type classification (including DOS, UNIX, Windows NTFS and macOS / OS X origins), and path collision/file-parent collision detection. Alongside it, `WordPressHeaders`, `RuntimeVersion`, `PluginFileIdentifier`, and `RegularFileStat` provide shared pure header parsing, runtime PHP/WordPress version normalization, canonical relative plugin-file validation, and regular-file `lstat()` snapshots while custody, policy, and lifecycle ownership remain local.
 
 The remaining apparent similarities do not meet the full extraction threshold.
 

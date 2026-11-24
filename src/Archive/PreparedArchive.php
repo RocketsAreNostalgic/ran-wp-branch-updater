@@ -3,6 +3,9 @@ declare(strict_types=1);
 
 namespace RAN\WPBranchUpdater\V1\Archive;
 
+use InvalidArgumentException;
+use RAN\UpdaterSupport\V1\ArchiveSafety;
+use RAN\UpdaterSupport\V1\RegularFileStat;
 use RAN\WPBranchUpdater\V1\Contract\AdmittedBranchArtifact;
 use RAN\WPBranchUpdater\V1\Contract\PreparedPackageArtifact;
 use RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration;
@@ -13,8 +16,6 @@ use RuntimeException;
 /** Exact-byte custody from provider download through the WordPress boundary. */
 final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchArtifact {
 	public const DEFAULT_MAXIMUM_ARTIFACT_BYTES = 52428800;
-
-	private const EXPANDED_RATIO = 4;
 
 	private bool $cleaned = false;
 
@@ -104,14 +105,11 @@ final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchAr
 			}
 			$created_dev = (int) $fstat['dev'];
 			$created_ino = (int) $fstat['ino'];
-			clearstatcache( true, $path );
-			// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Verify the pathname still resolves to the exclusively created descriptor before applying permissions.
-			$pre_chmod = @lstat( $path );
-			if ( ! is_array( $pre_chmod )
-				|| ( $pre_chmod['mode'] & 0170000 ) !== 0100000
-				|| 1 !== (int) $pre_chmod['nlink']
-				|| (int) $pre_chmod['dev'] !== $created_dev
-				|| (int) $pre_chmod['ino'] !== $created_ino
+			$pre_chmod   = RegularFileStat::read( $path );
+			if ( null === $pre_chmod
+				|| 1 !== $pre_chmod['nlink']
+				|| $pre_chmod['dev'] !== $created_dev
+				|| $pre_chmod['ino'] !== $created_ino
 			) {
 				throw new RuntimeException( 'Private archive identity is invalid.' );
 			}
@@ -257,30 +255,28 @@ final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchAr
 	}
 
 	private static function maximum_expanded_bytes( int $maximum_artifact_bytes ): int {
-		if ( $maximum_artifact_bytes > intdiv( PHP_INT_MAX, self::EXPANDED_RATIO ) ) {
+		try {
+			return ArchiveSafety::maximum_expanded_bytes( $maximum_artifact_bytes );
+		} catch ( InvalidArgumentException ) {
 			throw new RuntimeException( 'Maximum artifact bytes is invalid for expanded archive validation.' );
 		}
-
-		return $maximum_artifact_bytes * self::EXPANDED_RATIO;
 	}
 
 	private static function cleanup_matching_file( string $path, int $dev, int $ino, \Throwable $cause ): void {
-		clearstatcache( true, $path );
-		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Missing paths need no cleanup; suppress only the native missing-path warning.
-		$current = @lstat( $path );
-		if ( false === $current ) {
-			return;
-		}
-		if ( ( $current['mode'] & 0170000 ) === 0100000
-			&& 1 === (int) $current['nlink']
-			&& (int) $current['dev'] === $dev
-			&& (int) $current['ino'] === $ino
+		$current = RegularFileStat::read( $path );
+		if ( null !== $current
+			&& 1 === $current['nlink']
+			&& $current['dev'] === $dev
+			&& $current['ino'] === $ino
 		) {
 			// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Delete only the rejected archive whose device and inode still match the created file.
 			if ( ! unlink( $path ) ) {
 				// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Preserve the previous Throwable for internal custody diagnostics; this is not rendered output.
 				throw new RuntimeException( 'Rejected archive could not be cleaned safely.', 0, $cause );
 			}
+			return;
+		}
+		if ( null === $current && ! file_exists( $path ) && ! is_link( $path ) ) {
 			return;
 		}
 		// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Preserve the previous Throwable for internal custody diagnostics; this is not rendered output.
@@ -291,18 +287,16 @@ final class PreparedArchive implements PreparedPackageArtifact, AdmittedBranchAr
 	 * @return array{dev:int,ino:int,size:int,mode:int,nlink:int}|null
 	 */
 	private static function identity( string $path ): ?array {
-		clearstatcache( true, $path );
-		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Missing or replaced paths fail the identity check; suppress only the native missing-path warning.
-		$s = @lstat( $path );
-		if ( ! is_array( $s ) || is_link( $path ) || ! is_file( $path ) || ( ( $s['mode'] & 0170000 ) !== 0100000 ) || ( ( $s['mode'] & 0777 ) !== 0600 ) || 1 !== $s['nlink'] ) {
+		$s = RegularFileStat::read( $path );
+		if ( null === $s || ( $s['mode'] & 0777 ) !== 0600 || 1 !== $s['nlink'] ) {
 			return null;
 		}
 		return array(
-			'dev'   => (int) $s['dev'],
-			'ino'   => (int) $s['ino'],
-			'size'  => (int) $s['size'],
-			'mode'  => (int) $s['mode'] & 0777,
-			'nlink' => (int) $s['nlink'],
+			'dev'   => $s['dev'],
+			'ino'   => $s['ino'],
+			'size'  => $s['size'],
+			'mode'  => $s['mode'] & 0777,
+			'nlink' => $s['nlink'],
 		);
 	}
 }

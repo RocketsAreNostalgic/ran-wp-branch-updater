@@ -24,7 +24,16 @@ if ( false === $consumer ) {
 }
 require $consumer . '/vendor/autoload.php';
 
-foreach ( array( BranchUpdater::class, RAN\UpdaterSupport\V1\ArchiveSafety::class, RAN\UpdaterSupport\V1\TargetWorkingCopy::class, RAN\UpdaterSupport\V1\PackageDirectory::class ) as $class ) {
+foreach ( array(
+	BranchUpdater::class,
+	RAN\UpdaterSupport\V1\ArchiveSafety::class,
+	RAN\UpdaterSupport\V1\TargetWorkingCopy::class,
+	RAN\UpdaterSupport\V1\PackageDirectory::class,
+	RAN\UpdaterSupport\V1\WordPressHeaders::class,
+	RAN\UpdaterSupport\V1\RuntimeVersion::class,
+	RAN\UpdaterSupport\V1\PluginFileIdentifier::class,
+	RAN\UpdaterSupport\V1\RegularFileStat::class,
+) as $class ) {
 	$file = ( new ReflectionClass( $class ) )->getFileName();
 	if ( ! is_string( $file ) || ! str_starts_with( $file, $consumer . '/vendor/' ) || is_link( $file ) ) {
 		throw new RuntimeException( 'Composer did not load an installed regular package file.' );

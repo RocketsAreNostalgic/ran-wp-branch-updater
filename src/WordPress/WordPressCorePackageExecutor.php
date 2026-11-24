@@ -7,6 +7,7 @@ namespace RAN\WPBranchUpdater\V1\WordPress;
 use Closure;
 use InvalidArgumentException;
 use RAN\UpdaterSupport\V1\PackageDirectory;
+use RAN\UpdaterSupport\V1\WordPressHeaders;
 use RAN\WPBranchUpdater\V1\Contract\PreparedPackageArtifact;
 use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionFailure;
 use RAN\WPBranchUpdater\V1\Runtime\CorePackageExecutionResult;
@@ -369,23 +370,28 @@ class WordPressCorePackageExecutor {
 			if ( 1 !== count( $candidates ) ) {
 				return false;
 			}
-			return $zip->getFromIndex( $candidates[0], 8192, \ZipArchive::FL_UNCHANGED );
+			return $zip->getFromIndex( $candidates[0], WordPressHeaders::MAX_BYTES, \ZipArchive::FL_UNCHANGED );
 		} finally {
 			$zip->close();
 		}
 	}
 
 	private function header_value( string $header, string $name ): string|false {
-		$header  = str_replace( "\r", "\n", $header );
-		$pattern = '/^(?:[ \t]*<\?php)?[ \t\/*#@]*' . preg_quote( $name, '/' ) . ':(.*)$/mi';
-		$count   = preg_match_all( $pattern, $header, $matches );
-		if ( false === $count || 1 < $count ) {
+		$parsed = WordPressHeaders::parse(
+			strtr(
+				substr( $header, 0, WordPressHeaders::MAX_BYTES ),
+				array(
+					"\v" => "\x01",
+					"\f" => "\x01",
+				)
+			),
+			array( $name => $name )
+		);
+		$values = $parsed[ $name ] ?? array();
+		if ( 1 < count( $values ) ) {
 			return false;
 		}
-		if ( 0 === $count ) {
-			return '';
-		}
-		$value = trim( (string) preg_replace( '/\s*(?:\*\/|\?>).*/', '', $matches[1][0] ), " \t" );
+		$value = $values[0] ?? '';
 		if ( 0 !== preg_match( '/[\p{Cc}\p{Cf}]/u', $value ) ) {
 			return false;
 		}
