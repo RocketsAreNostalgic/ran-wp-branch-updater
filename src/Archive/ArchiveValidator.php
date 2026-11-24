@@ -44,6 +44,7 @@ final class ArchiveValidator {
 	public const CODE_PACKAGE_DIRECTORY_MISSING = 1025;
 	public const CODE_THEME_IDENTITY_MISMATCH   = 1026;
 	public const CODE_FILE_PARENT_COLLISION     = 1027;
+	private const MAX_HEADER_VALUE_BYTES        = 500;
 	/** Stable grouping of the numeric causes into the closed FailureReason set. */
 	private const REASONS = array(
 		self::CODE_ZIP_UNAVAILABLE           => FailureReason::ZIP_UNAVAILABLE,
@@ -342,7 +343,7 @@ final class ArchiveValidator {
 				$this->fail( $code, 'The package header is invalid.', $header );
 			}
 			$value = $values[0] ?? '';
-			if ( strlen( $value ) > 64 || 0 !== preg_match( '/[\p{Cc}\p{Cf}]/u', $value ) ) {
+			if ( strlen( $value ) > self::MAX_HEADER_VALUE_BYTES || 0 !== preg_match( '/[\p{Cc}\p{Cf}]/u', $value ) ) {
 				$this->fail( $code, 'The package header is invalid.', $header );
 			}
 			$headers[ $header ] = $value;

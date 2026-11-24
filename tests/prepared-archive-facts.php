@@ -725,6 +725,158 @@ unlink( $wp_ver_zip );
 // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Remove WordPress-version fixture directory.
 rmdir( $wp_ver_dir );
 
+// Issue #148: Zero-inode (ino === 0) stat fallback semantics for PreparedArchive custody and cleanup.
+$zero_ino_dir = $root . '/zero-inode';
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_mkdir -- Create private staging directory for zero-inode custody proof.
+mkdir( $zero_ino_dir, 0700, true );
+$zero_ino_output = $run_child(
+	<<<'PHP'
+namespace RAN\UpdaterSupport\V1 {
+	function lstat( string $filename ): array|false {
+		$stat = \lstat( $filename );
+		if ( is_array( $stat ) ) {
+			$stat['ino'] = 0;
+			$stat[1]     = 0;
+		}
+		return $stat;
+	}
+}
+namespace RAN\WPBranchUpdater\V1\Archive {
+	function lstat( string $filename ): array|false {
+		$stat = \lstat( $filename );
+		if ( is_array( $stat ) ) {
+			$stat['ino'] = 0;
+			$stat[1]     = 0;
+		}
+		return $stat;
+	}
+	function fstat( $stream ): array|false {
+		$stat = \fstat( $stream );
+		if ( is_array( $stat ) ) {
+			$stat['ino'] = 0;
+			$stat[1]     = 0;
+		}
+		return $stat;
+	}
+}
+namespace {
+	require $argv[1];
+	$dir         = $argv[2];
+	$source      = $argv[3];
+	$staged_path = '';
+	$GLOBALS['wp_version'] = '6.8';
+
+	$deployment = new \RAN\WPBranchUpdater\V1\Runtime\BranchDeploymentDeclaration(
+		'zero-ino-ok', 'plugin', 'demo', 'acme/demo', 'repository-id', 'main', 'abc123', 'install', 'demo', null
+	);
+	$copy_offer = static fn( string $from ): \RAN\WPBranchUpdater\V1\Archive\ArchiveOffer => new \RAN\WPBranchUpdater\V1\Archive\ArchiveOffer(
+		'fixture', 'repository-id', 'abc123',
+		static function ( string $destination, int $max ) use ( $from ): void {
+			if ( ! copy( $from, $destination ) ) {
+				throw new \RuntimeException( 'copy failed' );
+			}
+		},
+		static function (): void {}
+	);
+
+	// 1. Clean download, custody check, and cleanup succeed when ino === 0.
+	$archive = \RAN\WPBranchUpdater\V1\Archive\PreparedArchive::download_and_validate( $copy_offer( $source ), $deployment, $dir );
+	$archive->assert_unchanged();
+	$archive->cleanup();
+	if ( array() !== ( glob( $dir . '/ran-branch-*' ) ?: array() ) ) {
+		fwrite( STDERR, 'Zero-inode normal cleanup left staged files' );
+		exit( 1 );
+	}
+
+	// 2. Validation failure on an untouched zero-inode file cleans it up safely.
+	$bad_zip = $dir . '/bad.zip';
+	file_put_contents( $bad_zip, 'not a zip' );
+	$validation_error = null;
+	try {
+		\RAN\WPBranchUpdater\V1\Archive\PreparedArchive::download_and_validate( $copy_offer( $bad_zip ), $deployment, $dir );
+	} catch ( \RAN\WPBranchUpdater\V1\Runtime\ReasonedFailure $e ) {
+		$validation_error = $e;
+	}
+	unlink( $bad_zip );
+	if ( ! $validation_error instanceof \RAN\WPBranchUpdater\V1\Runtime\ReasonedFailure
+		|| \RAN\WPBranchUpdater\V1\Archive\ArchiveValidator::CODE_ZIP_INVALID !== $validation_error->getCode()
+		|| array() !== ( glob( $dir . '/ran-branch-*' ) ?: array() ) ) {
+		fwrite( STDERR, 'Zero-inode validation failure did not clean up cleanly' );
+		exit( 1 );
+	}
+
+	// 3. Metadata drift (mtime change) on an ino === 0 archive fails custody as identity drift.
+	$drifted      = \RAN\WPBranchUpdater\V1\Archive\PreparedArchive::download_and_validate( $copy_offer( $source ), $deployment, $dir );
+	$drifted_path = $drifted->path();
+	touch( $drifted_path, time() - 30 );
+	$drift_error = null;
+	try {
+		$drifted->assert_unchanged();
+	} catch ( \RAN\WPBranchUpdater\V1\Runtime\ReasonedFailure $e ) {
+		$drift_error = $e;
+	}
+	unlink( $drifted_path );
+	if ( ! $drift_error instanceof \RAN\WPBranchUpdater\V1\Runtime\ReasonedFailure
+		|| \RAN\WPBranchUpdater\V1\Runtime\FailureReason::ARCHIVE_CUSTODY_CHANGED->value !== $drift_error->reason
+		|| 'identity' !== $drift_error->detail ) {
+		fwrite( STDERR, 'Zero-inode mtime drift was not detected as identity change' );
+		exit( 1 );
+	}
+
+	// 4. Post-validate file replacement on ino === 0 refuses to unlink the replacement and chains custody cause.
+	function wp_get_wp_version(): string {
+		global $staged_path, $source;
+		if ( is_string( $staged_path ) && '' !== $staged_path ) {
+			$replacement = $staged_path . '.replacement';
+			copy( $source, $replacement );
+			chmod( $replacement, 0600 );
+			touch( $replacement, time() - 60 );
+			rename( $replacement, $staged_path );
+		}
+		return '6.8';
+	}
+	$swap_offer = new \RAN\WPBranchUpdater\V1\Archive\ArchiveOffer(
+		'fixture', 'repository-id', 'abc123',
+		static function ( string $destination, int $max ) use ( $source, &$staged_path ): void {
+			$staged_path = $destination;
+			if ( ! copy( $source, $destination ) ) {
+				throw new \RuntimeException( 'copy failed' );
+			}
+		},
+		static function (): void {}
+	);
+	$swap_error = null;
+	try {
+		\RAN\WPBranchUpdater\V1\Archive\PreparedArchive::download_and_validate( $swap_offer, $deployment, $dir );
+	} catch ( \RuntimeException $e ) {
+		$swap_error = $e;
+	}
+	$swap_cause = null === $swap_error ? null : \RAN\WPBranchUpdater\V1\Runtime\ReasonedFailure::find( $swap_error );
+	$preserved  = '' !== $staged_path && is_file( $staged_path ) && ! is_link( $staged_path );
+	if ( $preserved ) {
+		unlink( $staged_path );
+	}
+	if ( ! $swap_error instanceof \RuntimeException
+		|| 'Rejected archive replacement could not be cleaned safely.' !== $swap_error->getMessage()
+		|| ! $swap_cause instanceof \RAN\WPBranchUpdater\V1\Runtime\ReasonedFailure
+		|| \RAN\WPBranchUpdater\V1\Runtime\FailureReason::ARCHIVE_CUSTODY_CHANGED->value !== $swap_cause->reason
+		|| 'identity' !== $swap_cause->detail
+		|| ! $preserved ) {
+		fwrite( STDERR, 'Zero-inode replacement was not preserved on cleanup' );
+		exit( 1 );
+	}
+
+	echo 'OK';
+}
+PHP,
+	$autoload_path,
+	$zero_ino_dir,
+	$source
+);
+$assert( 'OK' === $zero_ino_output && array() === glob( $zero_ino_dir . '/*' ), 'zero-inode (ino === 0) custody and cleanup fallback semantics must hold' );
+// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- Remove zero-inode fixture directory.
+rmdir( $zero_ino_dir );
+
 $after_tmp = glob( rtrim( sys_get_temp_dir(), '/\\' ) . '/ran-branch-*' );
 $after_tmp = is_array( $after_tmp ) ? $after_tmp : array();
 $assert( $before_tmp === $after_tmp, 'failed archive staging must never fall back to the system temporary directory' );

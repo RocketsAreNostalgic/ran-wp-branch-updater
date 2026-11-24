@@ -162,8 +162,23 @@ $empty_version = $zip( array( 'repository/demo/demo.php' => "/* Plugin Name: Dem
 $reject( ArchiveValidator::CODE_VERSION_MISSING, $empty_version, $deployment( 'empty-version' ) );
 $invalid_compatibility = $zip( array( 'repository/demo/demo.php' => "<?php /* Plugin Name: Demo */\rVersion: 1.2.3 ?>\rRequires PHP: future */" ) );
 $reject( ArchiveValidator::CODE_COMPATIBILITY_INVALID, $invalid_compatibility, $deployment( 'invalid-compatibility' ) );
-$long_name = $zip( array( 'repository/demo/demo.php' => $plugin( 'Plugin Name: ' . str_repeat( 'A', 65 ) . " */\nVersion: 1.2.3" ) ) );
-$reject( ArchiveValidator::CODE_HEADER_UNREADABLE, $long_name, $deployment( 'long-name' ) );
+$long_name_65 = $zip( array( 'repository/demo/demo.php' => $plugin( 'Plugin Name: ' . str_repeat( 'A', 65 ) . " */\nVersion: 1.2.3" ) ) );
+$assert( '1.2.3' === $validate( $long_name_65, $deployment( 'long-name-65' ) )['expected_version'], '65-byte plugin header value is accepted within the 500-byte bound' );
+$long_name_500 = $zip( array( 'repository/demo/demo.php' => '<?php /* Plugin Name: ' . str_repeat( 'A', 500 ) . " */\n/* Version: 1.2.3 ?>\n" ) );
+$assert( '1.2.3' === $validate( $long_name_500, $deployment( 'long-name-500' ) )['expected_version'], '500-byte plugin header value with stripped comment closer is accepted' );
+$long_theme_500  = $zip( array( 'repository/demo/style.css' => '/* Theme Name: ' . str_repeat( 'T', 500 ) . " */\nVersion: 1.2.3\n" ) );
+$long_theme_decl = new BranchDeploymentDeclaration( 'long-theme-500', 'theme', 'demo', 'acme/demo', 'repository-id', 'main', 'abc123', 'install', 'demo' );
+$assert( '1.2.3' === $validate( $long_theme_500, $long_theme_decl )['expected_version'], '500-byte theme header value is accepted' );
+$long_name_501 = $zip( array( 'repository/demo/demo.php' => $plugin( 'Plugin Name: ' . str_repeat( 'A', 501 ) . " */\nVersion: 1.2.3" ) ) );
+$reject( ArchiveValidator::CODE_HEADER_UNREADABLE, $long_name_501, $deployment( 'long-name-501' ) );
+$long_theme_501 = $zip( array( 'repository/demo/style.css' => '/* Theme Name: ' . str_repeat( 'T', 501 ) . " */\nVersion: 1.2.3\n" ) );
+$reject( ArchiveValidator::CODE_HEADER_UNREADABLE, $long_theme_501, $long_theme_decl );
+$long_version_500 = $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: " . str_repeat( '1', 500 ) ) ) );
+$assert( str_repeat( '1', 500 ) === $validate( $long_version_500, $deployment( 'long-version-500' ) )['expected_version'], '500-byte version value is accepted' );
+$long_version_501 = $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: " . str_repeat( '1', 501 ) ) ) );
+$reject( ArchiveValidator::CODE_VERSION_INVALID, $long_version_501, $deployment( 'long-version-501' ) );
+$long_compat_501 = $zip( array( 'repository/demo/demo.php' => $plugin( "Plugin Name: Demo\nVersion: 1.2.3\nRequires PHP: 8.2-" . str_repeat( 'a', 497 ) ) ) );
+$reject( ArchiveValidator::CODE_COMPATIBILITY_INVALID, $long_compat_501, $deployment( 'long-compat-501' ) );
 
 $unsafe = $zip(
 	array(

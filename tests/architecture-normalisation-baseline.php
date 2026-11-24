@@ -241,10 +241,10 @@ $assert(
 		'executor.preflight.initial',
 		'artifact.resolved',
 		'journal.resolved:abc123',
+		'archives.verify_head',
 		'lock.enter',
 		'target.baseline.locked',
 		'artifact.version',
-		'archives.verify_head',
 		'artifact.integrity',
 		'target.maintenance.before',
 		'target.policy.locked',
@@ -328,6 +328,9 @@ $scenario = static function ( array $options, ?bool $fenced = null ) use ( $asse
 	);
 	$outcome  = $updater->plugin( 'acme/demo', 'repository-id', 'main', package_slug: 'demo', subdirectory: 'demo' )->deploy();
 	$assert( end( $trace->events ) === 'journal.finish:' . $outcome, 'terminal outcome is journaled last for ' . $outcome );
+	if ( isset( $options['headFailure'] ) ) {
+		$assert( ! in_array( 'lock.enter', $trace->events, true ), 'remote head verification failure must not acquire the mutation lock' );
+	}
 	if ( null !== $fenced ) {
 		$assert( in_array( 'journal.fence', $trace->events, true ) === $fenced, 'mutation fence for ' . $outcome );
 		$assert( in_array( 'executor.execute', $trace->events, true ) === $fenced, 'executor call for ' . $outcome );
@@ -407,7 +410,7 @@ foreach (
 		$assert( 'Invalid historical commit selection.' === $expected->getMessage(), 'admission requires a canonical historical identity and no expected head' );
 	}
 }
-$assert( 'provider_failed' === $scenario( array( 'headFailure' => new \RuntimeException( 'head advanced' ) ) ), 'locked source-head advancement remains provider_failed' );
+$assert( 'provider_failed' === $scenario( array( 'headFailure' => new \RuntimeException( 'head advanced' ) ), false ), 'pre-lock source-head advancement remains provider_failed' );
 $assert( 'archive_integrity_failed' === $scenario( array( 'integrityFailure' => new \RuntimeException( 'changed' ) ) ), 'locked artifact replacement remains archive_integrity_failed' );
 $assert( 'deployment_maintenance_active' === $scenario( array( 'maintenanceStates' => array( true ) ) ), 'pre-mutation maintenance remains a closed failure' );
 $assert( 'policy_blocked' === $scenario( array( 'secondPreflightFailure' => new \RuntimeException( 'locked preflight' ) ) ), 'second preflight generic failure retains current policy_blocked mapping' );

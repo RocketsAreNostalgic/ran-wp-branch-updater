@@ -150,8 +150,36 @@ foreach ( $expectations as $label => [$outcome, $failure, $detail] ) {
 // Request validation and theme-parent causes.
 [, $artifact] = $prepared( 'plugin', $plugin_zip );
 $core         = new WordPressCorePackageExecutor( static fn(): bool => true );
-$result       = $core->install_plugin( $artifact, 'bad/slug', 'demo' );
-$assert( CorePackageExecutionFailure::INVALID_REQUEST === $result->get_failure() && 'input_invalid' === $result->get_detail(), 'an invalid slug is input_invalid' );
+$before       = RAN_WP_Branch_Updater_WordPressState::$hook_calls;
+foreach ( array(
+	'bad/slug',
+	'.hidden',
+	'-demo',
+	'_demo',
+	'demo.',
+	'con',
+	'NUL.txt',
+	'com1',
+	'../demo',
+	'..',
+	'demo space',
+	'demo%20',
+	str_repeat( 'a', 192 ),
+) as $invalid_slug ) {
+	foreach ( array(
+		$core->install_plugin( $artifact, $invalid_slug, 'demo' ),
+		$core->install_theme( $artifact, $invalid_slug, 'demo' ),
+		$core->update_plugin( $artifact, $invalid_slug, 'demo', 'demo/demo.php' ),
+		$core->update_theme( $artifact, $invalid_slug, 'demo', 'demo' ),
+	) as $result ) {
+		$assert( CorePackageExecutionFailure::INVALID_REQUEST === $result->get_failure() && 'input_invalid' === $result->get_detail(), 'an invalid package slug is input_invalid: ' . $invalid_slug );
+	}
+}
+$assert( RAN_WP_Branch_Updater_WordPressState::$hook_calls === $before, 'invalid package slugs refuse before WordPress hook registration' );
+$boundary_slug = 'package.' . str_repeat( 'a', 183 );
+$refusing_core = new WordPressCorePackageExecutor( static fn(): bool => false );
+$result        = $refusing_core->install_plugin( $artifact, $boundary_slug, 'demo' );
+$assert( CorePackageExecutionFailure::WORDPRESS_REFUSED === $result->get_failure(), 'a valid 191-byte dotted package slug passes input validation' );
 $before = RAN_WP_Branch_Updater_WordPressState::$hook_calls;
 foreach ( array( 'other/demo.php', 'Demo/demo.php' ) as $identifier ) {
 	$result = $core->update_plugin( $artifact, 'demo', 'demo', $identifier );

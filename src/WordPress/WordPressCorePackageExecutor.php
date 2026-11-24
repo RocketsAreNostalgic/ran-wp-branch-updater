@@ -135,7 +135,10 @@ class WordPressCorePackageExecutor {
 	private function validate_inputs( PreparedPackageArtifact $artifact, string $package_slug, ?string $subdirectory, string $installed_identifier = '' ): array|CorePackageExecutionResult {
 		try {
 			$artifact->assert_unchanged();
-			$slug         = PackageDirectory::normalize_slug( $package_slug );
+			$slug = PackageDirectory::normalize_slug( $package_slug );
+			if ( ! PackageDirectory::is_valid_name( $slug ) ) {
+				throw new InvalidArgumentException( 'The package slug is invalid.' );
+			}
 			$subdirectory = PackageDirectory::normalize( $subdirectory );
 			$identifier   = '' === $installed_identifier ? '' : InstalledPackageIdentifier::normalize( $installed_identifier );
 		} catch ( Throwable $failure ) {

@@ -57,9 +57,9 @@ target admission
 → artifact preparation
 → preflight
 → resolved-ref journal entry
+→ source-head recheck
 → mutation lock
 → baseline recheck
-→ source-head recheck
 → artifact recheck
 → second policy/preflight
 → mutation fence
