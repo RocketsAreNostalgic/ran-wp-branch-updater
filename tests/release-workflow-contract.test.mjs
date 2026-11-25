@@ -33,6 +33,7 @@ test('release workflow is a thin pinned Profile A caller', () => {
 	assert.doesNotMatch(workflow, /release-please-action/);
 	assert.doesNotMatch(workflow, /RAN_RELEASE_PUBLISHER/);
 	assert.equal(releaseConfig.packages['.']['skip-github-release'], undefined);
+	assert.equal(releaseConfig['always-update'], true);
 });
 
 test('canonical CI authenticates Profile A candidate dispatch before classification', () => {
